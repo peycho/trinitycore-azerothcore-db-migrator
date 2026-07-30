@@ -10,13 +10,15 @@
    metadata visibility, and target/control DDL/DML permissions.
 4. Copy and review the secure configuration. Set `REQUIRE_QUIESCENT=0` only
    because the restored rehearsal schemas have no writers.
-5. Run `preflight`, inspect source DDL and row-count snapshots, then run
-   `assemble`.
+5. Run `preflight`; inspect source DDL, row-count snapshots, and
+   `source-orphan-audit.tsv`; then run `assemble`.
 6. Review both schema-diff and type-risk reports against the checked-in mapping
    registries. Any live-only table or column requires a mapping change and a
    new run.
-7. Run both load phases, then `validate`. Resolve errors; do not downgrade them
-   to warnings merely to complete the rehearsal.
+7. Run both load phases, then `sanitize-target`. Review
+   `cleanup-orphan-characters.tsv` and `cleanup-table-summary.tsv` before
+   running `validate`. Resolve errors; do not downgrade them to warnings merely
+   to complete the rehearsal.
 8. Start AzerothCore with copies of its normal configuration pointing only at
    the rehearsal targets. Keep the world database read-only.
 9. Test SRP6 login, character list/login, position/homebind, equipment and

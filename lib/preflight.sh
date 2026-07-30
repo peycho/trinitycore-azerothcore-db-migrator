@@ -68,6 +68,66 @@ capture_source_counts() {
         ORDER BY TABLE_NAME;")
 }
 
+capture_source_orphan_audit() {
+    local destination=$1
+    {
+        printf 'metric\trows_found\tpolicy\n'
+        mysql_query -e "
+            SELECT 'character_without_account',COUNT(*),'DROP_CHARACTER_AND_LINKED_TARGET_DATA'
+            FROM \`$SOURCE_CHARACTERS_SCHEMA\`.characters c
+            LEFT JOIN \`$SOURCE_AUTH_SCHEMA\`.account a ON a.id=c.account
+            WHERE c.account<>0 AND a.id IS NULL
+            UNION ALL
+            SELECT 'inventory_without_character',COUNT(*),'DROP_DANGLING_RELATION'
+            FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_inventory i
+            LEFT JOIN \`$SOURCE_CHARACTERS_SCHEMA\`.characters c ON c.guid=i.guid
+            WHERE c.guid IS NULL
+            UNION ALL
+            SELECT 'inventory_without_item',COUNT(*),'DROP_DANGLING_RELATION'
+            FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_inventory i
+            LEFT JOIN \`$SOURCE_CHARACTERS_SCHEMA\`.item_instance x ON x.guid=i.item
+            WHERE x.guid IS NULL
+            UNION ALL
+            SELECT 'inventory_without_bag',COUNT(*),'DROP_DANGLING_RELATION'
+            FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_inventory i
+            LEFT JOIN \`$SOURCE_CHARACTERS_SCHEMA\`.item_instance b ON b.guid=i.bag
+            WHERE i.bag<>0 AND b.guid IS NULL
+            UNION ALL
+            SELECT 'item_without_owner',COUNT(*),'DROP_ONLY_IF_UNREACHABLE_IN_TARGET'
+            FROM \`$SOURCE_CHARACTERS_SCHEMA\`.item_instance i
+            LEFT JOIN \`$SOURCE_CHARACTERS_SCHEMA\`.characters c ON c.guid=i.owner_guid
+            WHERE i.owner_guid<>0 AND c.guid IS NULL
+            UNION ALL
+            SELECT 'mail_item_without_mail',COUNT(*),'DROP_DANGLING_RELATION'
+            FROM \`$SOURCE_CHARACTERS_SCHEMA\`.mail_items mi
+            LEFT JOIN \`$SOURCE_CHARACTERS_SCHEMA\`.mail m ON m.id=mi.mail_id
+            WHERE m.id IS NULL
+            UNION ALL
+            SELECT 'mail_item_without_item',COUNT(*),'DROP_DANGLING_RELATION'
+            FROM \`$SOURCE_CHARACTERS_SCHEMA\`.mail_items mi
+            LEFT JOIN \`$SOURCE_CHARACTERS_SCHEMA\`.item_instance i ON i.guid=mi.item_guid
+            WHERE i.guid IS NULL
+            UNION ALL
+            SELECT 'item_loot_without_container',COUNT(*),'DROP_DANGLING_RELATION'
+            FROM (
+                SELECT container_id
+                FROM \`$SOURCE_CHARACTERS_SCHEMA\`.item_loot_items
+                UNION ALL
+                SELECT container_id
+                FROM \`$SOURCE_CHARACTERS_SCHEMA\`.item_loot_money
+                WHERE money>0
+            ) l
+            LEFT JOIN \`$SOURCE_CHARACTERS_SCHEMA\`.item_instance i
+              ON i.guid=l.container_id
+            WHERE i.guid IS NULL
+            UNION ALL
+            SELECT 'realmcharacters_without_account',COUNT(*),'REBUILD_FOR_CONFIGURED_REALM'
+            FROM \`$SOURCE_AUTH_SCHEMA\`.realmcharacters rc
+            LEFT JOIN \`$SOURCE_AUTH_SCHEMA\`.account a ON a.id=rc.acctid
+            WHERE a.id IS NULL;"
+    } > "$destination"
+}
+
 check_quiescence() {
     [[ $REQUIRE_QUIESCENT == 1 ]] || {
         log "Quiescence enforcement disabled for this rehearsal"
@@ -210,6 +270,7 @@ perform_preflight() {
     capture_source_counts auth "$SOURCE_AUTH_SCHEMA" "$run_reports/source-auth-row-counts.tsv"
     capture_source_counts characters "$SOURCE_CHARACTERS_SCHEMA" \
         "$run_reports/source-characters-row-counts.tsv"
+    capture_source_orphan_audit "$run_reports/source-orphan-audit.tsv"
 
     log "Preflight captured source schemas for run $RUN_ID"
 }

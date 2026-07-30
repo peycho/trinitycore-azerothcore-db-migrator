@@ -18,6 +18,8 @@
    Verify binary layouts, bit masks, epochs, enum meanings, packed text, and
    ownership relationships.
 6. Extend validation with row-count rules and logical orphan/domain checks.
+   If the target sanitizer may remove rows from the new table, add its character
+   or item dependency to `lib/sanitize.sh`; cleanup-adjusted mapping counts are
+   taken from the control schema audit.
 7. Update static inventory tests and run a populated rehearsal twice.
 8. Pin the new revisions and require operator review before production.
-

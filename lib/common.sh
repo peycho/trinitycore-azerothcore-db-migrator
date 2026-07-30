@@ -119,7 +119,8 @@ build_mysql_arguments() {
 }
 
 mysql_query() {
-    mysql "${MYSQL_ARGS[@]}" --batch --raw --skip-column-names "$@"
+    mysql "${MYSQL_ARGS[@]}" --batch --raw --skip-column-names "$@" ||
+        die "MySQL query failed"
 }
 
 mysql_table() {
@@ -129,7 +130,8 @@ mysql_table() {
 mysql_import() {
     local schema=$1
     local file=$2
-    mysql "${MYSQL_ARGS[@]}" --database="$schema" < "$file"
+    mysql "${MYSQL_ARGS[@]}" --database="$schema" < "$file" ||
+        die "MySQL import failed for $schema from $file"
 }
 
 sql_escape() {

@@ -720,7 +720,7 @@ handle_noncopy_mapping() {
                 die "Target-empty table contains seed rows unexpectedly: $target_table"
             ;;
         DERIVED)
-            log "Target table populated by an earlier approved transform: $target_table"
+            log "Target table is derived by a later approved phase: $target_table"
             ;;
         SOURCE_ARCHIVE)
             local rows
@@ -733,7 +733,11 @@ handle_noncopy_mapping() {
             ;;
         BLOCKED)
             local blocked_rows
-            blocked_rows=$(mysql_query -e "SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.\`$source_table\`;")
+            if table_exists "$SOURCE_SCHEMA" "$source_table"; then
+                blocked_rows=$(mysql_query -e "SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.\`$source_table\`;")
+            else
+                blocked_rows=0
+            fi
             [[ $blocked_rows == 0 ]] ||
                 die "Blocked mapping $source_table has $blocked_rows row(s): $validation"
             ;;
@@ -845,19 +849,6 @@ perform_load() {
                 ;;
         esac
     done < "$mapping_file"
-
-    if [[ $kind == characters ]]; then
-        mysql_query -e "
-            INSERT INTO \`$TARGET_AUTH_SCHEMA\`.realmcharacters (realmid, acctid, numchars)
-            SELECT new.realmid,new.acctid,new.numchars
-            FROM (
-                SELECT $REALM_ID AS realmid,a.id AS acctid,LEAST(COUNT(c.guid),255) AS numchars
-                FROM \`$TARGET_AUTH_SCHEMA\`.account a
-                LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.account=a.id
-                GROUP BY a.id
-            ) AS new
-            ON DUPLICATE KEY UPDATE numchars=new.numchars;"
-    fi
 
     log "Completed approved $kind mappings"
 }

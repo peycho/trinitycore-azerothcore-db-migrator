@@ -19,13 +19,17 @@
 1. Stop TrinityCore authserver and worldserver.
 2. Confirm no sessions remain connected to auth or characters.
 3. Take the final consistent backups and record their locations/checksums.
-4. Run `preflight`; archive the run ID and source fingerprints.
+4. Run `preflight`; archive the run ID and source fingerprints, and review the
+   source orphan audit against the approved rehearsal.
 5. Run `assemble`; inspect update hashes and schema/type reports.
 6. Run `load-auth`, then `load-characters`.
-7. Run `validate`. A status other than `READY` is an automatic no-go.
-8. Start AzerothCore privately and run the smoke tests from the rehearsal
+7. Run `sanitize-target`; archive and review the orphan-character manifest and
+   per-table cleanup counts. A guild-leader, arena-captain, or reachable-item
+   blocker is an automatic no-go pending an explicit data-owner decision.
+8. Run `validate`. A status other than `READY` is an automatic no-go.
+9. Start AzerothCore privately and run the smoke tests from the rehearsal
    checklist with representative accounts.
-9. If smoke tests pass, enable public access. Keep source schemas read-only and
+10. If smoke tests pass, enable public access. Keep source schemas read-only and
    retain all reports/backups through the rollback deadline.
 
 Do not run either core against the opposite schema family, and never point the

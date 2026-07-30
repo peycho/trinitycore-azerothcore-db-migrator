@@ -3,6 +3,8 @@
 `00_control_schema.sql` is the only static SQL imported directly by the runner.
 Target DDL is intentionally sourced from the pinned AzerothCore base and
 released update directories rather than duplicated here.
+The control schema also stores the orphan-character manifest and exact
+per-table before/after counts for audited target sanitization.
 
 The shell runner generates explicit `INSERT ... SELECT` statements from:
 
@@ -20,8 +22,9 @@ DDL order is:
 1. native target base tables and seed rows;
 2. released target updates and update-ledger checkpoints;
 3. transformed data in logical dependency order;
-4. auto-increment reseeding and `ANALYZE TABLE`;
-5. explicit relational and domain validation.
+4. approved target-only orphan sanitization and realm-count derivation;
+5. auto-increment reseeding and `ANALYZE TABLE`;
+6. explicit relational and domain validation.
 
 The pinned TrinityCore auth schema contains two administration views, both
 explicitly dispositioned in `mappings/objects.csv`; AzerothCore has no target
