@@ -3,7 +3,17 @@
 set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORKSPACE="$(cd "$ROOT/.." && pwd)"
+TRINITYCORE_DIR=${TRINITYCORE_DIR:-"$ROOT/../TrinityCore"}
+AZEROTHCORE_DIR=${AZEROTHCORE_DIR:-"$ROOT/../azerothcore-wotlk"}
+
+[[ -f "$TRINITYCORE_DIR/sql/base/auth_database.sql" ]] || {
+    printf 'TrinityCore SQL checkout not found: %s\n' "$TRINITYCORE_DIR" >&2
+    exit 1
+}
+[[ -d "$AZEROTHCORE_DIR/data/sql/base/db_auth" ]] || {
+    printf 'AzerothCore SQL checkout not found: %s\n' "$AZEROTHCORE_DIR" >&2
+    exit 1
+}
 
 shellcheck "$ROOT/bin/migrate.sh" "$ROOT"/lib/*.sh
 
@@ -29,20 +39,20 @@ compare_inventory() {
 temporary_dir=$(mktemp -d)
 trap 'rm -rf "$temporary_dir"' EXIT
 
-rg '^CREATE TABLE' "$WORKSPACE/TrinityCore/sql/base/auth_database.sql" |
+rg '^CREATE TABLE' "$TRINITYCORE_DIR/sql/base/auth_database.sql" |
     sed -E 's/^CREATE TABLE `([^`]+)`.*/\1/' | sort > "$temporary_dir/tc-auth"
 cut -d, -f1 "$ROOT/mappings/auth.csv" | tail -n +2 | tr '+' '\n' |
     sed '/^-/d;/^$/d' | sort -u > "$temporary_dir/map-tc-auth"
-find "$WORKSPACE/azerothcore-wotlk/data/sql/base/db_auth" -maxdepth 1 -name '*.sql' -printf '%f\n' |
+find "$AZEROTHCORE_DIR/data/sql/base/db_auth" -maxdepth 1 -name '*.sql' -printf '%f\n' |
     sed 's/\.sql$//' | sort > "$temporary_dir/ac-auth"
 cut -d, -f2 "$ROOT/mappings/auth.csv" | tail -n +2 |
     sed '/^-/d;/^$/d' | sort -u > "$temporary_dir/map-ac-auth"
 
-rg '^CREATE TABLE' "$WORKSPACE/TrinityCore/sql/base/characters_database.sql" |
+rg '^CREATE TABLE' "$TRINITYCORE_DIR/sql/base/characters_database.sql" |
     sed -E 's/^CREATE TABLE `([^`]+)`.*/\1/' | sort > "$temporary_dir/tc-characters"
 cut -d, -f1 "$ROOT/mappings/characters.csv" | tail -n +2 | tr '+' '\n' |
     sed '/^-/d;/^$/d' | sort -u > "$temporary_dir/map-tc-characters"
-find "$WORKSPACE/azerothcore-wotlk/data/sql/base/db_characters" -maxdepth 1 -name '*.sql' -printf '%f\n' |
+find "$AZEROTHCORE_DIR/data/sql/base/db_characters" -maxdepth 1 -name '*.sql' -printf '%f\n' |
     sed 's/\.sql$//' | sort > "$temporary_dir/ac-characters"
 cut -d, -f2 "$ROOT/mappings/characters.csv" | tail -n +2 |
     sed '/^-/d;/^$/d' | sort -u > "$temporary_dir/map-ac-characters"

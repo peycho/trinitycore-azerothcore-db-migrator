@@ -2,6 +2,9 @@
 
 ## Before the window
 
+- Confirm the pinned core checkouts from
+  [Repository setup](repository-setup.md) are present on the migration host,
+  clean, readable by the operator, and referenced by the production config.
 - Complete at least one production-sized rehearsal against the same revisions.
 - Review every `SOURCE_ARCHIVE` disposition and confirm the per-account RBAC
   blocker is empty or has an approved concrete mapping.
@@ -27,4 +30,3 @@
 
 Do not run either core against the opposite schema family, and never point the
 migration account's writable grants at the source or world schemas.
-
