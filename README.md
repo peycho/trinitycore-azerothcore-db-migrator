@@ -1,6 +1,6 @@
 # TrinityCore to AzerothCore database migration
 
-This directory is a standalone, fail-closed migration toolkit for one
+This repository is a standalone, fail-closed migration toolkit for one
 TrinityCore 3.3.5 auth/characters pair to fresh AzerothCore schemas on the same
 MySQL 8 server. It does not modify either C++ project and never writes to the
 world database.
@@ -34,9 +34,26 @@ trigger, or event blocks preflight until added to `mappings/objects.csv`.
 - MySQL 8.x server and MySQL 8 client tools (`mysql`, `mysqldump`)
 - Bash 4+, `git`, `sha1sum`, `sha256sum`, `sed`, and `awk`
 - Source and fresh target schemas on the same MySQL server
-- Checked-out revisions:
-  - TrinityCore `a1fca43764`
-  - AzerothCore `5bdaa898d`
+- Local Git checkouts at the pinned revisions:
+  - [TrinityCore](https://github.com/TrinityCore/TrinityCore) 3.3.5 at
+    `a1fca43764`
+  - [AzerothCore](https://github.com/azerothcore/azerothcore-wotlk) at
+    `5bdaa898d`
+
+Both core repositories are required on the host running the migration. The
+TrinityCore checkout supplies the pinned source-schema definition and Git
+revision used to verify the mapping provenance. The AzerothCore checkout
+supplies the base and released update SQL that `assemble` imports to create the
+targets. The toolkit does not download these files, and copying only SQL files
+is insufficient because `preflight` also verifies each Git revision and checks
+the SQL tree for local changes.
+
+Neither core needs to be compiled, and the toolkit does not modify either
+checkout. Keep both available for the complete run, including resumed commands.
+Their locations do not need to be siblings: configure absolute
+`TRINITYCORE_DIR` and `AZEROTHCORE_DIR` paths when using another layout. See
+[Repository setup](runbooks/repository-setup.md) for exact commands and the
+supported directory layouts.
 
 Use a MySQL option file instead of putting a password in the environment:
 
@@ -134,5 +151,15 @@ tests/static-checks.sh
 ```
 
 The included `tests/rehearsal.env` is only for a disposable MySQL instance on
-port 33316. It is not a production template. Rehearsal and production
-procedures are in `runbooks/`.
+port 33316. It is not a production template. The static checker defaults to
+sibling core checkouts; override its paths when necessary:
+
+```bash
+TRINITYCORE_DIR=/srv/src/TrinityCore \
+AZEROTHCORE_DIR=/srv/src/azerothcore-wotlk \
+tests/static-checks.sh
+```
+
+Follow the [rehearsal](runbooks/rehearsal.md),
+[production cutover](runbooks/cutover.md), and
+[rollback](runbooks/rollback.md) runbooks.
