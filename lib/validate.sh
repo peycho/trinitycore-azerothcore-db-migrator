@@ -255,6 +255,19 @@ perform_validation() {
         WHERE t.id IS NULL OR t.gmlevel<>s.SecurityLevel
            OR NOT (t.comment <=> s.Comment);" \
         "Account security levels and comments must survive renamed columns"
+    check_zero rbac_account_permission_mismatch "
+        SELECT COUNT(*)
+        FROM \`$SOURCE_AUTH_SCHEMA\`.rbac_account_permissions ap
+        JOIN \`$SOURCE_AUTH_SCHEMA\`.rbac_permissions sp
+          ON sp.id=ap.permissionId
+        JOIN \`$TARGET_AUTH_SCHEMA\`.rbac_permissions tp
+          ON BINARY tp.name=BINARY sp.name
+        LEFT JOIN \`$TARGET_AUTH_SCHEMA\`.rbac_account_permissions mapped
+          ON mapped.accountId=ap.accountId
+         AND mapped.permissionId=tp.id
+         AND mapped.realmId=ap.realmId
+        WHERE mapped.accountId IS NULL OR mapped.granted<>ap.granted;" \
+        "Account RBAC overrides must preserve exact permission names, grants, and realm scopes"
     check_zero character_spell_mask_mismatch "
         SELECT COUNT(*)
         FROM \`$TARGET_CHARACTERS_SCHEMA\`.character_spell

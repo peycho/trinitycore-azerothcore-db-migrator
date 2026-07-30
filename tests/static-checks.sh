@@ -41,7 +41,8 @@ trap 'rm -rf "$temporary_dir"' EXIT
 
 rg '^CREATE TABLE' "$TRINITYCORE_DIR/sql/base/auth_database.sql" |
     sed -E 's/^CREATE TABLE `([^`]+)`.*/\1/' | sort > "$temporary_dir/tc-auth"
-cut -d, -f1 "$ROOT/mappings/auth.csv" | tail -n +2 | tr '+' '\n' |
+awk -F, 'NR > 1 && !($2 == "-" && $8 == "BLOCKED") { print $1 }' \
+    "$ROOT/mappings/auth.csv" | tr '+' '\n' |
     sed '/^-/d;/^$/d' | sort -u > "$temporary_dir/map-tc-auth"
 find "$AZEROTHCORE_DIR/data/sql/base/db_auth" -maxdepth 1 -name '*.sql' -printf '%f\n' |
     sed 's/\.sql$//' | sort > "$temporary_dir/ac-auth"
@@ -50,7 +51,8 @@ cut -d, -f2 "$ROOT/mappings/auth.csv" | tail -n +2 |
 
 rg '^CREATE TABLE' "$TRINITYCORE_DIR/sql/base/characters_database.sql" |
     sed -E 's/^CREATE TABLE `([^`]+)`.*/\1/' | sort > "$temporary_dir/tc-characters"
-cut -d, -f1 "$ROOT/mappings/characters.csv" | tail -n +2 | tr '+' '\n' |
+awk -F, 'NR > 1 && !($2 == "-" && $8 == "BLOCKED") { print $1 }' \
+    "$ROOT/mappings/characters.csv" | tr '+' '\n' |
     sed '/^-/d;/^$/d' | sort -u > "$temporary_dir/map-tc-characters"
 find "$AZEROTHCORE_DIR/data/sql/base/db_characters" -maxdepth 1 -name '*.sql' -printf '%f\n' |
     sed 's/\.sql$//' | sort > "$temporary_dir/ac-characters"

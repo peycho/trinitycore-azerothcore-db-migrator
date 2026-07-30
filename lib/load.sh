@@ -473,6 +473,106 @@ load_statement_chunks() {
     done
 }
 
+load_rbac_account_permissions() {
+    local target_table=rbac_account_permissions
+    local statement="
+        INSERT INTO \`$TARGET_SCHEMA\`.\`rbac_account_permissions\`
+            (accountId,permissionId,granted,realmId)
+        SELECT ap.accountId,tp.id,ap.granted,ap.realmId
+        FROM \`$SOURCE_SCHEMA\`.\`rbac_account_permissions\` ap
+        JOIN \`$SOURCE_SCHEMA\`.\`rbac_permissions\` sp
+          ON sp.id=ap.permissionId
+        JOIN \`$TARGET_SCHEMA\`.\`rbac_permissions\` tp
+          ON BINARY tp.name=BINARY sp.name"
+    local hash
+    hash=$(printf '%s' "$statement" | sha256sum | awk '{print $1}')
+    if checkpoint_complete auth "$target_table" 0 0 "$hash"; then
+        log "Skipping completed transform: $target_table"
+        return
+    fi
+
+    local unmatched invalid_realms invalid_grants missing_accounts collisions
+    unmatched=$(mysql_query -e "
+        SELECT COUNT(*)
+        FROM \`$SOURCE_SCHEMA\`.rbac_account_permissions ap
+        LEFT JOIN \`$SOURCE_SCHEMA\`.rbac_permissions sp
+          ON sp.id=ap.permissionId
+        WHERE sp.id IS NULL
+           OR (
+                SELECT COUNT(*)
+                FROM \`$TARGET_SCHEMA\`.rbac_permissions tp
+                WHERE BINARY tp.name=BINARY sp.name
+              ) <> 1;")
+    if [[ $unmatched != 0 ]]; then
+        record_reject rbac_account_permissions "*" RBAC_PERMISSION_NOT_UNIQUE \
+            "$unmatched row(s) lack exactly one target permission with the same name"
+        die "rbac_account_permissions has $unmatched permission mapping failure(s)"
+    fi
+
+    invalid_realms=$(mysql_query -e "
+        SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.rbac_account_permissions
+        WHERE realmId NOT IN (-1,$REALM_ID);")
+    if [[ $invalid_realms != 0 ]]; then
+        record_reject rbac_account_permissions "*" RBAC_REALM_SCOPE \
+            "$invalid_realms row(s) target a realm other than -1 or $REALM_ID"
+        die "rbac_account_permissions has $invalid_realms unsupported realm scope(s)"
+    fi
+
+    invalid_grants=$(mysql_query -e "
+        SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.rbac_account_permissions
+        WHERE granted NOT IN (0,1);")
+    if [[ $invalid_grants != 0 ]]; then
+        record_reject rbac_account_permissions "*" RBAC_GRANTED_VALUE \
+            "$invalid_grants row(s) have granted outside zero or one"
+        die "rbac_account_permissions has $invalid_grants invalid granted value(s)"
+    fi
+
+    missing_accounts=$(mysql_query -e "
+        SELECT COUNT(*)
+        FROM \`$SOURCE_SCHEMA\`.rbac_account_permissions ap
+        LEFT JOIN \`$TARGET_SCHEMA\`.account a ON a.id=ap.accountId
+        WHERE a.id IS NULL;")
+    if [[ $missing_accounts != 0 ]]; then
+        record_reject rbac_account_permissions "*" RBAC_ACCOUNT_MISSING \
+            "$missing_accounts row(s) reference an account absent from the target"
+        die "rbac_account_permissions has $missing_accounts missing target account(s)"
+    fi
+
+    collisions=$(mysql_query -e "
+        SELECT COUNT(*) FROM (
+            SELECT ap.accountId,tp.id,ap.realmId
+            FROM \`$SOURCE_SCHEMA\`.rbac_account_permissions ap
+            JOIN \`$SOURCE_SCHEMA\`.rbac_permissions sp ON sp.id=ap.permissionId
+            JOIN \`$TARGET_SCHEMA\`.rbac_permissions tp
+              ON BINARY tp.name=BINARY sp.name
+            GROUP BY ap.accountId,tp.id,ap.realmId
+            HAVING COUNT(*) > 1
+        ) duplicate_mappings;")
+    if [[ $collisions != 0 ]]; then
+        record_reject rbac_account_permissions "*" RBAC_MAPPING_COLLISION \
+            "$collisions target key collision(s) result from name mapping"
+        die "rbac_account_permissions has $collisions target mapping collision(s)"
+    fi
+
+    printf '%s;\n' "$statement" \
+        > "$REPORTS_DIR/$RUN_ID/generated-auth-rbac_account_permissions.sql"
+    prepare_target_for_copy auth "$target_table"
+    local expected actual
+    expected=$(mysql_query -e "
+        SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.rbac_account_permissions;")
+    mysql_query -e "
+        SET SESSION sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,NO_AUTO_VALUE_ON_ZERO';
+        START TRANSACTION;
+        $statement;
+        COMMIT;"
+    actual=$(mysql_query -e "
+        SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.rbac_account_permissions;")
+    [[ $actual == "$expected" ]] ||
+        die "RBAC account permission count mismatch: expected=$expected actual=$actual"
+    record_checkpoint auth rbac_account_permissions "$target_table" 0 0 \
+        "$hash" "$expected" "$actual"
+}
+
 load_item_loot_storage() {
     local target_table=item_loot_storage
     local statement="
@@ -678,6 +778,8 @@ perform_load() {
                     load_character_talents
                 elif [[ $expression == CHANNELS ]]; then
                     load_channels_and_bans
+                elif [[ $expression == RBAC_ACCOUNT_PERMISSIONS ]]; then
+                    load_rbac_account_permissions
                 else
                     local transform_spec transformed_targets transformed_expressions
                     transform_spec=$(build_named_transform_spec "$expression")

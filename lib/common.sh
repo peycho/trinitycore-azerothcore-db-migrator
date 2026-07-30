@@ -115,7 +115,7 @@ build_mysql_arguments() {
         MYSQLDUMP_ARGS+=("--host=$MYSQL_HOST" "--port=$MYSQL_PORT" "--protocol=TCP")
     fi
     MYSQL_ARGS+=("--user=$MYSQL_USER" "--default-character-set=utf8mb4")
-    MYSQLDUMP_ARGS+=("--user=$MYSQL_USER")
+    MYSQLDUMP_ARGS+=("--user=$MYSQL_USER" "--no-tablespaces")
 }
 
 mysql_query() {
