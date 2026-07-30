@@ -1,0 +1,3 @@
+database_kind,object_type,source_name,target_name,disposition,reason,approval
+auth,VIEW,vw_log_history,-,SOURCE_ARCHIVE,TRINITYCORE_ADMIN_VIEW_NOT_USED_BY_AZEROTHCORE,APPROVED
+auth,VIEW,vw_rbac,-,SOURCE_ARCHIVE,TARGET_RBAC_IDS_AND_REPORTING_ARE_AZEROTHCORE_OWNED,APPROVED
