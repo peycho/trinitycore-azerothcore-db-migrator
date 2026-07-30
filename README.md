@@ -106,8 +106,10 @@ production run; begin a new rehearsal/run after any script change.
   is excluded; online state is reset.
 - Auth `AccountID/SecurityLevel` maps to AzerothCore `id/gmlevel`.
 - AzerothCore build information and RBAC definitions remain target-owned.
-  Nonempty per-account TrinityCore RBAC overrides are deliberately blocked
-  until permission IDs are manually reviewed.
+  Per-account TrinityCore RBAC overrides map to exactly one target permission
+  by binary-equal name while preserving the grant and realm scope. Missing or
+  ambiguous permission names and scopes outside `-1` or `REALM_ID` block the
+  migration.
 - Character online state is reset. New inn/talent bonus state is initialized
   to the values used by a newly constructed AzerothCore player.
 - TrinityCore talent groups become AzerothCore bit masks; duplicate spells
