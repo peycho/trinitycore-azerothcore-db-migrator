@@ -150,11 +150,39 @@ perform_validation() {
     check_zero character_online "
         SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.characters WHERE online <> 0;" \
         "All migrated characters must start offline"
+    check_zero character_name_mismatch "
+        SELECT COUNT(*)
+        FROM \`$SOURCE_CHARACTERS_SCHEMA\`.characters s
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters t ON t.guid=s.guid
+        WHERE t.guid IS NULL
+           OR NOT (BINARY t.name <=> BINARY COALESCE(s.name,''));" \
+        "Active names must be preserved and soft-deleted NULL names must become empty strings"
+    check_zero malformed_soft_deleted_character "
+        SELECT COUNT(*)
+        FROM \`$TARGET_CHARACTERS_SCHEMA\`.characters
+        WHERE
+            (
+                name=''
+                AND (
+                    deleteDate IS NULL
+                    OR deleteInfos_Name IS NULL
+                    OR deleteInfos_Account IS NULL
+                    OR account<>0
+                )
+            )
+            OR (
+                name<>''
+                AND (
+                    deleteDate IS NOT NULL
+                    OR account=0
+                )
+            );" \
+        "Every unnamed target character must retain internally consistent soft-delete metadata"
     check_zero character_without_account "
         SELECT COUNT(*)
         FROM \`$TARGET_CHARACTERS_SCHEMA\`.characters c
         LEFT JOIN \`$TARGET_AUTH_SCHEMA\`.account a ON a.id=c.account
-        WHERE a.id IS NULL;" \
+        WHERE c.account<>0 AND a.id IS NULL;" \
         "Every character must belong to an auth account"
     check_zero inventory_without_character "
         SELECT COUNT(*)
