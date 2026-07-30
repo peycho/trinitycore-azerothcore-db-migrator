@@ -120,6 +120,7 @@ integer_bounds() {
 validate_common_values() {
     local source_table=$1
     local target_table=$2
+    local null_conversion_columns=${3:-}
     local metadata
     metadata=$(mysql_query -e "
         SELECT
@@ -148,7 +149,8 @@ validate_common_values() {
         [[ -n $column ]] || continue
         [[ $column != *'`'* ]] || die "Unsupported backtick in column name: $source_table.$column"
 
-        if [[ $source_nullable == YES && $target_nullable == NO ]]; then
+        if [[ $source_nullable == YES && $target_nullable == NO &&
+              ,$null_conversion_columns, != *",$column,"* ]]; then
             local nulls
             nulls=$(mysql_query -e "
                 SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.\`$source_table\`
@@ -264,6 +266,7 @@ build_named_transform_spec() {
                     GROUP_CONCAT(
                         CASE t.COLUMN_NAME
                             WHEN 'online' THEN '0'
+                            WHEN 'name' THEN 'COALESCE(s.\`name\`,'''')'
                             WHEN 'order' THEN 'NULL'
                             WHEN 'creation_date' THEN 'UTC_TIMESTAMP()'
                             WHEN 'innTriggerId' THEN '0'
@@ -785,14 +788,38 @@ perform_load() {
                     transform_spec=$(build_named_transform_spec "$expression")
                     IFS=$'\t' read -r transformed_targets transformed_expressions <<< "$transform_spec"
                     if [[ $expression == CHARACTERS ]]; then
-                        validate_common_values characters characters
-                        local null_names
+                        validate_common_values characters characters name
+                        local null_names invalid_names
                         null_names=$(mysql_query -e "
                             SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.characters WHERE name IS NULL;")
-                        if [[ $null_names != 0 ]]; then
+                        invalid_names=$(mysql_query -e "
+                            SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.characters
+                            WHERE
+                                (
+                                    name IS NULL
+                                    AND (
+                                        deleteDate IS NULL
+                                        OR deleteInfos_Name IS NULL
+                                        OR deleteInfos_Account IS NULL
+                                        OR account <> 0
+                                    )
+                                )
+                                OR (name = '' AND deleteDate IS NULL)
+                                OR (
+                                    name IS NOT NULL
+                                    AND name <> ''
+                                    AND (
+                                        deleteDate IS NOT NULL
+                                        OR account = 0
+                                    )
+                                );")
+                        if [[ $invalid_names != 0 ]]; then
                             record_reject characters "*" NULL_CHARACTER_NAME \
-                                "$null_names character row(s) have a NULL name"
-                            die "characters.name contains $null_names NULL value(s)"
+                                "$invalid_names active or malformed row(s) have no character name"
+                            die "characters contains $invalid_names active or malformed unnamed row(s)"
+                        fi
+                        if [[ $null_names != 0 ]]; then
+                            log "Converting $null_names TrinityCore soft-deleted character name(s) from NULL to empty string"
                         fi
                     elif [[ $expression == ACCOUNT ]]; then
                         local long_os

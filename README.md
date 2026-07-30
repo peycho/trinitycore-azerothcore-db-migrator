@@ -111,7 +111,9 @@ production run; begin a new rehearsal/run after any script change.
   ambiguous permission names and scopes outside `-1` or `REALM_ID` block the
   migration.
 - Character online state is reset. New inn/talent bonus state is initialized
-  to the values used by a newly constructed AzerothCore player.
+  to the values used by a newly constructed AzerothCore player. TrinityCore
+  soft-deleted characters retain their deletion metadata while their `NULL`
+  active name is converted to AzerothCore's empty-string representation.
 - TrinityCore talent groups become AzerothCore bit masks; duplicate spells
   across both specs are collapsed with `BIT_OR`.
 - Spell rows receive both spec bits; cooldown category/end fields are
