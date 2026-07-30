@@ -25,6 +25,8 @@ trigger, or event blocks preflight until added to `mappings/objects.csv`.
 - Every table appears in `mappings/auth.csv` or `mappings/characters.csv`.
 - Target AzerothCore update ledgers and seed tables are retained.
 - Chunk checkpoints are bound to the run ID and generated statement hash.
+- Source-existing orphan data is removed only from the fresh targets by the
+  explicit, audited `sanitize-target` phase. Source schemas remain untouched.
 - MySQL strict mode and explicit target column lists are used for all loads.
 - Validation must report `READY`; AzerothCore smoke tests remain a separate
   cutover gate.
@@ -86,6 +88,7 @@ bin/migrate.sh --config /secure/migration.env preflight
 bin/migrate.sh --config /secure/migration.env assemble
 bin/migrate.sh --config /secure/migration.env load-auth
 bin/migrate.sh --config /secure/migration.env load-characters
+bin/migrate.sh --config /secure/migration.env sanitize-target
 bin/migrate.sh --config /secure/migration.env validate
 bin/migrate.sh --config /secure/migration.env status
 ```
@@ -98,6 +101,21 @@ The normal phase order is enforced. Completed phases no-op. Failed table loads
 can be rerun because each insert is transactional and completed chunks are
 checkpointed. Never edit a mapping or transformation in the middle of a
 production run; begin a new rehearsal/run after any script change.
+
+`preflight` writes `source-orphan-audit.tsv` so inherited inconsistencies are
+visible before target creation. `sanitize-target` then applies the approved
+target-only policy: characters whose nonzero account is absent from auth and
+their dependent data are removed; dangling inventory, mail-item, and
+item-loot relations are removed; and items with missing owners are removed
+only after proving they are unreachable from inventory, valid mail, auctions,
+or guild banks. The phase stops if such an item is still reachable.
+
+Guild leaders and arena-team captains are not deleted automatically because
+that could destroy valid players' organization state. If an orphan character
+holds either role, assign a reviewed successor or explicitly disband the
+organization and start a new run. Runtime group state led by an orphan is
+removed. `realmcharacters` is target-derived after cleanup rather than copied
+from TrinityCore.
 
 ## Implemented semantic transformations
 
@@ -141,6 +159,8 @@ The runner captures:
 - table inventory, schema diff, and type-risk TSV files;
 - the explicit generated `INSERT ... SELECT` SQL used by each executable mapping;
 - phase/chunk checkpoints in the control schema;
+- source orphan audit, exact orphan-character manifest, and per-table cleanup
+  before/after/removed counts;
 - validation results and a final Markdown go/no-go report.
 
 Schema dumps contain no table data but may still expose object names and

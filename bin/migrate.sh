@@ -10,6 +10,7 @@ source "$MIGRATION_ROOT/lib/common.sh"
 source "$MIGRATION_ROOT/lib/preflight.sh"
 source "$MIGRATION_ROOT/lib/assemble.sh"
 source "$MIGRATION_ROOT/lib/load.sh"
+source "$MIGRATION_ROOT/lib/sanitize.sh"
 source "$MIGRATION_ROOT/lib/validate.sh"
 
 usage() {
@@ -22,6 +23,7 @@ Commands:
   assemble         Build fresh native AzerothCore target schemas
   load-auth        Migrate approved auth mappings
   load-characters  Migrate approved character mappings
+  sanitize-target  Remove approved source-existing orphan data from targets
   validate         Run structural and domain integrity checks
   status           Show phase and chunk checkpoints
   report           Regenerate the final migration report
@@ -61,6 +63,9 @@ case "$COMMAND" in
         ;;
     load-characters)
         with_phase load-characters perform_load characters
+        ;;
+    sanitize-target)
+        with_phase sanitize-target perform_sanitize_target
         ;;
     validate)
         with_phase validate perform_validation

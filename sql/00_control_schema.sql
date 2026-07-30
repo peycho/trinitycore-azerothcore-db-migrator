@@ -74,3 +74,26 @@ CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`validation_result` (
   `checked_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`run_id`,`check_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`cleanup_orphan_character` (
+  `run_id` char(36) NOT NULL,
+  `guid` int unsigned NOT NULL,
+  `account_id` int unsigned NOT NULL,
+  `character_name` varchar(12) NOT NULL,
+  `captured_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`run_id`,`guid`),
+  KEY `idx_cleanup_orphan_account` (`run_id`,`account_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`cleanup_table_summary` (
+  `run_id` char(36) NOT NULL,
+  `database_kind` enum('auth','characters') NOT NULL,
+  `table_name` varchar(64) NOT NULL,
+  `before_rows` bigint unsigned NOT NULL,
+  `after_rows` bigint unsigned DEFAULT NULL,
+  `removed_rows` bigint unsigned DEFAULT NULL,
+  `detail` varchar(255) NOT NULL DEFAULT 'TARGET_SANITIZATION',
+  `captured_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`run_id`,`database_kind`,`table_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

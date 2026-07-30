@@ -82,28 +82,47 @@ validate_mapping_counts() {
                 if [[ $kind == auth && $target_table == realmcharacters ]]; then
                     continue
                 elif [[ $expression == ITEM_LOOT_STORAGE ]]; then
+                    local removed
+                    removed=$(mysql_query -e "
+                        SELECT COALESCE(MAX(removed_rows),0)
+                        FROM \`$CONTROL_SCHEMA\`.cleanup_table_summary
+                        WHERE run_id='$(sql_escape "$RUN_ID")'
+                          AND database_kind='$kind' AND table_name='$target_table';")
                     check_equal \
                         "count.characters.item_loot_storage" \
                         "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.item_loot_storage;" \
                         "SELECT
                             (SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.item_loot_items) +
-                            (SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.item_loot_money WHERE money > 0);" \
-                        "Combined item and money loot row count"
+                            (SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.item_loot_money WHERE money > 0) -
+                            $removed;" \
+                        "Combined item and money loot rows minus approved target cleanup"
                 elif [[ $expression == CHARACTER_TALENTS ]]; then
+                    local removed
+                    removed=$(mysql_query -e "
+                        SELECT COALESCE(MAX(removed_rows),0)
+                        FROM \`$CONTROL_SCHEMA\`.cleanup_table_summary
+                        WHERE run_id='$(sql_escape "$RUN_ID")'
+                          AND database_kind='$kind' AND table_name='$target_table';")
                     check_equal \
                         "count.characters.character_talent" \
                         "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.character_talent;" \
-                        "SELECT COUNT(*) FROM (
+                        "SELECT COUNT(*)-$removed FROM (
                             SELECT guid,spell FROM \`$SOURCE_SCHEMA\`.character_talent
                             GROUP BY guid,spell
                          ) x;" \
-                        "Talent rows collapse by guid and spell while spec masks are combined"
+                        "Collapsed talent rows minus approved target cleanup"
                 else
+                    local removed
+                    removed=$(mysql_query -e "
+                        SELECT COALESCE(MAX(removed_rows),0)
+                        FROM \`$CONTROL_SCHEMA\`.cleanup_table_summary
+                        WHERE run_id='$(sql_escape "$RUN_ID")'
+                          AND database_kind='$kind' AND table_name='$target_table';")
                     check_equal \
                         "count.$kind.$target_table" \
                         "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.\`$target_table\`;" \
-                        "SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.\`$source_table\`;" \
-                        "$source_table to $target_table row count"
+                        "SELECT COUNT(*)-$removed FROM \`$SOURCE_SCHEMA\`.\`$source_table\`;" \
+                        "$source_table to $target_table rows minus approved target cleanup"
                 fi
                 ;;
             SOURCE_ARCHIVE)
@@ -119,6 +138,7 @@ validate_mapping_counts() {
 perform_validation() {
     require_phase load-auth
     require_phase load-characters
+    require_phase sanitize-target
     schemas_for_kind characters
 
     reseed_auto_increment "$TARGET_AUTH_SCHEMA"
@@ -154,9 +174,11 @@ perform_validation() {
         SELECT COUNT(*)
         FROM \`$SOURCE_CHARACTERS_SCHEMA\`.characters s
         LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters t ON t.guid=s.guid
-        WHERE t.guid IS NULL
-           OR NOT (BINARY t.name <=> BINARY COALESCE(s.name,''));" \
-        "Active names must be preserved and soft-deleted NULL names must become empty strings"
+        LEFT JOIN \`$CONTROL_SCHEMA\`.cleanup_orphan_character o
+          ON o.run_id='$(sql_escape "$RUN_ID")' AND o.guid=s.guid
+        WHERE o.guid IS NULL
+          AND (t.guid IS NULL OR NOT (BINARY t.name <=> BINARY COALESCE(s.name,'')));" \
+        "Retained names must be preserved and soft-deleted NULL names must become empty strings"
     check_zero malformed_soft_deleted_character "
         SELECT COUNT(*)
         FROM \`$TARGET_CHARACTERS_SCHEMA\`.characters
@@ -184,6 +206,12 @@ perform_validation() {
         LEFT JOIN \`$TARGET_AUTH_SCHEMA\`.account a ON a.id=c.account
         WHERE c.account<>0 AND a.id IS NULL;" \
         "Every character must belong to an auth account"
+    check_zero approved_orphan_character_still_present "
+        SELECT COUNT(*)
+        FROM \`$CONTROL_SCHEMA\`.cleanup_orphan_character o
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=o.guid
+        WHERE o.run_id='$(sql_escape "$RUN_ID")';" \
+        "Every character in the approved cleanup manifest must be absent from the target"
     check_zero inventory_without_character "
         SELECT COUNT(*)
         FROM \`$TARGET_CHARACTERS_SCHEMA\`.character_inventory i
@@ -257,15 +285,24 @@ perform_validation() {
         WHERE i.guid IS NULL;" \
         "Every stored-loot row must reference its container item"
     check_zero realm_character_count_mismatch "
-        SELECT COUNT(*)
-        FROM \`$TARGET_AUTH_SCHEMA\`.realmcharacters rc
-        LEFT JOIN (
-            SELECT account,COUNT(*) AS numchars
-            FROM \`$TARGET_CHARACTERS_SCHEMA\`.characters
-            GROUP BY account
-        ) c ON c.account=rc.acctid
-        WHERE rc.realmid=$REALM_ID
-          AND rc.numchars <> LEAST(COALESCE(c.numchars,0),255);" \
+        SELECT
+          (SELECT COUNT(*)
+           FROM \`$TARGET_AUTH_SCHEMA\`.realmcharacters rc
+           LEFT JOIN \`$TARGET_AUTH_SCHEMA\`.account a ON a.id=rc.acctid
+           WHERE rc.realmid=$REALM_ID AND a.id IS NULL) +
+          ABS(
+            (SELECT COUNT(*) FROM \`$TARGET_AUTH_SCHEMA\`.account) -
+            (SELECT COUNT(*) FROM \`$TARGET_AUTH_SCHEMA\`.realmcharacters WHERE realmid=$REALM_ID)
+          ) +
+          (SELECT COUNT(*)
+           FROM \`$TARGET_AUTH_SCHEMA\`.realmcharacters rc
+           LEFT JOIN (
+               SELECT account,COUNT(*) AS numchars
+               FROM \`$TARGET_CHARACTERS_SCHEMA\`.characters
+               GROUP BY account
+           ) c ON c.account=rc.acctid
+           WHERE rc.realmid=$REALM_ID
+             AND rc.numchars <> LEAST(COALESCE(c.numchars,0),255));" \
         "realmcharacters must match migrated characters for the configured realm"
     check_zero srp6_binary_mismatch "
         SELECT COUNT(*)
@@ -308,6 +345,7 @@ perform_validation() {
             FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_talent
             GROUP BY guid,spell
         ) s
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=s.guid
         LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_talent t
           ON t.guid=s.guid AND t.spell=s.spell
         WHERE t.guid IS NULL OR t.specMask<>s.expected;" \
@@ -315,6 +353,7 @@ perform_validation() {
     check_zero character_cooldown_mismatch "
         SELECT COUNT(*)
         FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_spell_cooldown s
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=s.guid
         LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_spell_cooldown t
           ON t.guid=s.guid AND t.spell=s.spell
         WHERE t.guid IS NULL OR t.category<>s.categoryId
@@ -323,6 +362,7 @@ perform_validation() {
     check_zero pet_cooldown_mismatch "
         SELECT COUNT(*)
         FROM \`$SOURCE_CHARACTERS_SCHEMA\`.pet_spell_cooldown s
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_pet p ON p.id=s.guid
         LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.pet_spell_cooldown t
           ON t.guid=s.guid AND t.spell=s.spell
         WHERE t.guid IS NULL OR t.category<>s.categoryId
@@ -331,6 +371,7 @@ perform_validation() {
     check_zero item_loot_item_mismatch "
         SELECT COUNT(*)
         FROM \`$SOURCE_CHARACTERS_SCHEMA\`.item_loot_items s
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_instance i ON i.guid=s.container_id
         LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_storage t
           ON t.containerGUID=s.container_id AND t.itemid=s.item_id
          AND t.count=s.item_count AND t.item_index=s.item_index
@@ -339,6 +380,7 @@ perform_validation() {
     check_zero item_loot_money_mismatch "
         SELECT COUNT(*)
         FROM \`$SOURCE_CHARACTERS_SCHEMA\`.item_loot_money s
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_instance i ON i.guid=s.container_id
         LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_storage t
           ON t.containerGUID=s.container_id AND t.itemid=0 AND t.count=s.money
         WHERE s.money>0 AND t.containerGUID IS NULL;" \
@@ -346,6 +388,7 @@ perform_validation() {
     check_zero entry_point_mismatch "
         SELECT COUNT(*)
         FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_battleground_data s
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=s.guid
         LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_entry_point t ON t.guid=s.guid
         WHERE t.guid IS NULL OR t.joinX<>s.joinX OR t.joinY<>s.joinY
            OR t.joinZ<>s.joinZ OR t.joinO<>s.joinO OR t.joinMapId<>s.joinMapId
@@ -355,6 +398,7 @@ perform_validation() {
     check_zero instance_extension_mismatch "
         SELECT COUNT(*)
         FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_instance s
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=s.guid
         LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_instance t
           ON t.guid=s.guid AND t.instance=s.instance
         WHERE t.guid IS NULL OR t.extended<>IF(s.extendState=2,1,0);" \
@@ -406,7 +450,11 @@ show_status() {
         FROM \`$CONTROL_SCHEMA\`.chunk_checkpoint
         WHERE run_id='$(sql_escape "$RUN_ID")' AND status='COMPLETE'
         GROUP BY database_kind,target_table
-        ORDER BY database_kind,target_table;"
+        ORDER BY database_kind,target_table;
+        SELECT database_kind,table_name,before_rows,after_rows,removed_rows
+        FROM \`$CONTROL_SCHEMA\`.cleanup_table_summary
+        WHERE run_id='$(sql_escape "$RUN_ID")' AND removed_rows>0
+        ORDER BY database_kind,table_name;"
 }
 
 write_final_report() {
@@ -445,6 +493,19 @@ write_final_report() {
             FROM \`$CONTROL_SCHEMA\`.validation_result
             WHERE run_id='$(sql_escape "$RUN_ID")'
             ORDER BY severity,check_name;"
+        printf '\n## Approved target cleanup\n\n'
+        printf '| Database | Table | Before | After | Removed |\n'
+        printf '|---|---|---:|---:|---:|\n'
+        mysql_query -e "
+            SELECT CONCAT(
+                '| ',database_kind,
+                ' | ',table_name,
+                ' | ',before_rows,
+                ' | ',after_rows,
+                ' | ',removed_rows,' |')
+            FROM \`$CONTROL_SCHEMA\`.cleanup_table_summary
+            WHERE run_id='$(sql_escape "$RUN_ID")' AND removed_rows>0
+            ORDER BY database_kind,table_name;"
         printf '\n## Decision\n\n'
         if [[ $run_status == READY && $failures == 0 ]]; then
             printf 'Database validation passed. Application-level AzerothCore smoke tests are still required before opening the realm.\n'
