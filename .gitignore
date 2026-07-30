@@ -1,0 +1,5 @@
+/reports/*
+!/reports/.gitkeep
+/var/*
+!/var/.gitkeep
+
