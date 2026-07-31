@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out migration toolkit
+        uses: actions/checkout@v4
+        with:
+          path: wow-db-migration
+
+      - name: Check out pinned TrinityCore
+        uses: actions/checkout@v4
+        with:
+          repository: TrinityCore/TrinityCore
+          ref: a1fca43764e9aa4048a9228bc267e751eb186fe9
+          path: TrinityCore
+
+      - name: Check out pinned AzerothCore
+        uses: actions/checkout@v4
+        with:
+          repository: azerothcore/azerothcore-wotlk
+          ref: 5bdaa898db6180f1121f8364f289447091f1975d
+          path: azerothcore-wotlk
+
+      - name: Install static-analysis tools
+        run: sudo apt-get update && sudo apt-get install -y ripgrep shellcheck
+
+      - name: Run static checks
+        working-directory: wow-db-migration
+        run: tests/static-checks.sh
+

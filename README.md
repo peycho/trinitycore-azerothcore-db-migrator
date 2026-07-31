@@ -1,9 +1,23 @@
 # TrinityCore to AzerothCore database migration
 
+[![CI](https://github.com/peycho/wow-db-migration/actions/workflows/ci.yml/badge.svg)](https://github.com/peycho/wow-db-migration/actions/workflows/ci.yml)
+[![License: GPL v3 or later](https://img.shields.io/badge/License-GPL_v3_or_later-blue.svg)](COPYING)
+
 This repository is a standalone, fail-closed migration toolkit for one
 TrinityCore 3.3.5 auth/characters pair to fresh AzerothCore schemas on the same
 MySQL 8 server. It does not modify either C++ project and never writes to the
 world database.
+
+> [!CAUTION]
+> Database migration is destructive to its designated target schemas and can
+> cause permanent data loss when misconfigured. Use verified backups, isolated
+> rehearsals, least-privilege credentials, and the cutover/rollback runbooks.
+> The software is provided without warranty.
+
+This release supports the pinned revisions documented below. It is not a
+generic converter for arbitrary TrinityCore or AzerothCore versions. New core
+revisions require a complete schema review, mapping updates, fixtures, and
+production-sized rehearsals.
 
 The checked-in mapping registries cover every table in the pinned source and
 target schemas. Exact and safely compatible columns are copied by name after
@@ -218,3 +232,22 @@ five reachability root masks.
 Follow the [rehearsal](runbooks/rehearsal.md),
 [production cutover](runbooks/cutover.md), and
 [rollback](runbooks/rollback.md) runbooks.
+
+## Contributing and support
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes. Reproducible
+bugs belong in GitHub Issues, security-sensitive reports follow
+[SECURITY.md](SECURITY.md), and operational support boundaries are documented
+in [SUPPORT.md](SUPPORT.md).
+
+Never publish real database dumps, credentials, generated migration reports,
+SRP6 material, email/IP data, or player/account information.
+
+## License
+
+Copyright © 2026 Peycho Dimitrov and contributors.
+
+wow-db-migration is free software licensed under the
+[GNU General Public License, version 3 or any later version](COPYING).
+See [THIRD_PARTY.md](THIRD_PARTY.md) for upstream-project and trademark
+information.
