@@ -1,6 +1,6 @@
 # TrinityCore to AzerothCore database migration
 
-[![CI](https://github.com/peycho/wow-db-migration/actions/workflows/ci.yml/badge.svg)](https://github.com/peycho/wow-db-migration/actions/workflows/ci.yml)
+[![CI](https://github.com/peycho/trinitycore-to-azerothcore-db/actions/workflows/ci.yml/badge.svg)](https://github.com/peycho/trinitycore-to-azerothcore-db/actions/workflows/ci.yml)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL_v3_or_later-blue.svg)](COPYING)
 
 This repository is a standalone, fail-closed migration toolkit for one
@@ -247,7 +247,7 @@ SRP6 material, email/IP data, or player/account information.
 
 Copyright © 2026 Peycho Dimitrov and contributors.
 
-wow-db-migration is free software licensed under the
+trinitycore-to-azerothcore-db is free software licensed under the
 [GNU General Public License, version 3 or any later version](COPYING).
 See [THIRD_PARTY.md](THIRD_PARTY.md) for upstream-project and trademark
 information.
