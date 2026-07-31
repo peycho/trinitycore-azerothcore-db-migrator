@@ -246,14 +246,19 @@ perform_preflight() {
 
     mysql_query -e "
         INSERT INTO \`$CONTROL_SCHEMA\`.migration_run (
-            run_id, migration_direction, config_hash, source_auth_fingerprint,
+            run_id, migration_direction, config_hash, compatibility_profile,
+            source_auth_fingerprint,
             source_characters_fingerprint, trinitycore_revision,
-            azerothcore_revision, status
+            azerothcore_revision, trinitycore_sql_digest,
+            trinitycore_semantic_digest, azerothcore_sql_digest,
+            azerothcore_semantic_digest, status
         ) VALUES (
             '$(sql_escape "$RUN_ID")', '$MIGRATION_DIRECTION', '$CONFIG_HASH',
+            '$(sql_escape "$COMPATIBILITY_PROFILE")',
             '$auth_fingerprint', '$characters_fingerprint',
-            '$(sql_escape "$EXPECTED_TRINITYCORE_COMMIT")',
-            '$(sql_escape "$EXPECTED_AZEROTHCORE_COMMIT")', 'RUNNING'
+            '$TRINITYCORE_REVISION', '$AZEROTHCORE_REVISION',
+            '$TRINITYCORE_SQL_DIGEST', '$TRINITYCORE_SEMANTIC_DIGEST',
+            '$AZEROTHCORE_SQL_DIGEST', '$AZEROTHCORE_SEMANTIC_DIGEST', 'RUNNING'
         ) AS new
         ON DUPLICATE KEY UPDATE
             source_auth_fingerprint =

@@ -2,7 +2,7 @@
 
 1. Capture fresh no-data dumps with routines, triggers, events, checks,
    generated columns, collations, and indexes. Record server variables and
-   exact core revisions.
+   actual core revisions and compatibility profile.
 2. Start a new rehearsal run and inspect `*-table-inventory.tsv`,
    `*-schema-diff.tsv`, and `*-type-risk.tsv`.
 3. Add every new source and target table to the appropriate CSV under the
@@ -24,4 +24,5 @@
    or item dependency to `lib/sanitize.sh`; cleanup-adjusted mapping counts are
    taken from the control schema audit.
 7. Update static inventory tests and run a populated rehearsal twice.
-8. Pin the new revisions and require operator review before production.
+8. Generate and review a new compatibility profile. Never mark a generated
+   candidate approved before semantic review and both rehearsals pass.

@@ -1,9 +1,9 @@
 # Rehearsal runbook
 
-1. Choose and record `MIGRATION_DIRECTION`, then prepare clean pinned
-   TrinityCore and AzerothCore checkouts as described in
-   [Repository setup](repository-setup.md). Put their paths in the rehearsal
-   configuration and run `tests/static-checks.sh`.
+1. Choose and record `MIGRATION_DIRECTION` and `COMPATIBILITY_PROFILE`, then
+   prepare both checkouts as described in [Repository setup](repository-setup.md).
+   Put their paths in the rehearsal configuration, run `compatibility`, retain
+   its report, and run `tests/static-checks.sh`.
 2. Restore recent production auth and characters backups into isolated source
    schemas. Mask personal data only if the masking process preserves lengths,
    nullability, identifiers, binary SRP6 fields, and relationships.
@@ -11,9 +11,9 @@
    metadata visibility, and target/control DDL/DML permissions.
 4. Copy and review the secure configuration. Set `REQUIRE_QUIESCENT=0` only
    because the restored rehearsal schemas have no writers.
-5. Run `preflight`; inspect source DDL, row-count snapshots, and
-   `source-orphan-audit.tsv`; run `archive-unsupported`, verify its manifest,
-   then run `assemble`.
+5. Run `preflight`; inspect the run-specific compatibility report, source DDL,
+   row-count snapshots, and `source-orphan-audit.tsv`. Run
+   `archive-unsupported`, verify its manifest, then run `assemble`.
 6. Review both schema-diff and type-risk reports against the checked-in mapping
    registries. Any live-only table or column requires a mapping change and a
    new run.

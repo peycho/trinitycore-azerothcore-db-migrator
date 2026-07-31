@@ -2,10 +2,11 @@
 
 ## Before the window
 
-- Confirm the pinned core checkouts from
-  [Repository setup](repository-setup.md) are present on the migration host,
-  clean, readable by the operator, and referenced by the production config.
-- Complete at least one production-sized rehearsal against the same revisions.
+- Confirm both core checkouts are present, readable, referenced by the
+  production config, and pass the selected profile as described in
+  [Repository setup](repository-setup.md).
+- Complete at least one production-sized rehearsal against the same profile
+  digests.
 - Complete two production-sized rehearsals within the two-hour total and
   30-minute sanitization targets. Confirm identical critical checksums and no
   deferred index outside `RESTORED`.
@@ -22,7 +23,8 @@
 1. Stop TrinityCore authserver and worldserver.
 2. Confirm no sessions remain connected to auth or characters.
 3. Take the final consistent backups and record their locations/checksums.
-4. Run `preflight`; archive the run ID and source fingerprints, and review the
+4. Run `compatibility`, then `preflight`; archive the compatibility report, run
+   ID, and source fingerprints, and review the
    source orphan audit against the approved rehearsal.
 5. Run `archive-unsupported`, verify its SHA-256 manifest, then run `assemble`
    and inspect update hashes and schema/type reports.

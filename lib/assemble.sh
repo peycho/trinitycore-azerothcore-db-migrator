@@ -39,6 +39,24 @@ apply_update_directory() {
     done < <(find "$directory" -maxdepth 1 -type f -name '*.sql' -print | LC_ALL=C sort)
 }
 
+verify_schema_table_inventory() {
+    local schema=$1 core=$2 kind=$3
+    local expected actual difference
+    expected=$(profile_table_inventory "$core" "$kind")
+    actual=$(mktemp)
+    mysql_query -e "
+        SELECT TABLE_NAME FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA='$(sql_escape "$schema")'
+          AND TABLE_TYPE='BASE TABLE'
+        ORDER BY TABLE_NAME;" > "$actual"
+    if ! cmp -s "$expected" "$actual"; then
+        difference=$(diff -u "$expected" "$actual" || true)
+        rm -f "$actual"
+        die "Assembled $schema table inventory differs from profile $COMPATIBILITY_PROFILE:\n$difference"
+    fi
+    rm -f "$actual"
+}
+
 write_schema_diff() {
     local source_schema=$1
     local target_schema=$2
@@ -146,33 +164,25 @@ perform_assemble() {
         CREATE DATABASE IF NOT EXISTS \`$TARGET_CHARACTERS_SCHEMA\`
           CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
-    local expected_auth_tables expected_character_tables target_name
+    local target_name target_core
     if [[ $MIGRATION_DIRECTION == tc-to-ac ]]; then
         import_base_directory "$TARGET_AUTH_SCHEMA" "$AZEROTHCORE_DIR/data/sql/base/db_auth"
         import_base_directory "$TARGET_CHARACTERS_SCHEMA" "$AZEROTHCORE_DIR/data/sql/base/db_characters"
         apply_update_directory "$TARGET_AUTH_SCHEMA" "$AZEROTHCORE_DIR/data/sql/updates/db_auth"
         apply_update_directory "$TARGET_CHARACTERS_SCHEMA" "$AZEROTHCORE_DIR/data/sql/updates/db_characters"
-        expected_auth_tables=22
-        expected_character_tables=108
         target_name=AzerothCore
+        target_core=azerothcore
     else
         mysql_import "$TARGET_AUTH_SCHEMA" "$TRINITYCORE_DIR/sql/base/auth_database.sql"
         mysql_import "$TARGET_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/base/characters_database.sql"
         apply_update_directory "$TARGET_AUTH_SCHEMA" "$TRINITYCORE_DIR/sql/updates/auth/3.3.5"
         apply_update_directory "$TARGET_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates/characters/3.3.5"
-        expected_auth_tables=21
-        expected_character_tables=91
         target_name=TrinityCore
+        target_core=trinitycore
     fi
 
-    local auth_tables
-    local character_tables
-    auth_tables=$(schema_table_count "$TARGET_AUTH_SCHEMA")
-    character_tables=$(schema_table_count "$TARGET_CHARACTERS_SCHEMA")
-    [[ $auth_tables == "$expected_auth_tables" ]] ||
-        die "Expected $expected_auth_tables target auth tables, found $auth_tables"
-    [[ $character_tables == "$expected_character_tables" ]] ||
-        die "Expected $expected_character_tables target characters tables, found $character_tables"
+    verify_schema_table_inventory "$TARGET_AUTH_SCHEMA" "$target_core" auth
+    verify_schema_table_inventory "$TARGET_CHARACTERS_SCHEMA" "$target_core" characters
 
     local auth_fingerprint
     local characters_fingerprint

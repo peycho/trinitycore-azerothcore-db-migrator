@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MIGRATION_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 source "$MIGRATION_ROOT/lib/common.sh"
+source "$MIGRATION_ROOT/lib/compatibility.sh"
 source "$MIGRATION_ROOT/lib/preflight.sh"
 source "$MIGRATION_ROOT/lib/assemble.sh"
 source "$MIGRATION_ROOT/lib/archive.sh"
@@ -20,7 +21,8 @@ Usage:
   migrate.sh --config FILE COMMAND
 
 Commands:
-  preflight        Verify revisions/server/source state and capture schemas
+  compatibility    Verify protected repository content without using MySQL
+  preflight        Verify compatibility/server/source state and capture schemas
   assemble         Build fresh native target-core schemas
   archive-unsupported
                    Archive approved source-only data and enforce its gate
@@ -49,8 +51,18 @@ COMMAND=${1:-}
     exit 2
 }
 
+trap cleanup_compatibility_state EXIT
 load_configuration "$CONFIG_PATH"
+
+if [[ $COMMAND == compatibility ]]; then
+    compatibility_report="$REPORTS_DIR/compatibility/$(date -u +'%Y%m%dT%H%M%SZ')-$$.tsv"
+    verify_repository_compatibility "$compatibility_report"
+    log "Wrote $compatibility_report"
+    exit 0
+fi
+
 create_run_id
+verify_repository_compatibility "$REPORTS_DIR/$RUN_ID/compatibility-report.tsv"
 initialize_control_schema
 verify_run_configuration
 

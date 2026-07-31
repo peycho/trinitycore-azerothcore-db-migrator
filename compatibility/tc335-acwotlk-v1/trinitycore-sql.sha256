@@ -1,0 +1,6 @@
+e78f79f3c05b41ea06866ec742c603426086520bcf081f1252b207fbe6e99219  sql/base/auth_database.sql
+2e115c3631b2f0b763d12c87efdc27cc352bb05fe3fa9fb9c79964ea992cd17a  sql/base/characters_database.sql
+b0cabc213800f5e9097b2d545bf27ba0507926d847f2fb334d7964c7cebb8d5c  sql/updates/auth/3.3.5/2025_10_21_00_auth.sql
+2ee08c3a6b59a3474e96e9ecd1b57f0322e2c4aaead51772b20e2e8e0edde5f2  sql/updates/auth/3.3.5/2026_01_12_00_auth.sql
+b2bad840c1ef0d00821bbe72f1b2cd2019292f63c9a8a092bb35ed4b92d6528a  sql/updates/auth/3.3.5/2026_05_15_00_auth.sql
+e8c15fdc4c759ffd1ceb1fe9f28189a5ce2b9988bbe8078198ca3edb256696c5  sql/updates/characters/3.3.5/2025_10_21_00_characters.sql
