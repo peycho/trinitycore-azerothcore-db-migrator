@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016
 
 set -Eeuo pipefail
 
@@ -51,6 +52,12 @@ rg '^CREATE TABLE' "$TRINITYCORE_DIR/sql/base/characters_database.sql" |
 find "$AZEROTHCORE_DIR/data/sql/base/db_characters" -maxdepth 1 -name '*.sql' -printf '%f\n' |
     sed 's/\.sql$//' | sort > "$temporary_dir/ac-characters"
 
+profile="$ROOT/compatibility/tc335-acwotlk-v1"
+cmp "$temporary_dir/tc-auth" "$profile/trinitycore-auth.tables"
+cmp "$temporary_dir/tc-characters" "$profile/trinitycore-characters.tables"
+cmp "$temporary_dir/ac-auth" "$profile/azerothcore-auth.tables"
+cmp "$temporary_dir/ac-characters" "$profile/azerothcore-characters.tables"
+
 mapping_inventory() {
     local mapping=$1 column=$2 destination=$3
     awk -F, -v column="$column" '
@@ -78,7 +85,7 @@ for direction in tc-to-ac ac-to-tc; do
     done
 done
 
-for variable in MIGRATION_DIRECTION ARCHIVE_DIR ALLOW_SOURCE_ARCHIVE \
+for variable in MIGRATION_DIRECTION COMPATIBILITY_PROFILE ARCHIVE_DIR ALLOW_SOURCE_ARCHIVE \
     ALLOW_GAMEPLAY_ARCHIVE LOAD_CHUNK_SIZE CLEANUP_CHUNK_SIZE \
     LARGE_TABLE_ROWS DEFER_SECONDARY_INDEXES; do
     rg -q "^${variable}=" "$ROOT/config/migration.env.example" ||
@@ -87,6 +94,13 @@ for variable in MIGRATION_DIRECTION ARCHIVE_DIR ALLOW_SOURCE_ARCHIVE \
             exit 1
         }
 done
+! rg -q '^EXPECTED_(TRINITYCORE|AZEROTHCORE)_COMMIT=' "$ROOT/config" "$ROOT/tests" ||
+    {
+        printf 'Exact upstream commits must not be operator configuration.\n' >&2
+        exit 1
+    }
+"$ROOT/bin/migrate.sh" --config "$ROOT/tests/rehearsal.env" compatibility
+"$ROOT/tests/compatibility-profile-tests.sh"
 ! rg -q '(^|[^A-Z_])CHUNK_SIZE=' "$ROOT/config" "$ROOT/tests" \
     --glob '*.env' --glob '*.env.example' ||
     {

@@ -4,8 +4,8 @@
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL_v3_or_later-blue.svg)](COPYING)
 
 This repository is a standalone, fail-closed migration toolkit for moving one
-realm's auth and characters data between pinned TrinityCore 3.3.5 and
-AzerothCore revisions on the same MySQL 8 server. Both `tc-to-ac` and
+realm's auth and characters data between profile-approved TrinityCore 3.3.5
+and AzerothCore revisions on the same MySQL 8 server. Both `tc-to-ac` and
 `ac-to-tc` create fresh native target schemas. The toolkit does not modify
 either C++ project and never writes to the world database.
 
@@ -15,12 +15,13 @@ either C++ project and never writes to the world database.
 > rehearsals, least-privilege credentials, and the cutover/rollback runbooks.
 > The software is provided without warranty.
 
-This release supports the pinned revisions documented below. It is not a
-generic converter for arbitrary TrinityCore or AzerothCore versions. New core
-revisions require a complete schema review, mapping updates, fixtures, and
-production-sized rehearsals.
+This release supports repository content approved by its checked-in
+compatibility profiles. It is not a generic converter for arbitrary core
+versions. Unrelated upstream commits are accepted; protected auth/characters
+SQL or reader changes require review, profile and mapping updates where needed,
+fixtures, and production-sized rehearsals.
 
-The checked-in mapping registries cover every table in the pinned source and
+The checked-in mapping registries cover every table in the reviewed source and
 target schemas. Exact and safely compatible columns are copied by name after
 runtime metadata and value checks. Semantic changes use explicit transforms.
 Unknown live-schema differences, nonempty blocked mappings, truncation,
@@ -58,18 +59,15 @@ trigger, or event blocks preflight until added to the selected direction's
 - MySQL 8.x server and MySQL 8 client tools (`mysql`, `mysqldump`)
 - Bash 4+, `git`, `sha1sum`, `sha256sum`, `sed`, and `awk`
 - Source and fresh target schemas on the same MySQL server
-- Local Git checkouts at the pinned revisions:
-  - [TrinityCore](https://github.com/TrinityCore/TrinityCore) 3.3.5 at
-    `a1fca43764`
-  - [AzerothCore](https://github.com/azerothcore/azerothcore-wotlk) at
-    `5bdaa898d`
+- Local Git checkouts of [TrinityCore](https://github.com/TrinityCore/TrinityCore)
+  3.3.5 and [AzerothCore](https://github.com/azerothcore/azerothcore-wotlk)
 
 Both core repositories are required on the host running the migration. They
-supply the native source/target schema definitions, released target updates,
-and pinned Git revisions used to verify mapping provenance and assemble the
-selected target core. The toolkit does not download these files, and copying
-only SQL files is insufficient because `preflight` also verifies both Git
-revisions and checks their SQL trees for local changes.
+supply the native source/target schema definitions and released target updates.
+The toolkit records each actual full Git revision but grants compatibility only
+when protected SQL and semantic-reader manifests match the selected reviewed
+profile. Copying only SQL files is insufficient because reader semantics are
+also verified.
 
 Neither core needs to be compiled, and the toolkit does not modify either
 checkout. Keep both available for the complete run, including resumed commands.
@@ -94,6 +92,7 @@ Copy `config/migration.env.example` to a secure location and set:
 
 - source/target/control schema names;
 - `MIGRATION_DIRECTION=tc-to-ac` or `ac-to-tc`;
+- `COMPATIBILITY_PROFILE=tc335-acwotlk-v1`;
 - MySQL endpoint and option-file path;
 - `REALM_ID` matching the characters database;
 - load/cleanup chunk sizes, the large-table threshold, index deferral, and
@@ -121,6 +120,7 @@ operator and must not contain untrusted shell text.
 Run each command separately and inspect its reports:
 
 ```bash
+bin/migrate.sh --config /secure/migration.env compatibility
 bin/migrate.sh --config /secure/migration.env preflight
 bin/migrate.sh --config /secure/migration.env archive-unsupported
 bin/migrate.sh --config /secure/migration.env assemble
@@ -130,6 +130,10 @@ bin/migrate.sh --config /secure/migration.env sanitize-target
 bin/migrate.sh --config /secure/migration.env validate
 bin/migrate.sh --config /secure/migration.env status
 ```
+
+`compatibility` performs no MySQL operation. It records actual revisions and
+compares protected repository content with the selected profile. A mismatch
+produces a per-file diff under `reports/compatibility/` and fails closed.
 
 `preflight` creates a run ID in `var/`. Set `MIGRATION_RUN_ID` in the
 secure config to resume from another operator host. Runtime reports are written
@@ -142,8 +146,8 @@ checkpoints are atomic. A `RUNNING` checkpoint left by a killed process is
 replayed only for that exact range. Never edit a mapping or transformation in
 the middle of a production run; the toolkit hash will reject the old run.
 
-The bidirectional release changes the control-schema identity and layout.
-Discard targets and control schemas created by an earlier one-way release and
+The compatibility-profile release changes the control-schema identity and
+layout. Discard targets and control schemas created by an earlier release and
 start again at `preflight`; do not resume an older run.
 
 `archive-unsupported` is mandatory after preflight. It no-ops when every
@@ -270,7 +274,9 @@ Follow the [rehearsal](runbooks/rehearsal.md) and the direction-specific
 cutover/rollback runbooks: [TC to AC cutover](runbooks/cutover.md),
 [TC to AC rollback](runbooks/rollback.md),
 [AC to TC cutover](runbooks/cutover-ac-to-tc.md), and
-[AC to TC rollback](runbooks/rollback-ac-to-tc.md).
+[AC to TC rollback](runbooks/rollback-ac-to-tc.md). Maintainers should follow
+the [compatibility profile runbook](runbooks/compatibility-profiles.md) when
+protected upstream content changes.
 
 ## Contributing and support
 

@@ -3,7 +3,8 @@
 ## Before the maintenance window
 
 - Complete two migrations from the same production snapshot with
-  `MIGRATION_DIRECTION=ac-to-tc`.
+  `MIGRATION_DIRECTION=ac-to-tc` and the same compatibility-profile digests.
+- Confirm both core checkouts pass `compatibility` and retain its report.
 - Review every `SOURCE_ARCHIVE` mapping and store the verified archive outside
   the repository. Resolve all blocked or gameplay-bearing unsupported data.
 - Verify backups of AzerothCore auth, characters, and the migration control
@@ -17,8 +18,8 @@
 
 1. Stop AzerothCore authserver and worldserver and verify database quiescence.
 2. Take and verify final backups.
-3. Run `preflight`, inspect schema drift and the orphan audit, then run
-   `archive-unsupported`.
+3. Run `compatibility`, then `preflight`; inspect schema drift and the orphan
+   audit, then run `archive-unsupported`.
 4. Run `assemble`, `load-auth`, `load-characters`, and `sanitize-target`.
 5. Run `validate`; continue only when the report is `READY`, every archive hash
    verifies, and every deferred index is restored.

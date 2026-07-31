@@ -1,9 +1,10 @@
 # SQL execution model
 
 `00_control_schema.sql` is the only static SQL imported directly by the runner.
-Target DDL is intentionally sourced from the selected pinned core rather than
-duplicated here: AzerothCore base/update directories for `tc-to-ac`, or the
-TrinityCore base schemas and current 3.3.5 update directories for `ac-to-tc`.
+Target DDL is intentionally sourced from the selected profile-approved core
+rather than duplicated here: AzerothCore base/update directories for
+`tc-to-ac`, or the TrinityCore base schemas and current 3.3.5 update directories
+for `ac-to-tc`.
 The control schema also stores the orphan-character manifest, compact
 `BINARY(16)` item root/candidate sets, affected-row cleanup summaries,
 operation checkpoints, and exact deferred-index definitions.
@@ -29,7 +30,7 @@ DDL order is:
 5. deferred-index restoration, auto-increment reseeding, and `ANALYZE TABLE`;
 6. explicit relational and domain validation.
 
-The pinned TrinityCore auth schema contains two administration views, both
+The reviewed TrinityCore auth schema contains two administration views, both
 explicitly dispositioned in `mappings/tc-to-ac/objects.csv`; AzerothCore has no
 target counterparts. Live dumps include all non-table object types, and any
 unlisted view, routine, trigger, or event blocks preflight.

@@ -708,7 +708,10 @@ perform_validation() {
 
 show_status() {
     mysql_table -e "
-        SELECT run_id,migration_direction,status,started_at,updated_at
+        SELECT run_id,migration_direction,compatibility_profile,
+               LEFT(trinitycore_revision,12) AS trinitycore_revision,
+               LEFT(azerothcore_revision,12) AS azerothcore_revision,
+               status,started_at,updated_at
         FROM \`$CONTROL_SCHEMA\`.migration_run
         WHERE run_id='$(sql_escape "$RUN_ID")';
         SELECT phase_name,status,started_at,finished_at,detail
@@ -811,7 +814,7 @@ write_final_report() {
     local run_reports="$REPORTS_DIR/$RUN_ID"
     mkdir -p "$run_reports"
     local report="$run_reports/final-report.md"
-    local run_status failures warnings
+    local run_status failures warnings run_identity
     run_status=$(mysql_query -e "
         SELECT status FROM \`$CONTROL_SCHEMA\`.migration_run
         WHERE run_id='$(sql_escape "$RUN_ID")';")
@@ -821,11 +824,29 @@ write_final_report() {
     warnings=$(mysql_query -e "
         SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.validation_result
         WHERE run_id='$(sql_escape "$RUN_ID")' AND severity='WARNING';")
+    run_identity=$(mysql_query -e "
+        SELECT CONCAT_WS('|',compatibility_profile,trinitycore_revision,
+                         azerothcore_revision,trinitycore_sql_digest,
+                         trinitycore_semantic_digest,azerothcore_sql_digest,
+                         azerothcore_semantic_digest)
+        FROM \`$CONTROL_SCHEMA\`.migration_run
+        WHERE run_id='$(sql_escape "$RUN_ID")';")
+    local report_profile report_tc_revision report_ac_revision report_tc_sql
+    local report_tc_semantic report_ac_sql report_ac_semantic
+    IFS='|' read -r report_profile report_tc_revision report_ac_revision report_tc_sql \
+        report_tc_semantic report_ac_sql report_ac_semantic <<< "$run_identity"
 
     {
         printf '# TrinityCore/AzerothCore database migration report\n\n'
         printf -- '- Run ID: `%s`\n' "$RUN_ID"
         printf -- '- Direction: `%s`\n' "$MIGRATION_DIRECTION"
+        printf -- '- Compatibility profile: `%s`\n' "$report_profile"
+        printf -- '- TrinityCore revision: `%s`\n' "$report_tc_revision"
+        printf -- '- AzerothCore revision: `%s`\n' "$report_ac_revision"
+        printf -- '- TrinityCore SQL/semantic digests: `%s` / `%s`\n' \
+            "$report_tc_sql" "$report_tc_semantic"
+        printf -- '- AzerothCore SQL/semantic digests: `%s` / `%s`\n' \
+            "$report_ac_sql" "$report_ac_semantic"
         printf -- '- Generated: `%s`\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
         printf -- '- Status: **%s**\n' "$run_status"
         printf -- '- Failed validation checks: **%s**\n' "$failures"

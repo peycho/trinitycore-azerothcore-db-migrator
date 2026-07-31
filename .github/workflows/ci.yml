@@ -17,18 +17,18 @@ jobs:
         with:
           path: trinitycore-azerothcore-db-migrator
 
-      - name: Check out pinned TrinityCore
+      - name: Check out current TrinityCore 3.3.5
         uses: actions/checkout@v4
         with:
           repository: TrinityCore/TrinityCore
-          ref: a1fca43764e9aa4048a9228bc267e751eb186fe9
+          ref: 3.3.5
           path: TrinityCore
 
-      - name: Check out pinned AzerothCore
+      - name: Check out current AzerothCore master
         uses: actions/checkout@v4
         with:
           repository: azerothcore/azerothcore-wotlk
-          ref: 5bdaa898db6180f1121f8364f289447091f1975d
+          ref: master
           path: azerothcore-wotlk
 
       - name: Install static-analysis tools

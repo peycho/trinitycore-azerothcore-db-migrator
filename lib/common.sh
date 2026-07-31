@@ -45,7 +45,7 @@ load_configuration() {
         MYSQL_HOST MYSQL_PORT MYSQL_USER MIGRATION_DIRECTION SOURCE_AUTH_SCHEMA
         SOURCE_CHARACTERS_SCHEMA TARGET_AUTH_SCHEMA TARGET_CHARACTERS_SCHEMA
         CONTROL_SCHEMA REALM_ID TRINITYCORE_DIR AZEROTHCORE_DIR
-        EXPECTED_TRINITYCORE_COMMIT EXPECTED_AZEROTHCORE_COMMIT
+        COMPATIBILITY_PROFILE
         LOAD_CHUNK_SIZE CLEANUP_CHUNK_SIZE LARGE_TABLE_ROWS
         DEFER_SECONDARY_INDEXES
     )
@@ -92,10 +92,13 @@ load_configuration() {
     [[ -d $TRINITYCORE_DIR/sql ]] || die "TrinityCore SQL tree not found: $TRINITYCORE_DIR"
     [[ -d $AZEROTHCORE_DIR/data/sql ]] || die "AzerothCore SQL tree not found: $AZEROTHCORE_DIR"
 
+    load_compatibility_profile
+    capture_repository_compatibility_state
+
     mkdir -p "$REPORTS_DIR" "$VAR_DIR"
     TOOLKIT_HASH=$(
         find "$MIGRATION_ROOT/bin" "$MIGRATION_ROOT/lib" "$MIGRATION_ROOT/sql" \
-            "$MIGRATION_ROOT/mappings" -type f -print |
+            "$MIGRATION_ROOT/mappings" "$MIGRATION_ROOT/compatibility" -type f -print |
             LC_ALL=C sort |
             xargs sha256sum |
             sha256sum |
@@ -107,7 +110,10 @@ load_configuration() {
             "$MIGRATION_DIRECTION" \
             "$SOURCE_AUTH_SCHEMA" "$SOURCE_CHARACTERS_SCHEMA" "$SOURCE_WORLD_SCHEMA" \
             "$TARGET_AUTH_SCHEMA" "$TARGET_CHARACTERS_SCHEMA" "$CONTROL_SCHEMA" \
-            "$REALM_ID" "$EXPECTED_TRINITYCORE_COMMIT" "$EXPECTED_AZEROTHCORE_COMMIT" \
+            "$REALM_ID" "$COMPATIBILITY_PROFILE" \
+            "$TRINITYCORE_REVISION" "$AZEROTHCORE_REVISION" \
+            "$TRINITYCORE_SQL_DIGEST" "$TRINITYCORE_SEMANTIC_DIGEST" \
+            "$AZEROTHCORE_SQL_DIGEST" "$AZEROTHCORE_SEMANTIC_DIGEST" \
             "$LOAD_CHUNK_SIZE" "$CLEANUP_CHUNK_SIZE" "$LARGE_TABLE_ROWS" \
             "$DEFER_SECONDARY_INDEXES" "$ALLOW_SOURCE_ARCHIVE" \
             "$ALLOW_GAMEPLAY_ARCHIVE" "$TOOLKIT_HASH" |
@@ -180,18 +186,13 @@ render_sql() {
 }
 
 verify_repository_revisions() {
-    local tc_revision
-    local ac_revision
-    tc_revision=$(git -C "$TRINITYCORE_DIR" rev-parse --short=10 HEAD)
-    ac_revision=$(git -C "$AZEROTHCORE_DIR" rev-parse --short=9 HEAD)
-    [[ $tc_revision == "$EXPECTED_TRINITYCORE_COMMIT" ]] ||
-        die "TrinityCore revision is $tc_revision, expected $EXPECTED_TRINITYCORE_COMMIT"
-    [[ $ac_revision == "$EXPECTED_AZEROTHCORE_COMMIT" ]] ||
-        die "AzerothCore revision is $ac_revision, expected $EXPECTED_AZEROTHCORE_COMMIT"
-    [[ -z $(git -C "$TRINITYCORE_DIR" status --porcelain -- sql) ]] ||
-        die "TrinityCore SQL tree has uncommitted or untracked changes"
-    [[ -z $(git -C "$AZEROTHCORE_DIR" status --porcelain -- data/sql) ]] ||
-        die "AzerothCore SQL tree has uncommitted or untracked changes"
+    local tc_revision ac_revision
+    tc_revision=$(git -C "$TRINITYCORE_DIR" rev-parse HEAD)
+    ac_revision=$(git -C "$AZEROTHCORE_DIR" rev-parse HEAD)
+    [[ $tc_revision == "$TRINITYCORE_REVISION" ]] ||
+        die "TrinityCore checkout moved after configuration was loaded"
+    [[ $ac_revision == "$AZEROTHCORE_REVISION" ]] ||
+        die "AzerothCore checkout moved after configuration was loaded"
 }
 
 schema_exists() {
@@ -245,16 +246,18 @@ initialize_control_schema() {
     mysql "${MYSQL_ARGS[@]}" < "$rendered"
     rm -f "$rendered"
 
-    # Existing control schemas from the one-way release are intentionally not
-    # resumable because their run identity did not include a direction.
-    local has_direction
-    has_direction=$(mysql_query -e "
+    # Earlier schemas are intentionally not resumable because their run
+    # identity did not include both direction and compatibility content.
+    local identity_columns
+    identity_columns=$(mysql_query -e "
         SELECT COUNT(*) FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA='$(sql_escape "$CONTROL_SCHEMA")'
           AND TABLE_NAME='migration_run'
-          AND COLUMN_NAME='migration_direction';")
-    [[ $has_direction == 1 ]] ||
-        die "Control schema predates bidirectional runs; use a fresh control schema"
+          AND COLUMN_NAME IN ('migration_direction','compatibility_profile',
+                              'trinitycore_sql_digest','trinitycore_semantic_digest',
+                              'azerothcore_sql_digest','azerothcore_semantic_digest');")
+    [[ $identity_columns == 6 ]] ||
+        die "Control schema predates compatibility profiles; use a fresh control schema"
 }
 
 verify_run_configuration() {

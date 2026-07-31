@@ -6,15 +6,15 @@ reproducible fixtures, and performance improvements.
 ## Before opening a change
 
 1. Search existing issues and pull requests.
-2. Explain which pinned or newer TrinityCore and AzerothCore revisions the
-   change targets.
+2. Explain which compatibility profile and actual TrinityCore/AzerothCore
+   revisions the change targets.
 3. Never include production dumps, credentials, account data, character data,
    generated reports, or other private server information.
 4. Keep source and world schemas read-only in every test.
 
 ## Development setup
 
-Clone this repository together with the pinned core repositories described in
+Clone this repository together with the core repositories described in
 [the repository setup runbook](runbooks/repository-setup.md), then run:
 
 ```bash
@@ -44,4 +44,3 @@ Keep changes focused and include:
 
 By contributing, you agree that your contribution is licensed under the GNU
 General Public License, version 3 or any later version.
-
