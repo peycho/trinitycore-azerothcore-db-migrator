@@ -111,6 +111,33 @@ validate_mapping_counts() {
                             GROUP BY guid,spell
                          ) x;" \
                         "Collapsed talent rows minus approved target cleanup"
+                elif [[ $expression == ITEM_LOOT_STORAGE_REVERSE ]]; then
+                    check_equal \
+                        "count.characters.item_loot_reverse" \
+                        "SELECT
+                           (SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.item_loot_items) +
+                           (SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.item_loot_money);" \
+                        "SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.item_loot_storage;" \
+                        "Consolidated loot must split without row loss"
+                elif [[ $expression == CHARACTER_TALENTS_REVERSE ]]; then
+                    check_equal \
+                        "count.characters.character_talent_reverse" \
+                        "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.character_talent;" \
+                        "SELECT COALESCE(SUM((specMask & 1)<>0)+SUM((specMask & 2)<>0),0)
+                         FROM \`$SOURCE_SCHEMA\`.character_talent;" \
+                        "Every set spec bit must become one TrinityCore talent row"
+                elif [[ $expression == CHANNELS_REVERSE ]]; then
+                    check_equal "count.characters.channels_reverse" \
+                        "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.channels;" \
+                        "SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.channels;" \
+                        "Channel bans are serialized without changing channel count"
+                elif [[ $expression == RESPAWN_REVERSE ]]; then
+                    check_equal "count.characters.respawn_reverse" \
+                        "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.respawn;" \
+                        "SELECT
+                           (SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.creature_respawn) +
+                           (SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.gameobject_respawn);" \
+                        "Split respawns must merge without row loss"
                 else
                     local removed
                     removed=$(mysql_query -e "
@@ -135,11 +162,249 @@ validate_mapping_counts() {
     done < "$(mapping_file_for "$kind")"
 }
 
+perform_validation_reverse() {
+    reseed_auto_increment "$TARGET_AUTH_SCHEMA"
+    reseed_auto_increment "$TARGET_CHARACTERS_SCHEMA"
+
+    local auth_fingerprint characters_fingerprint expected_auth expected_characters
+    auth_fingerprint=$(schema_fingerprint "$TARGET_AUTH_SCHEMA")
+    characters_fingerprint=$(schema_fingerprint "$TARGET_CHARACTERS_SCHEMA")
+    read -r expected_auth expected_characters < <(
+        mysql_query -e "
+            SELECT target_auth_fingerprint,target_characters_fingerprint
+            FROM \`$CONTROL_SCHEMA\`.migration_run
+            WHERE run_id='$(sql_escape "$RUN_ID")';"
+    )
+    record_validation schema.auth ERROR "$auth_fingerprint" "$expected_auth" \
+        "$([[ $auth_fingerprint == "$expected_auth" ]] && printf 1 || printf 0)" \
+        "Target auth DDL must match the assembled TrinityCore schema"
+    record_validation schema.characters ERROR "$characters_fingerprint" "$expected_characters" \
+        "$([[ $characters_fingerprint == "$expected_characters" ]] && printf 1 || printf 0)" \
+        "Target characters DDL must match the assembled TrinityCore schema"
+
+    check_zero rejects "
+        SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.migration_reject
+        WHERE run_id='$(sql_escape "$RUN_ID")';" "No rejected source rows are allowed"
+    check_zero account_online "
+        SELECT COUNT(*) FROM \`$TARGET_AUTH_SCHEMA\`.account WHERE online<>0;" \
+        "All migrated accounts must start offline"
+    check_zero character_online "
+        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.characters WHERE online<>0;" \
+        "All migrated characters must start offline"
+    check_zero character_name_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.characters s
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters t ON t.guid=s.guid
+        LEFT JOIN \`$CONTROL_SCHEMA\`.cleanup_orphan_character o
+          ON o.run_id='$(sql_escape "$RUN_ID")' AND o.guid=s.guid
+        WHERE o.guid IS NULL AND
+          (t.guid IS NULL OR NOT (BINARY t.name <=> BINARY NULLIF(s.name,'')));" \
+        "Active and soft-deleted character names must preserve target semantics"
+    check_zero character_without_account "
+        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.characters c
+        LEFT JOIN \`$TARGET_AUTH_SCHEMA\`.account a ON a.id=c.account
+        WHERE c.account<>0 AND a.id IS NULL;" "Every character must belong to an account"
+    check_zero inventory_without_character "
+        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.character_inventory i
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=i.guid
+        WHERE c.guid IS NULL;" "Every inventory row must belong to a character"
+    check_zero inventory_without_item "
+        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.character_inventory i
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_instance x ON x.guid=i.item
+        WHERE x.guid IS NULL;" "Every inventory row must reference an item"
+    check_zero item_without_owner "
+        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.item_instance i
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=i.owner_guid
+        WHERE i.owner_guid<>0 AND c.guid IS NULL;" "Every owned item must reference a character"
+    check_zero mail_item_without_mail "
+        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.mail_items mi
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.mail m ON m.id=mi.mail_id
+        WHERE m.id IS NULL;" "Every mail item must reference mail"
+    check_zero mail_item_without_item "
+        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.mail_items mi
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_instance i ON i.guid=mi.item_guid
+        WHERE i.guid IS NULL;" "Every mail item must reference an item"
+    check_zero pet_without_owner "
+        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.character_pet p
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=p.owner
+        WHERE c.guid IS NULL;" "Every pet must reference a character"
+    check_zero guild_member_without_owner "
+        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.guild_member gm
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=gm.guid
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.guild g ON g.guildid=gm.guildid
+        WHERE c.guid IS NULL OR g.guildid IS NULL;" \
+        "Every guild member must reference a character and guild"
+    check_zero group_member_without_character "
+        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.group_member gm
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c
+          ON c.guid=gm.memberGuid WHERE c.guid IS NULL;" \
+        "Every group member must reference a character"
+    check_zero character_instance_without_instance "
+        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.character_instance ci
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.instance i ON i.id=ci.instance
+        WHERE i.id IS NULL;" "Every binding must reference an instance"
+    check_zero item_loot_without_container "
+        SELECT
+          (SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_items l
+           LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_instance i
+             ON i.guid=l.container_id WHERE i.guid IS NULL) +
+          (SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_money l
+           LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_instance i
+             ON i.guid=l.container_id WHERE i.guid IS NULL);" \
+        "Every stored-loot row must reference its container"
+    check_zero srp6_binary_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_AUTH_SCHEMA\`.account s
+        JOIN \`$TARGET_AUTH_SCHEMA\`.account t ON t.id=s.id
+        WHERE BINARY t.salt<>BINARY s.salt
+           OR BINARY t.verifier<>BINARY s.verifier
+           OR NOT (BINARY t.session_key_auth <=> BINARY s.session_key);" \
+        "SRP6 and session bytes must be preserved"
+    check_zero account_access_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_AUTH_SCHEMA\`.account_access s
+        LEFT JOIN \`$TARGET_AUTH_SCHEMA\`.account_access t
+          ON t.AccountID=s.id AND t.RealmID=s.RealmID
+        WHERE t.AccountID IS NULL OR t.SecurityLevel<>s.gmlevel
+           OR NOT (t.Comment <=> s.comment);" \
+        "Account security levels must survive renamed columns"
+    check_zero rbac_account_permission_mismatch "
+        SELECT COUNT(*)
+        FROM \`$SOURCE_AUTH_SCHEMA\`.rbac_account_permissions ap
+        JOIN \`$SOURCE_AUTH_SCHEMA\`.rbac_permissions sp
+          ON sp.id=ap.permissionId
+        JOIN \`$TARGET_AUTH_SCHEMA\`.rbac_permissions tp
+          ON BINARY tp.name=BINARY sp.name
+        LEFT JOIN \`$TARGET_AUTH_SCHEMA\`.rbac_account_permissions mapped
+          ON mapped.accountId=ap.accountId AND mapped.permissionId=tp.id
+         AND mapped.realmId=ap.realmId
+        WHERE mapped.accountId IS NULL OR mapped.granted<>ap.granted;" \
+        "RBAC overrides must preserve names, grants, and realm scopes"
+    check_zero realm_character_count_mismatch "
+        SELECT COUNT(*) FROM \`$TARGET_AUTH_SCHEMA\`.realmcharacters rc
+        LEFT JOIN (
+          SELECT account,COUNT(*) numchars
+          FROM \`$TARGET_CHARACTERS_SCHEMA\`.characters GROUP BY account
+        ) c ON c.account=rc.acctid
+        WHERE rc.realmid=$REALM_ID
+          AND rc.numchars<>LEAST(COALESCE(c.numchars,0),255);" \
+        "realmcharacters must match retained characters"
+    check_zero character_spell_reverse_mismatch "
+        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.character_spell
+        WHERE active<>1 OR disabled<>0;" \
+        "AzerothCore spell rows must become active TrinityCore spells"
+    check_zero character_talent_reverse_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_talent s
+        LEFT JOIN (
+          SELECT guid,spell,BIT_OR(1 << talentGroup) mask
+          FROM \`$TARGET_CHARACTERS_SCHEMA\`.character_talent GROUP BY guid,spell
+        ) t ON t.guid=s.guid AND t.spell=s.spell
+        WHERE t.guid IS NULL OR t.mask<>s.specMask;" \
+        "Talent groups must reconstruct every supported spec mask"
+    check_zero character_cooldown_reverse_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_spell_cooldown s
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_spell_cooldown t
+          ON t.guid=s.guid AND t.spell=s.spell
+        WHERE t.guid IS NULL OR t.item<>s.item OR t.time<>s.time
+           OR t.categoryId<>COALESCE(s.category,0)
+           OR t.categoryEnd<>IF(COALESCE(s.category,0)=0,0,s.time);" \
+        "Character cooldowns must use the reviewed reverse representation"
+    check_zero pet_cooldown_reverse_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.pet_spell_cooldown s
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.pet_spell_cooldown t
+          ON t.guid=s.guid AND t.spell=s.spell
+        WHERE t.guid IS NULL OR t.time<>s.time
+           OR t.categoryId<>COALESCE(s.category,0)
+           OR t.categoryEnd<>IF(COALESCE(s.category,0)=0,0,s.time);" \
+        "Pet cooldowns must use the reviewed reverse representation"
+    check_zero item_loot_reverse_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.item_loot_storage s
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_items i
+          ON s.itemid<>0 AND i.container_id=s.containerGUID
+         AND i.item_id=s.itemid AND i.item_count=s.count
+         AND i.item_index=s.item_index AND i.rnd_prop=s.randomPropertyId
+         AND i.rnd_suffix=s.randomSuffix
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_money m
+          ON s.itemid=0 AND m.container_id=s.containerGUID AND m.money=s.count
+        WHERE (s.itemid=0 AND m.container_id IS NULL)
+           OR (s.itemid<>0 AND i.container_id IS NULL);" \
+        "Every consolidated loot row must survive the split"
+    check_zero channel_ban_reverse_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.channels_bans b
+        JOIN \`$SOURCE_CHARACTERS_SCHEMA\`.channels sc ON sc.channelId=b.channelId
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.channels tc
+          ON BINARY tc.name=BINARY sc.name AND tc.team=sc.team
+        WHERE tc.name IS NULL OR LOCATE(
+          CONCAT(_binary' ',CAST(b.playerGUID AS BINARY),_binary' '),
+          CAST(CONCAT(' ',COALESCE(tc.bannedList,''),' ') AS BINARY))=0;" \
+        "Every AzerothCore channel ban GUID must be serialized"
+    check_zero entry_point_reverse_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_entry_point s
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_battleground_data t
+          ON t.guid=s.guid
+        WHERE t.guid IS NULL OR t.instanceId<>0 OR t.team<>0
+           OR t.joinX<>s.joinX OR t.joinY<>s.joinY OR t.joinZ<>s.joinZ
+           OR t.joinO<>s.joinO OR t.joinMapId<>s.joinMapId
+           OR t.taxiStart<>s.taxiPath0 OR t.taxiEnd<>s.taxiPath1
+           OR t.mountSpell<>s.mountSpell;" \
+        "Entry points must map to the reviewed TrinityCore representation"
+    check_zero instance_extension_reverse_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_instance s
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_instance t
+          ON t.guid=s.guid AND t.instance=s.instance
+        WHERE t.guid IS NULL OR t.extendState<>IF(s.extended=1,2,1);" \
+        "Instance extension booleans must become TrinityCore enum values"
+    check_zero respawn_reverse_mismatch "
+        SELECT COUNT(*) FROM (
+          SELECT 0 type,guid spawnId,respawnTime,mapId,instanceId
+          FROM \`$SOURCE_CHARACTERS_SCHEMA\`.creature_respawn
+          UNION ALL
+          SELECT 1,guid,respawnTime,mapId,instanceId
+          FROM \`$SOURCE_CHARACTERS_SCHEMA\`.gameobject_respawn
+        ) s LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.respawn t
+          ON t.type=s.type AND t.spawnId=s.spawnId
+         AND t.instanceId=s.instanceId
+        WHERE t.spawnId IS NULL OR t.respawnTime<>s.respawnTime
+           OR t.mapId<>s.mapId;" "Every split respawn must survive the merge"
+    check_zero respawn_type_mismatch "
+        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.respawn
+        WHERE type NOT IN (0,1);" "Only creature and gameobject respawn types are supported"
+    check_zero archive_manifest_mismatch "
+        SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.archive_manifest
+        WHERE run_id='$(sql_escape "$RUN_ID")' AND row_count=0;" \
+        "Archive manifests must represent nonempty source-only tables"
+
+    validate_mapping_counts auth
+    validate_mapping_counts characters
+    analyze_schema "$TARGET_AUTH_SCHEMA"
+    analyze_schema "$TARGET_CHARACTERS_SCHEMA"
+
+    local failures
+    failures=$(mysql_query -e "
+        SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.validation_result
+        WHERE run_id='$(sql_escape "$RUN_ID")'
+          AND severity='ERROR' AND passed=0;")
+    if [[ $failures != 0 ]]; then
+        mysql_query -e "UPDATE \`$CONTROL_SCHEMA\`.migration_run
+            SET status='FAILED' WHERE run_id='$(sql_escape "$RUN_ID")';"
+        write_final_report
+        die "Validation failed with $failures error(s)"
+    fi
+    write_final_report
+    purge_validated_item_candidates
+    mysql_query -e "UPDATE \`$CONTROL_SCHEMA\`.migration_run
+        SET status='READY' WHERE run_id='$(sql_escape "$RUN_ID")';"
+    write_final_report
+    log "Validation passed; migration run $RUN_ID is READY for TrinityCore smoke tests"
+}
+
 perform_validation() {
     require_phase load-auth
     require_phase load-characters
     require_phase sanitize-target
     schemas_for_kind characters
+
+    if [[ $MIGRATION_DIRECTION == ac-to-tc ]]; then
+        perform_validation_reverse
+        return
+    fi
 
     reseed_auto_increment "$TARGET_AUTH_SCHEMA"
     reseed_auto_increment "$TARGET_CHARACTERS_SCHEMA"
@@ -443,7 +708,7 @@ perform_validation() {
 
 show_status() {
     mysql_table -e "
-        SELECT run_id,status,started_at,updated_at
+        SELECT run_id,migration_direction,status,started_at,updated_at
         FROM \`$CONTROL_SCHEMA\`.migration_run
         WHERE run_id='$(sql_escape "$RUN_ID")';
         SELECT phase_name,status,started_at,finished_at,detail
@@ -558,8 +823,9 @@ write_final_report() {
         WHERE run_id='$(sql_escape "$RUN_ID")' AND severity='WARNING';")
 
     {
-        printf '# TrinityCore to AzerothCore migration report\n\n'
+        printf '# TrinityCore/AzerothCore database migration report\n\n'
         printf -- '- Run ID: `%s`\n' "$RUN_ID"
+        printf -- '- Direction: `%s`\n' "$MIGRATION_DIRECTION"
         printf -- '- Generated: `%s`\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
         printf -- '- Status: **%s**\n' "$run_status"
         printf -- '- Failed validation checks: **%s**\n' "$failures"
@@ -591,6 +857,15 @@ write_final_report() {
             FROM \`$CONTROL_SCHEMA\`.cleanup_table_summary
             WHERE run_id='$(sql_escape "$RUN_ID")' AND removed_rows>0
             ORDER BY database_kind,table_name;"
+        printf '\n## Unsupported source data archives\n\n'
+        printf '| Database | Table | Rows | SHA-256 | Path |\n'
+        printf '|---|---|---:|---|---|\n'
+        mysql_query -e "
+            SELECT CONCAT('| ',database_kind,' | ',source_table,' | ',row_count,
+                          ' | ',dump_sha256,' | ',REPLACE(dump_path,'|','/'),' |')
+            FROM \`$CONTROL_SCHEMA\`.archive_manifest
+            WHERE run_id='$(sql_escape "$RUN_ID")'
+            ORDER BY database_kind,source_table;"
         printf '\n## Item cleanup candidate manifest\n\n'
         printf '| Signature | Staged rows remaining |\n'
         printf '|---|---:|\n'
@@ -638,7 +913,11 @@ write_final_report() {
             ORDER BY database_kind,table_name,index_name;"
         printf '\n## Decision\n\n'
         if [[ $run_status == READY && $failures == 0 ]]; then
-            printf 'Database validation passed. Application-level AzerothCore smoke tests are still required before opening the realm.\n'
+            if [[ $MIGRATION_DIRECTION == tc-to-ac ]]; then
+                printf 'Database validation passed. Application-level AzerothCore smoke tests are still required before opening the realm.\n'
+            else
+                printf 'Database validation passed. Application-level TrinityCore smoke tests are still required before opening the realm.\n'
+            fi
         else
             printf 'NO-GO. Resolve failed checks and rerun validation.\n'
         fi

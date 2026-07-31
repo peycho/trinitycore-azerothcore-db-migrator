@@ -24,7 +24,8 @@
 3. Take the final consistent backups and record their locations/checksums.
 4. Run `preflight`; archive the run ID and source fingerprints, and review the
    source orphan audit against the approved rehearsal.
-5. Run `assemble`; inspect update hashes and schema/type reports.
+5. Run `archive-unsupported`, verify its SHA-256 manifest, then run `assemble`
+   and inspect update hashes and schema/type reports.
 6. Run `load-auth`, then `load-characters`.
    Use `status` during long chunks to record the active range, elapsed time,
    recent throughput, and index state.
