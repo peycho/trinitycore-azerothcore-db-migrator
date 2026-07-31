@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a reproducible migration-toolkit defect
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include production dumps, credentials, reports, SRP6 material,
+        email addresses, IP addresses, or player/account data. Use private
+        vulnerability reporting for security-sensitive problems.
+  - type: input
+    id: toolkit_revision
+    attributes:
+      label: Toolkit revision
+      placeholder: Git commit SHA
+    validations:
+      required: true
+  - type: input
+    id: core_revisions
+    attributes:
+      label: Core revisions
+      description: TrinityCore and AzerothCore commit SHAs
+    validations:
+      required: true
+  - type: input
+    id: mysql_version
+    attributes:
+      label: MySQL server and client versions
+    validations:
+      required: true
+  - type: dropdown
+    id: command
+    attributes:
+      label: Command
+      options:
+        - preflight
+        - assemble
+        - load-auth
+        - load-characters
+        - sanitize-target
+        - validate
+        - status
+        - report
+        - static checks
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem
+      description: Describe expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide redacted commands and a synthetic fixture if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Relevant validation or checkpoint state
+      description: Redacted output only.
+

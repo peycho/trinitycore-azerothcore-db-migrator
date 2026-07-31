@@ -1,0 +1,38 @@
+name: Enhancement proposal
+description: Propose a safety, compatibility, testing, or performance improvement
+title: "[Enhancement]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Proposals affecting mappings must identify exact core revisions and
+        include synthetic fixtures. Never attach production data or reports.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What migration limitation or operational risk should be addressed?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the interface and fail-closed behavior.
+    validations:
+      required: true
+  - type: input
+    id: revisions
+    attributes:
+      label: Relevant core revisions
+      description: TrinityCore and AzerothCore SHAs, when applicable.
+  - type: textarea
+    id: validation
+    attributes:
+      label: Acceptance and testing
+      description: Describe fixtures, interruption tests, and validation gates.
+    validations:
+      required: true
+

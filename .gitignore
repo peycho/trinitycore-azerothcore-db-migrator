@@ -2,4 +2,12 @@
 !/reports/.gitkeep
 /var/*
 !/var/.gitkeep
-
+/config/migration.env
+/.env
+/.env.*
+!/.env.example
+*.local
+*.log
+.DS_Store
+.idea/
+.vscode/
