@@ -15,7 +15,7 @@ jobs:
       - name: Check out migration toolkit
         uses: actions/checkout@v4
         with:
-          path: wow-db-migration
+          path: trinitycore-to-azerothcore-db
 
       - name: Check out pinned TrinityCore
         uses: actions/checkout@v4
@@ -35,6 +35,5 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ripgrep shellcheck
 
       - name: Run static checks
-        working-directory: wow-db-migration
+        working-directory: trinitycore-to-azerothcore-db
         run: tests/static-checks.sh
-
