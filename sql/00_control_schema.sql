@@ -97,3 +97,51 @@ CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`cleanup_table_summary` (
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`run_id`,`database_kind`,`table_name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`operation_checkpoint` (
+  `run_id` char(36) NOT NULL,
+  `phase_name` varchar(64) NOT NULL,
+  `operation_name` varchar(128) NOT NULL,
+  `database_kind` enum('auth','characters','control') NOT NULL,
+  `table_name` varchar(64) NOT NULL DEFAULT '',
+  `chunk_start` bigint NOT NULL DEFAULT '0',
+  `chunk_end` bigint NOT NULL DEFAULT '0',
+  `script_hash` char(64) NOT NULL,
+  `planned_rows` bigint unsigned NOT NULL DEFAULT '0',
+  `affected_rows` bigint unsigned NOT NULL DEFAULT '0',
+  `status` enum('RUNNING','COMPLETE','FAILED') NOT NULL,
+  `started_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `finished_at` timestamp NULL DEFAULT NULL,
+  `detail` text,
+  PRIMARY KEY (`run_id`,`phase_name`,`operation_name`,`database_kind`,
+               `table_name`,`chunk_start`,`chunk_end`),
+  KEY `idx_operation_status` (`run_id`,`status`,`started_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`deferred_index` (
+  `run_id` char(36) NOT NULL,
+  `database_kind` enum('auth','characters') NOT NULL,
+  `table_name` varchar(64) NOT NULL,
+  `index_name` varchar(64) NOT NULL,
+  `index_order` int unsigned NOT NULL,
+  `index_ddl` text NOT NULL,
+  `ddl_hash` char(64) NOT NULL,
+  `status` enum('DISCOVERED','DROPPED','RESTORED','FAILED') NOT NULL,
+  `started_at` timestamp NULL DEFAULT NULL,
+  `finished_at` timestamp NULL DEFAULT NULL,
+  `detail` text,
+  PRIMARY KEY (`run_id`,`database_kind`,`table_name`,`index_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`cleanup_item_root` (
+  `run_uuid` binary(16) NOT NULL,
+  `guid` int unsigned NOT NULL,
+  `root_mask` tinyint unsigned NOT NULL,
+  PRIMARY KEY (`run_uuid`,`guid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`cleanup_item_candidate` (
+  `run_uuid` binary(16) NOT NULL,
+  `guid` int unsigned NOT NULL,
+  PRIMARY KEY (`run_uuid`,`guid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

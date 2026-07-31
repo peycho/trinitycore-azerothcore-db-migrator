@@ -64,4 +64,26 @@ compare_inventory "$temporary_dir/ac-auth" "$temporary_dir/map-ac-auth" "Azeroth
 compare_inventory "$temporary_dir/tc-characters" "$temporary_dir/map-tc-characters" "TrinityCore characters"
 compare_inventory "$temporary_dir/ac-characters" "$temporary_dir/map-ac-characters" "AzerothCore characters"
 
+for variable in LOAD_CHUNK_SIZE CLEANUP_CHUNK_SIZE LARGE_TABLE_ROWS DEFER_SECONDARY_INDEXES; do
+    rg -q "^${variable}=" "$ROOT/config/migration.env.example" ||
+        {
+            printf 'Missing performance configuration: %s\n' "$variable" >&2
+            exit 1
+        }
+done
+! rg -q '(^|[^A-Z_])CHUNK_SIZE=' "$ROOT/config" "$ROOT/tests" \
+    --glob '*.env' --glob '*.env.example' ||
+    {
+        printf 'Legacy CHUNK_SIZE configuration is not allowed.\n' >&2
+        exit 1
+    }
+rg -q 'CREATE TABLE IF NOT EXISTS .*operation_checkpoint' \
+    "$ROOT/sql/00_control_schema.sql"
+rg -Fq '`run_uuid` binary(16)' "$ROOT/sql/00_control_schema.sql"
+! rg -q 'EXISTS .*character_inventory' "$ROOT/lib/sanitize.sh" ||
+    {
+        printf 'Correlated item reachability query has returned.\n' >&2
+        exit 1
+    }
+
 printf 'Static checks passed.\n'
