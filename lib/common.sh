@@ -124,7 +124,14 @@ build_mysql_arguments() {
         MYSQL_ARGS+=("--host=$MYSQL_HOST" "--port=$MYSQL_PORT" "--protocol=TCP")
         MYSQLDUMP_ARGS+=("--host=$MYSQL_HOST" "--port=$MYSQL_PORT" "--protocol=TCP")
     fi
-    MYSQL_ARGS+=("--user=$MYSQL_USER" "--default-character-set=utf8mb4")
+    # Every mysql invocation opens a new session. Keep control/checkpoint
+    # TIMESTAMP conversion consistent with the load transactions regardless of
+    # the server or operator host timezone.
+    MYSQL_ARGS+=(
+        "--user=$MYSQL_USER"
+        "--default-character-set=utf8mb4"
+        "--init-command=SET SESSION time_zone='+00:00'"
+    )
     MYSQLDUMP_ARGS+=("--user=$MYSQL_USER" "--no-tablespaces")
 }
 

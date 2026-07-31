@@ -80,6 +80,8 @@ done
 rg -q 'CREATE TABLE IF NOT EXISTS .*operation_checkpoint' \
     "$ROOT/sql/00_control_schema.sql"
 rg -Fq '`run_uuid` binary(16)' "$ROOT/sql/00_control_schema.sql"
+rg -Fq "\"--init-command=SET SESSION time_zone='+00:00'\"" \
+    "$ROOT/lib/common.sh"
 ! rg -q 'EXISTS .*character_inventory' "$ROOT/lib/sanitize.sh" ||
     {
         printf 'Correlated item reachability query has returned.\n' >&2

@@ -31,6 +31,8 @@ trigger, or event blocks preflight until added to `mappings/objects.csv`.
 - Source-existing orphan data is removed only from the fresh targets by the
   explicit, audited `sanitize-target` phase. Source schemas remain untouched.
 - MySQL strict mode and explicit target column lists are used for all loads.
+- Every MySQL client session is initialized to UTC so checkpoint and timing
+  timestamps remain comparable when the server uses a local timezone.
 - Validation must report `READY`; AzerothCore smoke tests remain a separate
   cutover gate.
 
