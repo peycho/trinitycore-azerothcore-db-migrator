@@ -429,6 +429,11 @@ perform_validation() {
         die "Validation failed with $failures error(s)"
     fi
 
+    # Materialize the candidate manifest into the report before releasing its
+    # large control-schema rows. The operation checkpoint retains its immutable
+    # count/min/max/checksum signature after the rows are purged.
+    write_final_report
+    purge_validated_item_candidates
     mysql_query -e "
         UPDATE \`$CONTROL_SCHEMA\`.migration_run
         SET status='READY' WHERE run_id='$(sql_escape "$RUN_ID")';"
@@ -454,7 +459,87 @@ show_status() {
         SELECT database_kind,table_name,before_rows,after_rows,removed_rows
         FROM \`$CONTROL_SCHEMA\`.cleanup_table_summary
         WHERE run_id='$(sql_escape "$RUN_ID")' AND removed_rows>0
-        ORDER BY database_kind,table_name;"
+        ORDER BY database_kind,table_name;
+        SELECT phase_name,operation_name,database_kind,table_name,
+               chunk_start,chunk_end,status,
+               TIMESTAMPDIFF(SECOND,started_at,COALESCE(finished_at,UTC_TIMESTAMP()))
+                   AS elapsed_seconds,
+               affected_rows,
+               ROUND(affected_rows /
+                   GREATEST(TIMESTAMPDIFF(SECOND,started_at,
+                           COALESCE(finished_at,UTC_TIMESTAMP())),1),1)
+                   AS rows_per_second
+        FROM \`$CONTROL_SCHEMA\`.operation_checkpoint
+        WHERE run_id='$(sql_escape "$RUN_ID")'
+        ORDER BY (status='RUNNING') DESC,started_at DESC
+        LIMIT 15;
+        SELECT database_kind,table_name,index_name,status,started_at,finished_at,detail
+        FROM \`$CONTROL_SCHEMA\`.deferred_index
+        WHERE run_id='$(sql_escape "$RUN_ID")'
+        ORDER BY database_kind,table_name,index_name;"
+    if table_exists "$TARGET_CHARACTERS_SCHEMA" item_instance; then
+        mysql_table -e "
+            SELECT
+              planned.planned_rows AS candidate_rows,
+              planned.planned_rows-pending.remaining_rows AS completed_rows,
+              pending.remaining_rows,
+              staged.staged_rows
+            FROM
+              (SELECT COALESCE(MAX(affected_rows),0) AS planned_rows
+               FROM \`$CONTROL_SCHEMA\`.operation_checkpoint
+               WHERE run_id='$(sql_escape "$RUN_ID")'
+                 AND phase_name='sanitize-target'
+                 AND operation_name='materialize-item-candidates'
+                 AND status='COMPLETE') planned
+            CROSS JOIN
+              (SELECT COUNT(*) AS remaining_rows
+               FROM \`$CONTROL_SCHEMA\`.cleanup_item_candidate c
+               JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_instance i ON i.guid=c.guid
+               WHERE c.run_uuid=UUID_TO_BIN('$(sql_escape "$RUN_ID")')) pending
+            CROSS JOIN
+              (SELECT COUNT(*) AS staged_rows
+               FROM \`$CONTROL_SCHEMA\`.cleanup_item_candidate
+               WHERE run_uuid=UUID_TO_BIN('$(sql_escape "$RUN_ID")')) staged;"
+    fi
+}
+
+purge_validated_item_candidates() {
+    local detail count hash
+    detail=$(mysql_query -e "
+        SELECT COALESCE(MAX(detail),'')
+        FROM \`$CONTROL_SCHEMA\`.operation_checkpoint
+        WHERE run_id='$(sql_escape "$RUN_ID")'
+          AND phase_name='sanitize-target'
+          AND operation_name='materialize-item-candidates'
+          AND status='COMPLETE';")
+    [[ -n $detail ]] || return
+    count=$(mysql_query -e "
+        SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.cleanup_item_candidate
+        WHERE run_uuid=UUID_TO_BIN('$(sql_escape "$RUN_ID")');")
+    [[ $count != 0 ]] || return
+    hash=$(printf '%s' 'validated item candidate purge v1' | sha256sum | awk '{print $1}')
+    mark_operation_running validate purge-item-candidates control \
+        cleanup_item_candidate 0 0 "$hash" "$count"
+    mysql_query -e "
+        START TRANSACTION;
+        DELETE FROM \`$CONTROL_SCHEMA\`.cleanup_item_candidate
+        WHERE run_uuid=UUID_TO_BIN('$(sql_escape "$RUN_ID")');
+        SET @affected_rows=ROW_COUNT();
+        INSERT INTO \`$CONTROL_SCHEMA\`.operation_checkpoint
+            (run_id,phase_name,operation_name,database_kind,table_name,
+             chunk_start,chunk_end,script_hash,planned_rows,affected_rows,
+             status,started_at,finished_at,detail)
+        VALUES
+            ('$(sql_escape "$RUN_ID")','validate','purge-item-candidates',
+             'control','cleanup_item_candidate',0,0,'$hash',$count,
+             @affected_rows,'COMPLETE',UTC_TIMESTAMP(),UTC_TIMESTAMP(),
+             'candidate signature retained by materialize-item-candidates') AS new
+        ON DUPLICATE KEY UPDATE
+            script_hash=new.script_hash,planned_rows=new.planned_rows,
+            affected_rows=new.affected_rows,status='COMPLETE',
+            finished_at=new.finished_at,detail=new.detail;
+        COMMIT;"
+    log "Purged $count validated item candidate staging row(s)"
 }
 
 write_final_report() {
@@ -506,6 +591,51 @@ write_final_report() {
             FROM \`$CONTROL_SCHEMA\`.cleanup_table_summary
             WHERE run_id='$(sql_escape "$RUN_ID")' AND removed_rows>0
             ORDER BY database_kind,table_name;"
+        printf '\n## Item cleanup candidate manifest\n\n'
+        printf '| Signature | Staged rows remaining |\n'
+        printf '|---|---:|\n'
+        mysql_query -e "
+            SELECT CONCAT(
+                '| ',COALESCE(detail,'not materialized'),
+                ' | ',
+                (SELECT COUNT(*)
+                 FROM \`$CONTROL_SCHEMA\`.cleanup_item_candidate
+                 WHERE run_uuid=UUID_TO_BIN('$(sql_escape "$RUN_ID")')),
+                ' |')
+            FROM \`$CONTROL_SCHEMA\`.operation_checkpoint
+            WHERE run_id='$(sql_escape "$RUN_ID")'
+              AND phase_name='sanitize-target'
+              AND operation_name='materialize-item-candidates'
+              AND status='COMPLETE'
+            LIMIT 1;"
+        printf '\n## Slowest database operations\n\n'
+        printf '| Phase | Operation | Table | Rows | Seconds | Rows/sec | Status |\n'
+        printf '|---|---|---|---:|---:|---:|---|\n'
+        mysql_query -e "
+            SELECT CONCAT(
+                '| ',phase_name,' | ',operation_name,' | ',table_name,
+                ' | ',affected_rows,
+                ' | ',TIMESTAMPDIFF(SECOND,started_at,
+                       COALESCE(finished_at,UTC_TIMESTAMP())),
+                ' | ',ROUND(affected_rows /
+                         GREATEST(TIMESTAMPDIFF(SECOND,started_at,
+                           COALESCE(finished_at,UTC_TIMESTAMP())),1),1),
+                ' | ',status,' |')
+            FROM \`$CONTROL_SCHEMA\`.operation_checkpoint
+            WHERE run_id='$(sql_escape "$RUN_ID")'
+            ORDER BY TIMESTAMPDIFF(MICROSECOND,started_at,
+                     COALESCE(finished_at,UTC_TIMESTAMP())) DESC
+            LIMIT 20;"
+        printf '\n## Deferred secondary indexes\n\n'
+        printf '| Database | Table | Index | Status | Detail |\n'
+        printf '|---|---|---|---|---|\n'
+        mysql_query -e "
+            SELECT CONCAT(
+                '| ',database_kind,' | ',table_name,' | ',index_name,
+                ' | ',status,' | ',REPLACE(COALESCE(detail,''),'|','/'),' |')
+            FROM \`$CONTROL_SCHEMA\`.deferred_index
+            WHERE run_id='$(sql_escape "$RUN_ID")'
+            ORDER BY database_kind,table_name,index_name;"
         printf '\n## Decision\n\n'
         if [[ $run_status == READY && $failures == 0 ]]; then
             printf 'Database validation passed. Application-level AzerothCore smoke tests are still required before opening the realm.\n'

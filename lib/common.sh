@@ -45,7 +45,9 @@ load_configuration() {
         MYSQL_HOST MYSQL_PORT MYSQL_USER SOURCE_AUTH_SCHEMA
         SOURCE_CHARACTERS_SCHEMA TARGET_AUTH_SCHEMA TARGET_CHARACTERS_SCHEMA
         CONTROL_SCHEMA REALM_ID TRINITYCORE_DIR AZEROTHCORE_DIR
-        EXPECTED_TRINITYCORE_COMMIT EXPECTED_AZEROTHCORE_COMMIT CHUNK_SIZE
+        EXPECTED_TRINITYCORE_COMMIT EXPECTED_AZEROTHCORE_COMMIT
+        LOAD_CHUNK_SIZE CLEANUP_CHUNK_SIZE LARGE_TABLE_ROWS
+        DEFER_SECONDARY_INDEXES
     )
     local name
     for name in "${required[@]}"; do
@@ -68,7 +70,14 @@ load_configuration() {
     if [[ -n $SOURCE_WORLD_SCHEMA ]]; then
         validate_identifier "$SOURCE_WORLD_SCHEMA" SOURCE_WORLD_SCHEMA
     fi
-    [[ $CHUNK_SIZE =~ ^[1-9][0-9]*$ ]] || die "CHUNK_SIZE must be a positive integer"
+    [[ $LOAD_CHUNK_SIZE =~ ^[1-9][0-9]*$ ]] ||
+        die "LOAD_CHUNK_SIZE must be a positive integer"
+    [[ $CLEANUP_CHUNK_SIZE =~ ^[1-9][0-9]*$ ]] ||
+        die "CLEANUP_CHUNK_SIZE must be a positive integer"
+    [[ $LARGE_TABLE_ROWS =~ ^[1-9][0-9]*$ ]] ||
+        die "LARGE_TABLE_ROWS must be a positive integer"
+    [[ $DEFER_SECONDARY_INDEXES =~ ^[01]$ ]] ||
+        die "DEFER_SECONDARY_INDEXES must be 0 or 1"
     [[ $REQUIRE_QUIESCENT =~ ^[01]$ ]] || die "REQUIRE_QUIESCENT must be 0 or 1"
     [[ $ALLOW_SOURCE_ARCHIVE =~ ^[01]$ ]] || die "ALLOW_SOURCE_ARCHIVE must be 0 or 1"
 
@@ -92,7 +101,8 @@ load_configuration() {
             "$SOURCE_AUTH_SCHEMA" "$SOURCE_CHARACTERS_SCHEMA" "$SOURCE_WORLD_SCHEMA" \
             "$TARGET_AUTH_SCHEMA" "$TARGET_CHARACTERS_SCHEMA" "$CONTROL_SCHEMA" \
             "$REALM_ID" "$EXPECTED_TRINITYCORE_COMMIT" "$EXPECTED_AZEROTHCORE_COMMIT" \
-            "$CHUNK_SIZE" "$TOOLKIT_HASH" |
+            "$LOAD_CHUNK_SIZE" "$CLEANUP_CHUNK_SIZE" "$LARGE_TABLE_ROWS" \
+            "$DEFER_SECONDARY_INDEXES" "$TOOLKIT_HASH" |
             sha256sum | awk '{print $1}'
     )
 
@@ -275,6 +285,24 @@ require_phase() {
     [[ $(phase_status "$phase") == COMPLETE ]] || die "Required phase is not complete: $phase"
 }
 
+mark_operation_running() {
+    local phase=$1 operation=$2 kind=$3 table=$4 lower=$5 upper=$6 hash=$7 planned=${8:-0}
+    mysql_query -e "
+        INSERT INTO \`$CONTROL_SCHEMA\`.operation_checkpoint
+            (run_id,phase_name,operation_name,database_kind,table_name,
+             chunk_start,chunk_end,script_hash,planned_rows,affected_rows,
+             status,started_at,finished_at,detail)
+        VALUES
+            ('$(sql_escape "$RUN_ID")','$(sql_escape "$phase")',
+             '$(sql_escape "$operation")','$(sql_escape "$kind")',
+             '$(sql_escape "$table")',$lower,$upper,'$hash',$planned,0,
+             'RUNNING',UTC_TIMESTAMP(),NULL,NULL) AS new
+        ON DUPLICATE KEY UPDATE
+            script_hash=new.script_hash,planned_rows=new.planned_rows,
+            affected_rows=0,status='RUNNING',started_at=UTC_TIMESTAMP(),
+            finished_at=NULL,detail=NULL;"
+}
+
 with_phase() {
     local phase=$1
     shift
@@ -288,6 +316,13 @@ with_phase() {
     else
         local status=$?
         fail_phase "$phase" "Command failed with status $status"
+        mysql_query -e "
+            UPDATE \`$CONTROL_SCHEMA\`.operation_checkpoint
+            SET status='FAILED',finished_at=UTC_TIMESTAMP(),
+                detail='phase command failed with status $status'
+            WHERE run_id='$(sql_escape "$RUN_ID")'
+              AND phase_name='$(sql_escape "$phase")'
+              AND status='RUNNING';"
         return "$status"
     fi
 }

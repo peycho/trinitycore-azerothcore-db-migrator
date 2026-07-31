@@ -24,7 +24,10 @@ trigger, or event blocks preflight until added to `mappings/objects.csv`.
   from silently continuing after source drift.
 - Every table appears in `mappings/auth.csv` or `mappings/characters.csv`.
 - Target AzerothCore update ledgers and seed tables are retained.
-- Chunk checkpoints are bound to the run ID and generated statement hash.
+- Large mappings are split on their leading numeric primary-key column.
+  Target inserts and completed chunk checkpoints commit atomically.
+- Non-unique secondary indexes on configured large tables may be deferred;
+  their exact native DDL, order, hash, and rebuild state are retained.
 - Source-existing orphan data is removed only from the fresh targets by the
   explicit, audited `sanitize-target` phase. Source schemas remain untouched.
 - MySQL strict mode and explicit target column lists are used for all loads.
@@ -74,7 +77,21 @@ Copy `config/migration.env.example` to a secure location and set:
 - source/target/control schema names;
 - MySQL endpoint and option-file path;
 - `REALM_ID` matching the characters database;
-- chunk size and repository paths.
+- load/cleanup chunk sizes, the large-table threshold, index deferral, and
+  repository paths.
+
+The production-oriented defaults are:
+
+```ini
+LOAD_CHUNK_SIZE=500000
+CLEANUP_CHUNK_SIZE=100000
+LARGE_TABLE_ROWS=250000
+DEFER_SECONDARY_INDEXES=1
+```
+
+`SOURCE_WORLD_SCHEMA` is optional and read-only. It is used only by validation
+for map/item/quest/spell/creature references when such checks are available;
+it is never assembled, migrated, sanitized, or written.
 
 The config file is sourced by Bash. It must be owned and reviewed by the
 operator and must not contain untrusted shell text.
@@ -98,17 +115,24 @@ secure config to resume from another operator host. Runtime reports are written
 under `reports/<run-id>/`.
 
 The normal phase order is enforced. Completed phases no-op. Failed table loads
-can be rerun because each insert is transactional and completed chunks are
-checkpointed. Never edit a mapping or transformation in the middle of a
-production run; begin a new rehearsal/run after any script change.
+and item cleanup batches can be rerun because their mutations and completion
+checkpoints are atomic. A `RUNNING` checkpoint left by a killed process is
+replayed only for that exact range. Never edit a mapping or transformation in
+the middle of a production run; the toolkit hash will reject the old run.
+
+This performance revision also changes the control-schema layout. Discard
+targets and the control schema created by an earlier toolkit revision and
+start again at `preflight`; do not resume the previously interrupted run.
 
 `preflight` writes `source-orphan-audit.tsv` so inherited inconsistencies are
 visible before target creation. `sanitize-target` then applies the approved
 target-only policy: characters whose nonzero account is absent from auth and
 their dependent data are removed; dangling inventory, mail-item, and
 item-loot relations are removed; and items with missing owners are removed
-only after proving they are unreachable from inventory, valid mail, auctions,
-or guild banks. The phase stops if such an item is still reachable.
+only after a single indexed root set proves they are unreachable from
+inventory items/bags, valid mail, auctions, or guild banks. Root masks are
+`1`, `2`, `4`, `8`, and `16` respectively. The phase stops and emits
+`cleanup-blocked-items.tsv` if any missing-owner item is still reachable.
 
 Guild leaders and arena-team captains are not deleted automatically because
 that could destroy valid players' organization state. If an orphan character
@@ -158,9 +182,9 @@ The runner captures:
 - column metadata and source row-count snapshots;
 - table inventory, schema diff, and type-risk TSV files;
 - the explicit generated `INSERT ... SELECT` SQL used by each executable mapping;
-- phase/chunk checkpoints in the control schema;
-- source orphan audit, exact orphan-character manifest, and per-table cleanup
-  before/after/removed counts;
+- phase, load-chunk, and cleanup-operation checkpoints in the control schema;
+- source orphan audit, exact orphan-character and item-candidate manifests,
+  affected-row cleanup totals, deferred-index state, and ranked timing data;
 - validation results and a final Markdown go/no-go report.
 
 Schema dumps contain no table data but may still expose object names and
@@ -183,6 +207,11 @@ TRINITYCORE_DIR=/srv/src/TrinityCore \
 AZEROTHCORE_DIR=/srv/src/azerothcore-wotlk \
 tests/static-checks.sh
 ```
+
+`tests/fixtures/orphan-cleanup-data.sql` exercises dependency cleanup and
+unreachable items. `reachable-missing-owner-blockers.sql` is intentionally
+applied to a loaded target clone and must make `sanitize-target` fail with all
+five reachability root masks.
 
 Follow the [rehearsal](runbooks/rehearsal.md),
 [production cutover](runbooks/cutover.md), and

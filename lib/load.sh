@@ -44,22 +44,6 @@ assert_schema_unchanged() {
     [[ $current == "$stored" ]] || die "Source $kind schema changed after preflight"
 }
 
-assert_source_counts_unchanged() {
-    local kind=$1
-    local schema=$2
-    local table expected actual
-    while IFS=$'\t' read -r table expected; do
-        actual=$(mysql_query -e "SELECT COUNT(*) FROM \`$schema\`.\`$table\`;")
-        [[ $actual == "$expected" ]] ||
-            die "Source data changed after preflight: $schema.$table expected=$expected actual=$actual"
-    done < <(mysql_query -e "
-        SELECT table_name,row_count
-        FROM \`$CONTROL_SCHEMA\`.source_table_snapshot
-        WHERE run_id='$(sql_escape "$RUN_ID")'
-          AND database_kind='$(sql_escape "$kind")'
-        ORDER BY table_name;")
-}
-
 mapping_inventory_check() {
     local kind=$1
     local mapping_file
@@ -336,23 +320,206 @@ build_named_transform_spec() {
     esac
 }
 
-single_numeric_primary_key() {
+leading_numeric_primary_key() {
     local table=$1
     mysql_query -e "
-        SELECT COALESCE(MAX(CASE WHEN key_count=1 AND DATA_TYPE IN
-            ('tinyint','smallint','mediumint','int','bigint') THEN COLUMN_NAME ELSE '' END), '')
-        FROM (
-            SELECT k.TABLE_SCHEMA, k.TABLE_NAME, k.COLUMN_NAME, c.DATA_TYPE,
-                   COUNT(*) OVER (PARTITION BY k.TABLE_SCHEMA, k.TABLE_NAME) AS key_count
-            FROM information_schema.KEY_COLUMN_USAGE k
-            JOIN information_schema.COLUMNS c
-              ON c.TABLE_SCHEMA=k.TABLE_SCHEMA
-             AND c.TABLE_NAME=k.TABLE_NAME
-             AND c.COLUMN_NAME=k.COLUMN_NAME
-            WHERE k.TABLE_SCHEMA='$(sql_escape "$SOURCE_SCHEMA")'
-              AND k.TABLE_NAME='$(sql_escape "$table")'
-              AND k.CONSTRAINT_NAME='PRIMARY'
-        ) x;"
+        SELECT COALESCE(MAX(CASE
+            WHEN k.ORDINAL_POSITION=1
+             AND c.DATA_TYPE IN ('tinyint','smallint','mediumint','int','bigint')
+            THEN k.COLUMN_NAME ELSE '' END),'')
+        FROM information_schema.KEY_COLUMN_USAGE k
+        JOIN information_schema.COLUMNS c
+          ON c.TABLE_SCHEMA=k.TABLE_SCHEMA
+         AND c.TABLE_NAME=k.TABLE_NAME
+         AND c.COLUMN_NAME=k.COLUMN_NAME
+        WHERE k.TABLE_SCHEMA='$(sql_escape "$SOURCE_SCHEMA")'
+          AND k.TABLE_NAME='$(sql_escape "$table")'
+          AND k.CONSTRAINT_NAME='PRIMARY';"
+}
+
+source_snapshot_count() {
+    local kind=$1 table=$2
+    mysql_query -e "
+        SELECT row_count
+        FROM \`$CONTROL_SCHEMA\`.source_table_snapshot
+        WHERE run_id='$(sql_escape "$RUN_ID")'
+          AND database_kind='$(sql_escape "$kind")'
+          AND table_name='$(sql_escape "$table")';"
+}
+
+defer_secondary_indexes() {
+    local kind=$1 target_table=$2 source_rows=$3
+    [[ $DEFER_SECONDARY_INDEXES == 1 && $source_rows -ge $LARGE_TABLE_ROWS ]] || return
+
+    local foreign_keys
+    foreign_keys=$(mysql_query -e "
+        SELECT COUNT(*)
+        FROM information_schema.REFERENTIAL_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA='$(sql_escape "$TARGET_SCHEMA")'
+          AND TABLE_NAME='$(sql_escape "$target_table")';")
+    [[ $foreign_keys == 0 ]] || {
+        log "Keeping secondary indexes for $target_table because it owns foreign keys"
+        return
+    }
+
+    local existing
+    existing=$(mysql_query -e "
+        SELECT COUNT(*)
+        FROM \`$CONTROL_SCHEMA\`.deferred_index
+        WHERE run_id='$(sql_escape "$RUN_ID")'
+          AND database_kind='$(sql_escape "$kind")'
+          AND table_name='$(sql_escape "$target_table")';")
+    if [[ $existing == 0 ]]; then
+        local create_ddl line index_name index_ddl ddl_hash index_order=0 eligible
+        create_ddl=$(mysql_query -e "SHOW CREATE TABLE \`$TARGET_SCHEMA\`.\`$target_table\`;")
+        while IFS= read -r line; do
+            index_name=$(sed -nE 's/^  KEY `([^`]+)`.*/\1/p' <<< "$line")
+            [[ -n $index_name ]] || continue
+            eligible=$(mysql_query -e "
+                SELECT COUNT(*)
+                FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA='$(sql_escape "$TARGET_SCHEMA")'
+                  AND TABLE_NAME='$(sql_escape "$target_table")'
+                  AND INDEX_NAME='$(sql_escape "$index_name")'
+                  AND NON_UNIQUE=1 AND INDEX_TYPE='BTREE';")
+            (( eligible > 0 )) || continue
+            index_order=$((index_order + 1))
+            line=${line%,}
+            index_ddl="ADD ${line#"  "}"
+            ddl_hash=$(printf '%s' "$index_ddl" | sha256sum | awk '{print $1}')
+            mysql_query -e "
+                INSERT INTO \`$CONTROL_SCHEMA\`.deferred_index
+                    (run_id,database_kind,table_name,index_name,index_order,
+                     index_ddl,ddl_hash,status)
+                VALUES
+                    ('$(sql_escape "$RUN_ID")','$(sql_escape "$kind")',
+                     '$(sql_escape "$target_table")','$(sql_escape "$index_name")',
+                     $index_order,'$(sql_escape "$index_ddl")','$ddl_hash',
+                     'DISCOVERED');"
+        done <<< "$create_ddl"
+    fi
+
+    local known_name known_status present
+    while IFS=$'\t' read -r known_name known_status; do
+        present=$(mysql_query -e "
+            SELECT COUNT(*) FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA='$(sql_escape "$TARGET_SCHEMA")'
+              AND TABLE_NAME='$(sql_escape "$target_table")'
+              AND INDEX_NAME='$(sql_escape "$known_name")';")
+        if [[ $known_status == DISCOVERED && $present == 0 ]]; then
+            mysql_query -e "
+                UPDATE \`$CONTROL_SCHEMA\`.deferred_index
+                SET status='DROPPED',started_at=COALESCE(started_at,UTC_TIMESTAMP()),
+                    detail='reconciled after interrupted drop'
+                WHERE run_id='$(sql_escape "$RUN_ID")'
+                  AND database_kind='$(sql_escape "$kind")'
+                  AND table_name='$(sql_escape "$target_table")'
+                  AND index_name='$(sql_escape "$known_name")';"
+        fi
+    done < <(mysql_query -e "
+        SELECT index_name,status
+        FROM \`$CONTROL_SCHEMA\`.deferred_index
+        WHERE run_id='$(sql_escape "$RUN_ID")'
+          AND database_kind='$(sql_escape "$kind")'
+          AND table_name='$(sql_escape "$target_table")';")
+
+    local drop_clauses
+    drop_clauses=$(mysql_query -e "
+        SELECT GROUP_CONCAT(
+                 CONCAT('DROP INDEX \`',REPLACE(index_name,'\`','\`\`'),'\`')
+                 ORDER BY index_name SEPARATOR ','
+               )
+        FROM \`$CONTROL_SCHEMA\`.deferred_index
+        WHERE run_id='$(sql_escape "$RUN_ID")'
+          AND database_kind='$(sql_escape "$kind")'
+          AND table_name='$(sql_escape "$target_table")'
+          AND status='DISCOVERED';")
+    [[ -n $drop_clauses && $drop_clauses != NULL ]] || return
+
+    log "Deferring non-unique secondary indexes for $target_table"
+    mysql_query -e "
+        ALTER TABLE \`$TARGET_SCHEMA\`.\`$target_table\` $drop_clauses;
+        UPDATE \`$CONTROL_SCHEMA\`.deferred_index
+        SET status='DROPPED',started_at=UTC_TIMESTAMP(),detail=NULL
+        WHERE run_id='$(sql_escape "$RUN_ID")'
+          AND database_kind='$(sql_escape "$kind")'
+          AND table_name='$(sql_escape "$target_table")'
+          AND status='DISCOVERED';"
+}
+
+restore_secondary_indexes() {
+    local kind=$1 target_table=$2
+    local hash_mismatches
+    hash_mismatches=$(mysql_query -e "
+        SELECT COUNT(*)
+        FROM \`$CONTROL_SCHEMA\`.deferred_index
+        WHERE run_id='$(sql_escape "$RUN_ID")'
+          AND database_kind='$(sql_escape "$kind")'
+          AND table_name='$(sql_escape "$target_table")'
+          AND SHA2(index_ddl,256)<>ddl_hash;")
+    [[ $hash_mismatches == 0 ]] ||
+        die "Deferred index registry hash mismatch for $kind.$target_table"
+    local known_name present
+    while IFS= read -r known_name; do
+        present=$(mysql_query -e "
+            SELECT COUNT(*) FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA='$(sql_escape "$TARGET_SCHEMA")'
+              AND TABLE_NAME='$(sql_escape "$target_table")'
+              AND INDEX_NAME='$(sql_escape "$known_name")';")
+        if [[ $present != 0 ]]; then
+            mysql_query -e "
+                UPDATE \`$CONTROL_SCHEMA\`.deferred_index
+                SET status='RESTORED',finished_at=COALESCE(finished_at,UTC_TIMESTAMP()),
+                    detail=COALESCE(detail,'reconciled after interrupted rebuild')
+                WHERE run_id='$(sql_escape "$RUN_ID")'
+                  AND database_kind='$(sql_escape "$kind")'
+                  AND table_name='$(sql_escape "$target_table")'
+                  AND index_name='$(sql_escape "$known_name")'
+                  AND status IN ('DROPPED','FAILED');"
+        fi
+    done < <(mysql_query -e "
+        SELECT index_name
+        FROM \`$CONTROL_SCHEMA\`.deferred_index
+        WHERE run_id='$(sql_escape "$RUN_ID")'
+          AND database_kind='$(sql_escape "$kind")'
+          AND table_name='$(sql_escape "$target_table")'
+          AND status IN ('DROPPED','FAILED');")
+
+    local add_clauses
+    add_clauses=$(mysql_query -e "
+        SET SESSION group_concat_max_len=1048576;
+        SELECT GROUP_CONCAT(index_ddl ORDER BY index_order SEPARATOR ',')
+        FROM \`$CONTROL_SCHEMA\`.deferred_index
+        WHERE run_id='$(sql_escape "$RUN_ID")'
+          AND database_kind='$(sql_escape "$kind")'
+          AND table_name='$(sql_escape "$target_table")'
+          AND status='DROPPED';")
+    [[ -n $add_clauses && $add_clauses != NULL ]] || return
+
+    local started finished
+    started=$(date +%s)
+    log "Rebuilding deferred secondary indexes for $target_table"
+    if mysql_query -e "ALTER TABLE \`$TARGET_SCHEMA\`.\`$target_table\` $add_clauses;"; then
+        finished=$(date +%s)
+        mysql_query -e "
+            UPDATE \`$CONTROL_SCHEMA\`.deferred_index
+            SET status='RESTORED',finished_at=UTC_TIMESTAMP(),
+                detail='elapsed_seconds=$((finished-started))'
+            WHERE run_id='$(sql_escape "$RUN_ID")'
+              AND database_kind='$(sql_escape "$kind")'
+              AND table_name='$(sql_escape "$target_table")'
+              AND status='DROPPED';"
+    else
+        mysql_query -e "
+            UPDATE \`$CONTROL_SCHEMA\`.deferred_index
+            SET status='FAILED',finished_at=UTC_TIMESTAMP(),
+                detail='index rebuild failed'
+            WHERE run_id='$(sql_escape "$RUN_ID")'
+              AND database_kind='$(sql_escape "$kind")'
+              AND table_name='$(sql_escape "$target_table")'
+              AND status='DROPPED';"
+        die "Failed to rebuild indexes for $target_table"
+    fi
 }
 
 checkpoint_complete() {
@@ -380,32 +547,78 @@ prepare_target_for_copy() {
     fi
 }
 
-record_checkpoint() {
-    local kind=$1 source_table=$2 target_table=$3 start=$4 end=$5 hash=$6 source_rows=$7 target_rows=$8
-    mysql_query -e "
+execute_transform_atomic() {
+    local kind=$1 source_table=$2 target_table=$3 hash=$4 expected=$5
+    local cleanup_sql=$6 statement=$7
+    local actual
+    defer_secondary_indexes "$kind" "$target_table" "$expected"
+    mark_operation_running "load-$kind" load-transform "$kind" "$target_table" \
+        0 0 "$hash" "$expected"
+    if ! actual=$(mysql_query -e "
+        SET SESSION sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,NO_AUTO_VALUE_ON_ZERO';
+        START TRANSACTION;
+        $cleanup_sql
+        $statement;
+        SELECT COUNT(*) INTO @target_rows
+        FROM \`$TARGET_SCHEMA\`.\`$target_table\`;
+        SET @checkpoint_status=IF(@target_rows=$expected,'COMPLETE','FAILED');
         INSERT INTO \`$CONTROL_SCHEMA\`.chunk_checkpoint
             (run_id,database_kind,source_table,target_table,chunk_start,chunk_end,
              script_hash,source_rows,target_rows,status)
         VALUES
             ('$(sql_escape "$RUN_ID")','$(sql_escape "$kind")',
              '$(sql_escape "$source_table")','$(sql_escape "$target_table")',
-             $start,$end,'$hash',$source_rows,$target_rows,'COMPLETE') AS new
+             0,0,'$hash',$expected,@target_rows,@checkpoint_status) AS new
         ON DUPLICATE KEY UPDATE
-            script_hash=new.script_hash, source_rows=new.source_rows,
-            target_rows=new.target_rows, status='COMPLETE',
-            finished_at=UTC_TIMESTAMP();"
+            script_hash=new.script_hash,source_rows=new.source_rows,
+            target_rows=new.target_rows,status=new.status,
+            finished_at=UTC_TIMESTAMP();
+        INSERT INTO \`$CONTROL_SCHEMA\`.operation_checkpoint
+            (run_id,phase_name,operation_name,database_kind,table_name,
+             chunk_start,chunk_end,script_hash,planned_rows,affected_rows,
+             status,started_at,finished_at,detail)
+        VALUES
+            ('$(sql_escape "$RUN_ID")','load-$kind','load-transform',
+             '$(sql_escape "$kind")','$(sql_escape "$target_table")',
+             0,0,'$hash',$expected,@target_rows,@checkpoint_status,
+             UTC_TIMESTAMP(),UTC_TIMESTAMP(),'atomic transform and checkpoint') AS new
+        ON DUPLICATE KEY UPDATE
+            script_hash=new.script_hash,planned_rows=new.planned_rows,
+            affected_rows=new.affected_rows,status=new.status,
+            finished_at=new.finished_at,detail=new.detail;
+        COMMIT;
+        SELECT @target_rows;"); then
+        die "Atomic transform failed: $kind.$target_table"
+    fi
+    [[ $actual == "$expected" ]] ||
+        die "$target_table count mismatch: expected=$expected actual=$actual"
+    restore_secondary_indexes "$kind" "$target_table"
+    log "Loaded transform $target_table: $actual row(s)"
 }
 
 load_statement_chunks() {
     local kind=$1 source_table=$2 target_table=$3 target_columns=$4 expressions=$5
     local primary_key
-    primary_key=$(single_numeric_primary_key "$source_table")
+    local expected_rows
+    expected_rows=$(source_snapshot_count "$kind" "$source_table")
+    [[ -n $expected_rows ]] || die "Missing source snapshot count for $kind.$source_table"
+    primary_key=$(leading_numeric_primary_key "$source_table")
+    if (( expected_rows < LARGE_TABLE_ROWS )); then
+        primary_key=
+    elif [[ -n $primary_key ]] && ! mysql_query -e "
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA='$(sql_escape "$TARGET_SCHEMA")'
+          AND TABLE_NAME='$(sql_escape "$target_table")'
+          AND COLUMN_NAME='$(sql_escape "$primary_key")';" | grep -q 1; then
+        primary_key=
+    fi
     local base_statement="INSERT INTO \`$TARGET_SCHEMA\`.\`$target_table\` ($target_columns) SELECT $expressions FROM \`$SOURCE_SCHEMA\`.\`$source_table\` s"
     printf '%s;\n' "$base_statement" \
         > "$REPORTS_DIR/$RUN_ID/generated-$kind-$target_table.sql"
     local script_hash
     script_hash=$(printf '%s' "$base_statement" | sha256sum | awk '{print $1}')
     prepare_target_for_copy "$kind" "$target_table"
+    defer_secondary_indexes "$kind" "$target_table" "$expected_rows"
 
     local minimum=0 maximum=0
     if [[ -n $primary_key ]]; then
@@ -419,7 +632,7 @@ load_statement_chunks() {
     while :; do
         local chunk_end where_clause
         if [[ -n $primary_key ]]; then
-            chunk_end=$((chunk_start + CHUNK_SIZE - 1))
+            chunk_end=$((chunk_start + LOAD_CHUNK_SIZE - 1))
             (( chunk_end > maximum )) && chunk_end=$maximum
             where_clause=" WHERE s.\`$primary_key\` BETWEEN $chunk_start AND $chunk_end"
         else
@@ -431,40 +644,51 @@ load_statement_chunks() {
         if checkpoint_complete "$kind" "$target_table" "$chunk_start" "$chunk_end" "$script_hash"; then
             log "Skipping completed chunk $target_table [$chunk_start,$chunk_end]"
         else
-            local source_rows target_before target_after inserted
-            source_rows=$(mysql_query -e "
-                SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.\`$source_table\` s$where_clause;")
+            local inserted delete_clause
             if [[ -n $primary_key ]]; then
-                target_before=$(mysql_query -e "
-                    SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.\`$target_table\`
-                    WHERE \`$primary_key\` BETWEEN $chunk_start AND $chunk_end;")
+                delete_clause="WHERE \`$primary_key\` BETWEEN $chunk_start AND $chunk_end"
             else
-                target_before=$(mysql_query -e "
-                    SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.\`$target_table\`;")
+                delete_clause=
             fi
-            [[ $target_before == 0 ]] ||
-                die "Target chunk is not empty before load: $target_table [$chunk_start,$chunk_end]"
+            mark_operation_running "load-$kind" load-table "$kind" "$target_table" \
+                "$chunk_start" "$chunk_end" "$script_hash" 0
 
-            mysql_query -e "
+            inserted=$(mysql_query -e "
                 SET SESSION time_zone='+00:00';
                 SET SESSION sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,NO_AUTO_VALUE_ON_ZERO';
                 START TRANSACTION;
+                DELETE FROM \`$TARGET_SCHEMA\`.\`$target_table\` $delete_clause;
                 $base_statement$where_clause;
-                COMMIT;"
-
-            if [[ -n $primary_key ]]; then
-                target_after=$(mysql_query -e "
-                    SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.\`$target_table\`
-                    WHERE \`$primary_key\` BETWEEN $chunk_start AND $chunk_end;")
-            else
-                target_after=$(mysql_query -e "
-                    SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.\`$target_table\`;")
-            fi
-            inserted=$((target_after - target_before))
-            [[ $inserted == "$source_rows" ]] ||
-                die "Row-count mismatch for $target_table: source=$source_rows inserted=$inserted"
-            record_checkpoint "$kind" "$source_table" "$target_table" \
-                "$chunk_start" "$chunk_end" "$script_hash" "$source_rows" "$inserted"
+                SET @inserted_rows=ROW_COUNT();
+                INSERT INTO \`$CONTROL_SCHEMA\`.chunk_checkpoint
+                    (run_id,database_kind,source_table,target_table,chunk_start,
+                     chunk_end,script_hash,source_rows,target_rows,status)
+                VALUES
+                    ('$(sql_escape "$RUN_ID")','$(sql_escape "$kind")',
+                     '$(sql_escape "$source_table")','$(sql_escape "$target_table")',
+                     $chunk_start,$chunk_end,'$script_hash',
+                     @inserted_rows,@inserted_rows,'COMPLETE') AS new
+                ON DUPLICATE KEY UPDATE
+                    script_hash=new.script_hash,source_rows=new.source_rows,
+                    target_rows=new.target_rows,status='COMPLETE',
+                    finished_at=UTC_TIMESTAMP();
+                INSERT INTO \`$CONTROL_SCHEMA\`.operation_checkpoint
+                    (run_id,phase_name,operation_name,database_kind,table_name,
+                     chunk_start,chunk_end,script_hash,planned_rows,affected_rows,
+                     status,started_at,finished_at,detail)
+                VALUES
+                    ('$(sql_escape "$RUN_ID")','load-$kind','load-table',
+                     '$(sql_escape "$kind")','$(sql_escape "$target_table")',
+                     $chunk_start,$chunk_end,'$script_hash',@inserted_rows,
+                     @inserted_rows,'COMPLETE',UTC_TIMESTAMP(),UTC_TIMESTAMP(),
+                     'atomic insert and checkpoint') AS new
+                ON DUPLICATE KEY UPDATE
+                    script_hash=new.script_hash,planned_rows=new.planned_rows,
+                    affected_rows=new.affected_rows,status='COMPLETE',
+                    finished_at=UTC_TIMESTAMP(),detail=new.detail;
+                COMMIT;
+                SELECT @inserted_rows;")
+            log "Loaded $target_table [$chunk_start,$chunk_end]: $inserted row(s)"
         fi
 
         [[ -z $primary_key || $chunk_end -ge $maximum ]] && break
@@ -474,6 +698,19 @@ load_statement_chunks() {
             WHERE \`$primary_key\` > $chunk_end;")
         (( chunk_start > maximum )) && break
     done
+
+    local loaded_rows
+    loaded_rows=$(mysql_query -e "
+        SELECT COALESCE(SUM(source_rows),0)
+        FROM \`$CONTROL_SCHEMA\`.chunk_checkpoint
+        WHERE run_id='$(sql_escape "$RUN_ID")'
+          AND database_kind='$(sql_escape "$kind")'
+          AND source_table='$(sql_escape "$source_table")'
+          AND target_table='$(sql_escape "$target_table")'
+          AND script_hash='$script_hash' AND status='COMPLETE';")
+    [[ $loaded_rows == "$expected_rows" ]] ||
+        die "Loaded row total mismatch for $target_table: expected=$expected_rows actual=$loaded_rows"
+    restore_secondary_indexes "$kind" "$target_table"
 }
 
 load_rbac_account_permissions() {
@@ -559,21 +796,11 @@ load_rbac_account_permissions() {
 
     printf '%s;\n' "$statement" \
         > "$REPORTS_DIR/$RUN_ID/generated-auth-rbac_account_permissions.sql"
-    prepare_target_for_copy auth "$target_table"
-    local expected actual
-    expected=$(mysql_query -e "
-        SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.rbac_account_permissions;")
-    mysql_query -e "
-        SET SESSION sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,NO_AUTO_VALUE_ON_ZERO';
-        START TRANSACTION;
-        $statement;
-        COMMIT;"
-    actual=$(mysql_query -e "
-        SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.rbac_account_permissions;")
-    [[ $actual == "$expected" ]] ||
-        die "RBAC account permission count mismatch: expected=$expected actual=$actual"
-    record_checkpoint auth rbac_account_permissions "$target_table" 0 0 \
-        "$hash" "$expected" "$actual"
+    local expected
+    expected=$(source_snapshot_count auth rbac_account_permissions)
+    execute_transform_atomic auth rbac_account_permissions "$target_table" \
+        "$hash" "$expected" \
+        "DELETE FROM \`$TARGET_SCHEMA\`.\`$target_table\`;" "$statement"
 }
 
 load_item_loot_storage() {
@@ -608,23 +835,14 @@ load_item_loot_storage() {
         log "Skipping completed transform: $target_table"
         return
     fi
-    prepare_target_for_copy characters "$target_table"
-    [[ $(mysql_query -e "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.\`$target_table\`;") == 0 ]] ||
-        die "Target table is not empty: $target_table"
     local expected
     expected=$(mysql_query -e "
         SELECT
           (SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.\`item_loot_items\`) +
           (SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.\`item_loot_money\` WHERE money > 0);")
-    mysql_query -e "
-        SET SESSION sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,NO_AUTO_VALUE_ON_ZERO';
-        START TRANSACTION;
-        $statement;
-        COMMIT;"
-    local actual
-    actual=$(mysql_query -e "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.\`$target_table\`;")
-    [[ $actual == "$expected" ]] || die "item_loot_storage count mismatch: expected=$expected actual=$actual"
-    record_checkpoint characters item_loot_items+item_loot_money "$target_table" 0 0 "$hash" "$expected" "$actual"
+    execute_transform_atomic characters item_loot_items+item_loot_money \
+        "$target_table" "$hash" "$expected" \
+        "DELETE FROM \`$TARGET_SCHEMA\`.\`$target_table\`;" "$statement"
 }
 
 load_character_talents() {
@@ -634,7 +852,7 @@ load_character_talents() {
         SELECT guid,spell,BIT_OR(CAST(1 AS UNSIGNED) << talentGroup)
         FROM \`$SOURCE_SCHEMA\`.\`character_talent\`
         GROUP BY guid,spell"
-    local hash expected actual
+    local hash expected
     local invalid_groups
     invalid_groups=$(mysql_query -e "
         SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.character_talent
@@ -651,20 +869,13 @@ load_character_talents() {
         log "Skipping completed transform: $target_table"
         return
     fi
-    prepare_target_for_copy characters "$target_table"
     expected=$(mysql_query -e "
         SELECT COUNT(*) FROM (
             SELECT guid,spell FROM \`$SOURCE_SCHEMA\`.character_talent GROUP BY guid,spell
         ) x;")
-    mysql_query -e "
-        SET SESSION sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,NO_AUTO_VALUE_ON_ZERO';
-        START TRANSACTION;
-        $statement;
-        COMMIT;"
-    actual=$(mysql_query -e "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.\`$target_table\`;")
-    [[ $actual == "$expected" ]] ||
-        die "character_talent count mismatch: expected=$expected actual=$actual"
-    record_checkpoint characters character_talent "$target_table" 0 0 "$hash" "$expected" "$actual"
+    execute_transform_atomic characters character_talent "$target_table" \
+        "$hash" "$expected" \
+        "DELETE FROM \`$TARGET_SCHEMA\`.\`$target_table\`;" "$statement"
 }
 
 load_channels_and_bans() {
@@ -687,7 +898,7 @@ load_channels_and_bans() {
         ) j
         WHERE TRIM(s.bannedList) <> ''
           AND j.token REGEXP '^[0-9]+$'"
-    local hash expected actual
+    local hash expected
     printf '%s;\n' "$statement" \
         > "$REPORTS_DIR/$RUN_ID/generated-characters-channels.sql"
     hash=$(printf '%s' "$statement" | sha256sum | awk '{print $1}')
@@ -695,18 +906,10 @@ load_channels_and_bans() {
         log "Skipping completed transform: channels and channels_bans"
         return
     fi
-    prepare_target_for_copy characters channels
-    mysql_query -e "DELETE FROM \`$TARGET_SCHEMA\`.channels_bans;"
     expected=$(mysql_query -e "SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.channels;")
-    mysql_query -e "
-        SET SESSION sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,NO_AUTO_VALUE_ON_ZERO';
-        START TRANSACTION;
-        $statement;
-        COMMIT;"
-    actual=$(mysql_query -e "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.channels;")
-    [[ $actual == "$expected" ]] ||
-        die "channels count mismatch: expected=$expected actual=$actual"
-    record_checkpoint characters channels channels 0 0 "$hash" "$expected" "$actual"
+    execute_transform_atomic characters channels channels "$hash" "$expected" \
+        "DELETE FROM \`$TARGET_SCHEMA\`.channels_bans;
+         DELETE FROM \`$TARGET_SCHEMA\`.channels;" "$statement"
 }
 
 handle_noncopy_mapping() {
@@ -754,7 +957,7 @@ perform_load() {
     [[ $kind == auth ]] || require_phase load-auth
     schemas_for_kind "$kind"
     assert_schema_unchanged "$kind" "$SOURCE_SCHEMA"
-    assert_source_counts_unchanged "$kind" "$SOURCE_SCHEMA"
+    check_quiescence
     mapping_inventory_check "$kind"
 
     local mapping_file
