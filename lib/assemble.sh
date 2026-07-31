@@ -31,7 +31,7 @@ apply_update_directory() {
             continue
         fi
 
-        log "Applying AzerothCore update $schema.$name"
+        log "Applying target-core update $schema.$name"
         mysql_import "$schema" "$file"
         mysql_query "$schema" -e "
             INSERT INTO updates (name, hash, state, speed)
@@ -146,17 +146,33 @@ perform_assemble() {
         CREATE DATABASE IF NOT EXISTS \`$TARGET_CHARACTERS_SCHEMA\`
           CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 
-    import_base_directory "$TARGET_AUTH_SCHEMA" "$AZEROTHCORE_DIR/data/sql/base/db_auth"
-    import_base_directory "$TARGET_CHARACTERS_SCHEMA" "$AZEROTHCORE_DIR/data/sql/base/db_characters"
-    apply_update_directory "$TARGET_AUTH_SCHEMA" "$AZEROTHCORE_DIR/data/sql/updates/db_auth"
-    apply_update_directory "$TARGET_CHARACTERS_SCHEMA" "$AZEROTHCORE_DIR/data/sql/updates/db_characters"
+    local expected_auth_tables expected_character_tables target_name
+    if [[ $MIGRATION_DIRECTION == tc-to-ac ]]; then
+        import_base_directory "$TARGET_AUTH_SCHEMA" "$AZEROTHCORE_DIR/data/sql/base/db_auth"
+        import_base_directory "$TARGET_CHARACTERS_SCHEMA" "$AZEROTHCORE_DIR/data/sql/base/db_characters"
+        apply_update_directory "$TARGET_AUTH_SCHEMA" "$AZEROTHCORE_DIR/data/sql/updates/db_auth"
+        apply_update_directory "$TARGET_CHARACTERS_SCHEMA" "$AZEROTHCORE_DIR/data/sql/updates/db_characters"
+        expected_auth_tables=22
+        expected_character_tables=108
+        target_name=AzerothCore
+    else
+        mysql_import "$TARGET_AUTH_SCHEMA" "$TRINITYCORE_DIR/sql/base/auth_database.sql"
+        mysql_import "$TARGET_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/base/characters_database.sql"
+        apply_update_directory "$TARGET_AUTH_SCHEMA" "$TRINITYCORE_DIR/sql/updates/auth/3.3.5"
+        apply_update_directory "$TARGET_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates/characters/3.3.5"
+        expected_auth_tables=21
+        expected_character_tables=91
+        target_name=TrinityCore
+    fi
 
     local auth_tables
     local character_tables
     auth_tables=$(schema_table_count "$TARGET_AUTH_SCHEMA")
     character_tables=$(schema_table_count "$TARGET_CHARACTERS_SCHEMA")
-    [[ $auth_tables == 22 ]] || die "Expected 22 target auth tables, found $auth_tables"
-    [[ $character_tables == 108 ]] || die "Expected 108 target characters tables, found $character_tables"
+    [[ $auth_tables == "$expected_auth_tables" ]] ||
+        die "Expected $expected_auth_tables target auth tables, found $auth_tables"
+    [[ $character_tables == "$expected_character_tables" ]] ||
+        die "Expected $expected_character_tables target characters tables, found $character_tables"
 
     local auth_fingerprint
     local characters_fingerprint
@@ -175,5 +191,5 @@ perform_assemble() {
     write_schema_diff "$SOURCE_AUTH_SCHEMA" "$TARGET_AUTH_SCHEMA" auth
     write_schema_diff "$SOURCE_CHARACTERS_SCHEMA" "$TARGET_CHARACTERS_SCHEMA" characters
 
-    log "Assembled native AzerothCore schemas and generated schema reports"
+    log "Assembled native $target_name schemas and generated schema reports"
 }

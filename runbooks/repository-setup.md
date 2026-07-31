@@ -8,7 +8,7 @@ either project.
 
 ```text
 workspace/
-├── trinitycore-to-azerothcore-db/
+├── trinitycore-azerothcore-db-migrator/
 ├── TrinityCore/
 └── azerothcore-wotlk/
 ```
@@ -31,7 +31,8 @@ AZEROTHCORE_DIR=../azerothcore-wotlk
 ```
 
 Relative paths in a migration configuration are resolved from the
-`trinitycore-to-azerothcore-db` repository root. They are not resolved from the shell's
+`trinitycore-azerothcore-db-migrator` repository root. They are not resolved
+from the shell's
 current directory.
 
 ## Separate locations

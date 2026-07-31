@@ -5,12 +5,14 @@
    exact core revisions.
 2. Start a new rehearsal run and inspect `*-table-inventory.tsv`,
    `*-schema-diff.tsv`, and `*-type-risk.tsv`.
-3. Add every new source and target table to the appropriate CSV. Use:
+3. Add every new source and target table to the appropriate CSV under the
+   selected `mappings/<direction>/` directory. Keep the opposite direction
+   explicit as well; a forward transform is not assumed reversible. Use:
    - `COPY` only for approved common-by-name data;
    - `TRANSFORM` for renames, splits, merges, enum changes, packed fields, or
      semantic defaults;
    - `TARGET_SEED`, `TARGET_EMPTY`, or `DERIVED` for target-owned objects;
-   - `SOURCE_ARCHIVE` only with an explicit loss rationale;
+   - `SOURCE_ARCHIVE` only with an explicit loss rationale and verified archive;
    - `BLOCKED` when semantics are unresolved.
 4. For a transform, add an explicit target list and source expression list or a
    specialized transactional loader. Never use `SELECT *`.

@@ -70,6 +70,20 @@ capture_source_counts() {
 
 capture_source_orphan_audit() {
     local destination=$1
+    local loot_query
+    if [[ $MIGRATION_DIRECTION == tc-to-ac ]]; then
+        loot_query="
+            SELECT container_id AS container_guid
+            FROM \`$SOURCE_CHARACTERS_SCHEMA\`.item_loot_items
+            UNION ALL
+            SELECT container_id
+            FROM \`$SOURCE_CHARACTERS_SCHEMA\`.item_loot_money
+            WHERE money>0"
+    else
+        loot_query="
+            SELECT containerGUID AS container_guid
+            FROM \`$SOURCE_CHARACTERS_SCHEMA\`.item_loot_storage"
+    fi
     {
         printf 'metric\trows_found\tpolicy\n'
         mysql_query -e "
@@ -110,15 +124,10 @@ capture_source_orphan_audit() {
             UNION ALL
             SELECT 'item_loot_without_container',COUNT(*),'DROP_DANGLING_RELATION'
             FROM (
-                SELECT container_id
-                FROM \`$SOURCE_CHARACTERS_SCHEMA\`.item_loot_items
-                UNION ALL
-                SELECT container_id
-                FROM \`$SOURCE_CHARACTERS_SCHEMA\`.item_loot_money
-                WHERE money>0
+                $loot_query
             ) l
             LEFT JOIN \`$SOURCE_CHARACTERS_SCHEMA\`.item_instance i
-              ON i.guid=l.container_id
+              ON i.guid=l.container_guid
             WHERE i.guid IS NULL
             UNION ALL
             SELECT 'realmcharacters_without_account',COUNT(*),'REBUILD_FOR_CONFIGURED_REALM'
@@ -144,13 +153,13 @@ check_quiescence() {
         )
           AND ID <> CONNECTION_ID();")
     [[ $active_connections == 0 ]] ||
-        die "Source schemas still have $active_connections connected session(s); stop TrinityCore first"
+        die "Source schemas still have $active_connections connected session(s); stop the source core first"
 }
 
 check_non_table_objects() {
     local kind=$1
     local schema=$2
-    local registry="$MIGRATION_ROOT/mappings/objects.csv"
+    local registry="$MIGRATION_ROOT/mappings/$MIGRATION_DIRECTION/objects.csv"
     local object_type object_name matched
     while IFS=$'\t' read -r object_type object_name; do
         [[ -n $object_name ]] || continue
@@ -237,11 +246,11 @@ perform_preflight() {
 
     mysql_query -e "
         INSERT INTO \`$CONTROL_SCHEMA\`.migration_run (
-            run_id, config_hash, source_auth_fingerprint,
+            run_id, migration_direction, config_hash, source_auth_fingerprint,
             source_characters_fingerprint, trinitycore_revision,
             azerothcore_revision, status
         ) VALUES (
-            '$(sql_escape "$RUN_ID")', '$CONFIG_HASH',
+            '$(sql_escape "$RUN_ID")', '$MIGRATION_DIRECTION', '$CONFIG_HASH',
             '$auth_fingerprint', '$characters_fingerprint',
             '$(sql_escape "$EXPECTED_TRINITYCORE_COMMIT")',
             '$(sql_escape "$EXPECTED_AZEROTHCORE_COMMIT")', 'RUNNING'

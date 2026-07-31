@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# This phase mutates only the freshly assembled AzerothCore targets. TrinityCore
-# remains the immutable archive and rollback source.
+# This phase mutates only freshly assembled target schemas. Source schemas
+# remain the immutable rollback source in both directions.
 
 sanitize_query() {
     mysql_query --database="$TARGET_CHARACTERS_SCHEMA" "$@"
@@ -170,7 +170,8 @@ delete_direct_character_rows() {
         character_account_data:guid character_achievement:guid
         character_achievement_offline_updates:guid character_achievement_progress:guid
         character_action:guid character_arena_stats:guid character_aura:guid
-        character_banned:guid character_battleground_random:guid
+        character_banned:guid character_battleground_data:guid
+        character_battleground_random:guid
         character_brew_of_the_month:guid character_declinedname:guid
         character_entry_point:guid character_equipmentsets:guid character_gifts:guid
         character_glyphs:guid character_homebind:guid character_instance:guid
@@ -314,11 +315,24 @@ delete_dangling_relations() {
         LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.mail m ON m.id=mi.mail_id
         LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_instance i ON i.guid=mi.item_guid
         WHERE m.id IS NULL OR i.guid IS NULL;"
-    run_cleanup_delete dangling-item-loot item_loot_storage "
-        DELETE l FROM \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_storage l
-        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_instance i
-          ON i.guid=l.containerGUID
-        WHERE i.guid IS NULL;"
+    if table_exists "$TARGET_CHARACTERS_SCHEMA" item_loot_storage; then
+        run_cleanup_delete dangling-item-loot item_loot_storage "
+            DELETE l FROM \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_storage l
+            LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_instance i
+              ON i.guid=l.containerGUID
+            WHERE i.guid IS NULL;"
+    else
+        run_cleanup_delete dangling-item-loot-items item_loot_items "
+            DELETE l FROM \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_items l
+            LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_instance i
+              ON i.guid=l.container_id
+            WHERE i.guid IS NULL;"
+        run_cleanup_delete dangling-item-loot-money item_loot_money "
+            DELETE l FROM \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_money l
+            LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_instance i
+              ON i.guid=l.container_id
+            WHERE i.guid IS NULL;"
+    fi
 }
 
 populate_item_root() {
@@ -483,6 +497,25 @@ delete_item_candidates() {
         mark_operation_running sanitize-target "$operation" characters item_instance \
             "$lower" "$upper" "$hash" "$count"
 
+        local loot_cleanup_sql
+        if table_exists "$TARGET_CHARACTERS_SCHEMA" item_loot_storage; then
+            loot_cleanup_sql="
+                DELETE x FROM \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_storage x
+                JOIN cleanup_items c ON c.guid=x.containerGUID;
+                SET @loot=ROW_COUNT();
+                $(summary_accumulator_sql item_loot_storage '@loot')"
+        else
+            loot_cleanup_sql="
+                DELETE x FROM \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_items x
+                JOIN cleanup_items c ON c.guid=x.container_id;
+                SET @loot_items=ROW_COUNT();
+                $(summary_accumulator_sql item_loot_items '@loot_items')
+                DELETE x FROM \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_money x
+                JOIN cleanup_items c ON c.guid=x.container_id;
+                SET @loot_money=ROW_COUNT();
+                $(summary_accumulator_sql item_loot_money '@loot_money')"
+        fi
+
         if ! result=$(sanitize_query -e "
             START TRANSACTION;
             CREATE TEMPORARY TABLE cleanup_items
@@ -493,10 +526,7 @@ delete_item_candidates() {
             WHERE c.run_uuid=$run_binary
               AND c.guid>=$lower AND c.guid<=$upper;
 
-            DELETE x FROM \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_storage x
-            JOIN cleanup_items c ON c.guid=x.containerGUID;
-            SET @loot=ROW_COUNT();
-            $(summary_accumulator_sql item_loot_storage '@loot')
+            $loot_cleanup_sql
             DELETE x FROM \`$TARGET_CHARACTERS_SCHEMA\`.item_refund_instance x
             JOIN cleanup_items c ON c.guid=x.item_guid;
             SET @refund=ROW_COUNT();
@@ -672,5 +702,5 @@ perform_sanitize_target() {
 
     finish_cleanup_table_summary characters "$TARGET_CHARACTERS_SCHEMA"
     write_cleanup_reports
-    log "Completed approved target sanitization; TrinityCore source schemas were not modified"
+    log "Completed approved target sanitization; source schemas were not modified"
 }

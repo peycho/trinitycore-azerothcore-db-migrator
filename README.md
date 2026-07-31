@@ -1,12 +1,13 @@
-# TrinityCore to AzerothCore database migration
+# TrinityCore/AzerothCore database migrator
 
-[![CI](https://github.com/peycho/trinitycore-to-azerothcore-db/actions/workflows/ci.yml/badge.svg)](https://github.com/peycho/trinitycore-to-azerothcore-db/actions/workflows/ci.yml)
+[![CI](https://github.com/peycho/trinitycore-azerothcore-db-migrator/actions/workflows/ci.yml/badge.svg)](https://github.com/peycho/trinitycore-azerothcore-db-migrator/actions/workflows/ci.yml)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL_v3_or_later-blue.svg)](COPYING)
 
-This repository is a standalone, fail-closed migration toolkit for one
-TrinityCore 3.3.5 auth/characters pair to fresh AzerothCore schemas on the same
-MySQL 8 server. It does not modify either C++ project and never writes to the
-world database.
+This repository is a standalone, fail-closed migration toolkit for moving one
+realm's auth and characters data between pinned TrinityCore 3.3.5 and
+AzerothCore revisions on the same MySQL 8 server. Both `tc-to-ac` and
+`ac-to-tc` create fresh native target schemas. The toolkit does not modify
+either C++ project and never writes to the world database.
 
 > [!CAUTION]
 > Database migration is destructive to its designated target schemas and can
@@ -26,18 +27,20 @@ Unknown live-schema differences, nonempty blocked mappings, truncation,
 constraint violations, source drift, or target data cause the run to stop.
 The two TrinityCore auth administration views (`vw_log_history` and `vw_rbac`)
 are explicitly catalogued as source-only objects; any other live view, routine,
-trigger, or event blocks preflight until added to `mappings/objects.csv`.
+trigger, or event blocks preflight until added to the selected direction's
+`objects.csv` registry.
 
 ## Safety model
 
-- TrinityCore must be stopped before `preflight` when `REQUIRE_QUIESCENT=1`.
+- The source core must be stopped before `preflight` when `REQUIRE_QUIESCENT=1`.
 - Source schemas are read-only. Use a MySQL account with `SELECT` on source and
   world, and DDL/DML privileges only on the designated target/control schemas.
 - Target schemas must be absent or empty. The runner does not drop schemas.
 - A source table-count snapshot and normalized DDL fingerprints prevent a run
   from silently continuing after source drift.
-- Every table appears in `mappings/auth.csv` or `mappings/characters.csv`.
-- Target AzerothCore update ledgers and seed tables are retained.
+- Every table appears in the selected direction's auth or characters registry
+  under `mappings/`.
+- Target-core update ledgers and seed tables are retained.
 - Large mappings are split on their leading numeric primary-key column.
   Target inserts and completed chunk checkpoints commit atomically.
 - Non-unique secondary indexes on configured large tables may be deferred;
@@ -47,8 +50,8 @@ trigger, or event blocks preflight until added to `mappings/objects.csv`.
 - MySQL strict mode and explicit target column lists are used for all loads.
 - Every MySQL client session is initialized to UTC so checkpoint and timing
   timestamps remain comparable when the server uses a local timezone.
-- Validation must report `READY`; AzerothCore smoke tests remain a separate
-  cutover gate.
+- Validation must report `READY`; target-core application smoke tests remain a
+  separate cutover gate.
 
 ## Requirements
 
@@ -61,13 +64,12 @@ trigger, or event blocks preflight until added to `mappings/objects.csv`.
   - [AzerothCore](https://github.com/azerothcore/azerothcore-wotlk) at
     `5bdaa898d`
 
-Both core repositories are required on the host running the migration. The
-TrinityCore checkout supplies the pinned source-schema definition and Git
-revision used to verify the mapping provenance. The AzerothCore checkout
-supplies the base and released update SQL that `assemble` imports to create the
-targets. The toolkit does not download these files, and copying only SQL files
-is insufficient because `preflight` also verifies each Git revision and checks
-the SQL tree for local changes.
+Both core repositories are required on the host running the migration. They
+supply the native source/target schema definitions, released target updates,
+and pinned Git revisions used to verify mapping provenance and assemble the
+selected target core. The toolkit does not download these files, and copying
+only SQL files is insufficient because `preflight` also verifies both Git
+revisions and checks their SQL trees for local changes.
 
 Neither core needs to be compiled, and the toolkit does not modify either
 checkout. Keep both available for the complete run, including resumed commands.
@@ -91,6 +93,7 @@ Restrict it with `chmod 0600`.
 Copy `config/migration.env.example` to a secure location and set:
 
 - source/target/control schema names;
+- `MIGRATION_DIRECTION=tc-to-ac` or `ac-to-tc`;
 - MySQL endpoint and option-file path;
 - `REALM_ID` matching the characters database;
 - load/cleanup chunk sizes, the large-table threshold, index deferral, and
@@ -105,9 +108,10 @@ LARGE_TABLE_ROWS=250000
 DEFER_SECONDARY_INDEXES=1
 ```
 
-`SOURCE_WORLD_SCHEMA` is optional and read-only. It is used only by validation
-for map/item/quest/spell/creature references when such checks are available;
-it is never assembled, migrated, sanitized, or written.
+`SOURCE_WORLD_SCHEMA` is read-only and is never assembled, migrated, sanitized,
+or written. It is optional when no world-backed check is needed, but an
+`ac-to-tc` run with nonempty creature or gameobject respawns requires it so
+their IDs and maps can be validated before the two tables are merged.
 
 The config file is sourced by Bash. It must be owned and reviewed by the
 operator and must not contain untrusted shell text.
@@ -118,6 +122,7 @@ Run each command separately and inspect its reports:
 
 ```bash
 bin/migrate.sh --config /secure/migration.env preflight
+bin/migrate.sh --config /secure/migration.env archive-unsupported
 bin/migrate.sh --config /secure/migration.env assemble
 bin/migrate.sh --config /secure/migration.env load-auth
 bin/migrate.sh --config /secure/migration.env load-characters
@@ -130,15 +135,26 @@ bin/migrate.sh --config /secure/migration.env status
 secure config to resume from another operator host. Runtime reports are written
 under `reports/<run-id>/`.
 
-The normal phase order is enforced. Completed phases no-op. Failed table loads
-and item cleanup batches can be rerun because their mutations and completion
+`preflight` must precede both `archive-unsupported` and `assemble`, and both
+must complete before loading. Completed phases no-op. Failed table loads and
+item cleanup batches can be rerun because their mutations and completion
 checkpoints are atomic. A `RUNNING` checkpoint left by a killed process is
 replayed only for that exact range. Never edit a mapping or transformation in
 the middle of a production run; the toolkit hash will reject the old run.
 
-This performance revision also changes the control-schema layout. Discard
-targets and the control schema created by an earlier toolkit revision and
-start again at `preflight`; do not resume the previously interrupted run.
+The bidirectional release changes the control-schema identity and layout.
+Discard targets and control schemas created by an earlier one-way release and
+start again at `preflight`; do not resume an older run.
+
+`archive-unsupported` is mandatory after preflight. It no-ops when every
+source-only mapping is empty. Otherwise it requires `ARCHIVE_DIR` outside the
+repository and writes binary-safe compressed dumps plus a SHA-256 manifest
+before loading can begin.
+
+`ALLOW_SOURCE_ARCHIVE=1` permits reviewed archival dispositions.
+Gameplay-bearing rows marked `REVIEW_REQUIRED` additionally require
+`ALLOW_GAMEPLAY_ARCHIVE=1`; leave it disabled until an operator has inspected
+and approved the report and archive policy.
 
 `preflight` writes `source-orphan-audit.tsv` so inherited inconsistencies are
 visible before target creation. `sanitize-target` then applies the approved
@@ -158,6 +174,8 @@ removed. `realmcharacters` is target-derived after cleanup rather than copied
 from TrinityCore.
 
 ## Implemented semantic transformations
+
+### TrinityCore to AzerothCore
 
 - Auth credentials preserve SRP6 `salt` and `verifier` byte-for-byte;
   `session_key_auth` maps to `session_key`; unsupported Battle.net session data
@@ -185,6 +203,24 @@ from TrinityCore.
 - Petition GUIDs seed the new petition IDs.
 - Transient respawns are intentionally reset, consistent with AzerothCore's
   respawn schema transition.
+
+### AzerothCore to TrinityCore
+
+- Auth SRP6 bytes and the auth session key are preserved; Battle.net session
+  state and runtime online state start empty.
+- Account access and per-account RBAC overrides map through target column names
+  and binary-equal target permission names.
+- Talent spec masks expand into TrinityCore talent-group rows.
+- Consolidated item loot splits into item and money tables; multiple money rows
+  for one container block migration.
+- Channel bans serialize deterministically into TrinityCore's banned list.
+- Entry points, instance-extension state, petitions, arena ratings, surveys,
+  spell state, and cooldown state use explicit target-reader-compatible fields.
+- Creature and gameobject respawns merge with TrinityCore spawn types `0` and
+  `1`.
+- AzerothCore-only data is archived before it is omitted. The reverse path is
+  semantically compatible, not a byte-for-byte reconstruction of historical
+  TrinityCore fields that were previously discarded.
 
 See the CSV registries for every copied, seeded, empty, derived, archived, and
 blocked table.
@@ -227,11 +263,14 @@ tests/static-checks.sh
 `tests/fixtures/orphan-cleanup-data.sql` exercises dependency cleanup and
 unreachable items. `reachable-missing-owner-blockers.sql` is intentionally
 applied to a loaded target clone and must make `sanitize-target` fail with all
-five reachability root masks.
+five reachability root masks. `azerothcore-reverse-data.sql` exercises the
+reviewed reverse semantic transforms and unsupported-data archive path.
 
-Follow the [rehearsal](runbooks/rehearsal.md),
-[production cutover](runbooks/cutover.md), and
-[rollback](runbooks/rollback.md) runbooks.
+Follow the [rehearsal](runbooks/rehearsal.md) and the direction-specific
+cutover/rollback runbooks: [TC to AC cutover](runbooks/cutover.md),
+[TC to AC rollback](runbooks/rollback.md),
+[AC to TC cutover](runbooks/cutover-ac-to-tc.md), and
+[AC to TC rollback](runbooks/rollback-ac-to-tc.md).
 
 ## Contributing and support
 
@@ -247,7 +286,7 @@ SRP6 material, email/IP data, or player/account information.
 
 Copyright © 2026 Peycho Dimitrov and contributors.
 
-trinitycore-to-azerothcore-db is free software licensed under the
+trinitycore-azerothcore-db-migrator is free software licensed under the
 [GNU General Public License, version 3 or any later version](COPYING).
 See [THIRD_PARTY.md](THIRD_PARTY.md) for upstream-project and trademark
 information.

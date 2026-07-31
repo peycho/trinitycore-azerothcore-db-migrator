@@ -9,6 +9,7 @@ MIGRATION_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$MIGRATION_ROOT/lib/common.sh"
 source "$MIGRATION_ROOT/lib/preflight.sh"
 source "$MIGRATION_ROOT/lib/assemble.sh"
+source "$MIGRATION_ROOT/lib/archive.sh"
 source "$MIGRATION_ROOT/lib/load.sh"
 source "$MIGRATION_ROOT/lib/sanitize.sh"
 source "$MIGRATION_ROOT/lib/validate.sh"
@@ -20,7 +21,9 @@ Usage:
 
 Commands:
   preflight        Verify revisions/server/source state and capture schemas
-  assemble         Build fresh native AzerothCore target schemas
+  assemble         Build fresh native target-core schemas
+  archive-unsupported
+                   Archive approved source-only data and enforce its gate
   load-auth        Migrate approved auth mappings
   load-characters  Migrate approved character mappings
   sanitize-target  Remove approved source-existing orphan data from targets
@@ -57,6 +60,9 @@ case "$COMMAND" in
         ;;
     assemble)
         with_phase assemble perform_assemble
+        ;;
+    archive-unsupported)
+        with_phase archive-unsupported perform_archive_unsupported
         ;;
     load-auth)
         with_phase load-auth perform_load auth

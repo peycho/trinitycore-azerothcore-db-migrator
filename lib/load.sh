@@ -2,7 +2,7 @@
 # shellcheck disable=SC2016
 
 mapping_file_for() {
-    printf '%s/mappings/%s.csv\n' "$MIGRATION_ROOT" "$1"
+    printf '%s/mappings/%s/%s.csv\n' "$MIGRATION_ROOT" "$MIGRATION_DIRECTION" "$1"
 }
 
 schemas_for_kind() {
@@ -62,7 +62,13 @@ mapping_inventory_check() {
                 mapped_source["$source_part"]=1
             done
         fi
-        [[ -n $target_table && $target_table != "-" ]] && mapped_target["$target_table"]=1
+        if [[ -n $target_table && $target_table != "-" ]]; then
+            local target_part
+            IFS=+ read -ra target_parts <<< "$target_table"
+            for target_part in "${target_parts[@]}"; do
+                mapped_target["$target_part"]=1
+            done
+        fi
     done < "$mapping_file"
 
     local table
@@ -242,6 +248,16 @@ build_named_transform_spec() {
                 '`id`,`gmlevel`,`RealmID`,`comment`' \
                 's.`AccountID`,s.`SecurityLevel`,s.`RealmID`,s.`Comment`'
             ;;
+        ACCOUNT_REVERSE)
+            printf '%s\t%s\n' \
+                '`id`,`username`,`salt`,`verifier`,`session_key_auth`,`session_key_bnet`,`totp_secret`,`email`,`reg_mail`,`joindate`,`last_ip`,`last_attempt_ip`,`failed_logins`,`locked`,`lock_country`,`last_login`,`online`,`expansion`,`mutetime`,`mutereason`,`muteby`,`locale`,`os`,`timezone_offset`,`recruiter`' \
+                's.`id`,s.`username`,s.`salt`,s.`verifier`,s.`session_key`,NULL,s.`totp_secret`,s.`email`,s.`reg_mail`,s.`joindate`,s.`last_ip`,s.`last_attempt_ip`,s.`failed_logins`,s.`locked`,s.`lock_country`,s.`last_login`,0,s.`expansion`,s.`mutetime`,s.`mutereason`,s.`muteby`,s.`locale`,s.`os`,0,s.`recruiter`'
+            ;;
+        ACCOUNT_ACCESS_REVERSE)
+            printf '%s\t%s\n' \
+                '`AccountID`,`SecurityLevel`,`RealmID`,`Comment`' \
+                's.`id`,s.`gmlevel`,s.`RealmID`,s.`comment`'
+            ;;
         CHARACTERS)
             mysql_query -e "SET SESSION group_concat_max_len=1048576;
                 SELECT
@@ -269,50 +285,116 @@ build_named_transform_spec() {
                       ('order','creation_date','innTriggerId','extraBonusTalentCount'))
                   AND t.EXTRA NOT LIKE '%GENERATED%';"
             ;;
+        CHARACTERS_REVERSE)
+            mysql_query -e "SET SESSION group_concat_max_len=1048576;
+                SELECT
+                    GROUP_CONCAT(CONCAT('\`', REPLACE(t.COLUMN_NAME, '\`', '\`\`'), '\`')
+                                 ORDER BY t.ORDINAL_POSITION SEPARATOR ','),
+                    GROUP_CONCAT(
+                        CASE t.COLUMN_NAME
+                            WHEN 'online' THEN '0'
+                            WHEN 'name' THEN 'NULLIF(s.\`name\`,'''')'
+                            ELSE CONCAT('s.\`', REPLACE(t.COLUMN_NAME, '\`', '\`\`'), '\`')
+                        END
+                        ORDER BY t.ORDINAL_POSITION SEPARATOR ',')
+                FROM information_schema.COLUMNS t
+                JOIN information_schema.COLUMNS s
+                  ON s.TABLE_SCHEMA='$(sql_escape "$SOURCE_SCHEMA")'
+                 AND s.TABLE_NAME='characters'
+                 AND s.COLUMN_NAME=t.COLUMN_NAME
+                WHERE t.TABLE_SCHEMA='$(sql_escape "$TARGET_SCHEMA")'
+                  AND t.TABLE_NAME='characters'
+                  AND t.EXTRA NOT LIKE '%GENERATED%';"
+            ;;
         CHARACTER_INSTANCE)
             printf '%s\t%s\n' \
                 '`guid`,`instance`,`permanent`,`extended`' \
                 's.`guid`,s.`instance`,s.`permanent`,IF(s.`extendState`=2,1,0)'
+            ;;
+        CHARACTER_INSTANCE_REVERSE)
+            printf '%s\t%s\n' \
+                '`guid`,`instance`,`permanent`,`extendState`' \
+                's.`guid`,s.`instance`,s.`permanent`,IF(s.`extended`=1,2,1)'
             ;;
         CHARACTER_ENTRY_POINT)
             printf '%s\t%s\n' \
                 '`guid`,`joinX`,`joinY`,`joinZ`,`joinO`,`joinMapId`,`taxiPath0`,`taxiPath1`,`mountSpell`' \
                 's.`guid`,s.`joinX`,s.`joinY`,s.`joinZ`,s.`joinO`,s.`joinMapId`,s.`taxiStart`,s.`taxiEnd`,s.`mountSpell`'
             ;;
+        CHARACTER_ENTRY_POINT_REVERSE)
+            printf '%s\t%s\n' \
+                '`guid`,`instanceId`,`team`,`joinX`,`joinY`,`joinZ`,`joinO`,`joinMapId`,`taxiStart`,`taxiEnd`,`mountSpell`' \
+                's.`guid`,0,0,s.`joinX`,s.`joinY`,s.`joinZ`,s.`joinO`,s.`joinMapId`,s.`taxiPath0`,s.`taxiPath1`,s.`mountSpell`'
+            ;;
         CHARACTER_SPELL_COOLDOWN)
             printf '%s\t%s\n' \
                 '`guid`,`spell`,`category`,`item`,`time`,`needSend`' \
                 's.`guid`,s.`spell`,s.`categoryId`,s.`item`,GREATEST(s.`time`,s.`categoryEnd`),1'
+            ;;
+        CHARACTER_SPELL_COOLDOWN_REVERSE)
+            printf '%s\t%s\n' \
+                '`guid`,`spell`,`item`,`time`,`categoryId`,`categoryEnd`' \
+                's.`guid`,s.`spell`,s.`item`,s.`time`,COALESCE(s.`category`,0),IF(COALESCE(s.`category`,0)=0,0,s.`time`)'
             ;;
         CHARACTER_SPELL)
             printf '%s\t%s\n' \
                 '`guid`,`spell`,`specMask`' \
                 's.`guid`,s.`spell`,3'
             ;;
+        CHARACTER_SPELL_REVERSE)
+            printf '%s\t%s\n' \
+                '`guid`,`spell`,`active`,`disabled`' \
+                's.`guid`,s.`spell`,1,0'
+            ;;
         CHARACTER_ARENA_STATS)
             printf '%s\t%s\n' \
                 '`guid`,`slot`,`matchMakerRating`,`maxMMR`' \
                 's.`guid`,s.`slot`,s.`matchMakerRating`,s.`matchMakerRating`'
+            ;;
+        CHARACTER_ARENA_STATS_REVERSE)
+            printf '%s\t%s\n' \
+                '`guid`,`slot`,`matchMakerRating`' \
+                's.`guid`,s.`slot`,s.`matchMakerRating`'
             ;;
         GM_SURVEY)
             printf '%s\t%s\n' \
                 '`surveyId`,`guid`,`mainSurvey`,`comment`,`createTime`,`maxMMR`' \
                 's.`surveyId`,s.`guid`,s.`mainSurvey`,s.`comment`,s.`createTime`,0'
             ;;
+        GM_SURVEY_REVERSE)
+            printf '%s\t%s\n' \
+                '`surveyId`,`guid`,`mainSurvey`,`comment`,`createTime`' \
+                's.`surveyId`,s.`guid`,s.`mainSurvey`,s.`comment`,s.`createTime`'
+            ;;
         PET_SPELL_COOLDOWN)
             printf '%s\t%s\n' \
                 '`guid`,`spell`,`category`,`time`' \
                 's.`guid`,s.`spell`,s.`categoryId`,GREATEST(s.`time`,s.`categoryEnd`)'
+            ;;
+        PET_SPELL_COOLDOWN_REVERSE)
+            printf '%s\t%s\n' \
+                '`guid`,`spell`,`time`,`categoryId`,`categoryEnd`' \
+                's.`guid`,s.`spell`,s.`time`,COALESCE(s.`category`,0),IF(COALESCE(s.`category`,0)=0,0,s.`time`)'
             ;;
         PETITION)
             printf '%s\t%s\n' \
                 '`ownerguid`,`petitionguid`,`petition_id`,`name`,`type`' \
                 's.`ownerguid`,s.`petitionguid`,s.`petitionguid`,s.`name`,s.`type`'
             ;;
+        PETITION_REVERSE)
+            printf '%s\t%s\n' \
+                '`ownerguid`,`petitionguid`,`name`,`type`' \
+                's.`ownerguid`,s.`petitionguid`,s.`name`,s.`type`'
+            ;;
         PETITION_SIGN)
             printf '%s\t%s\n' \
                 '`ownerguid`,`petitionguid`,`petition_id`,`playerguid`,`player_account`,`type`' \
                 's.`ownerguid`,s.`petitionguid`,s.`petitionguid`,s.`playerguid`,s.`player_account`,s.`type`'
+            ;;
+        PETITION_SIGN_REVERSE)
+            printf '%s\t%s\n' \
+                '`ownerguid`,`petitionguid`,`playerguid`,`player_account`,`type`' \
+                's.`ownerguid`,s.`petitionguid`,s.`playerguid`,s.`player_account`,s.`type`'
             ;;
         *)
             die "Unknown named transform: $transform"
@@ -594,6 +676,54 @@ execute_transform_atomic() {
         die "$target_table count mismatch: expected=$expected actual=$actual"
     restore_secondary_indexes "$kind" "$target_table"
     log "Loaded transform $target_table: $actual row(s)"
+}
+
+execute_multi_transform_atomic() {
+    local kind=$1 source_label=$2 target_label=$3 hash=$4 expected=$5
+    local cleanup_sql=$6 statement=$7 count_sql=$8
+    if checkpoint_complete "$kind" "$target_label" 0 0 "$hash"; then
+        log "Skipping completed transform: $target_label"
+        return
+    fi
+    local actual
+    mark_operation_running "load-$kind" load-transform "$kind" "$target_label" \
+        0 0 "$hash" "$expected"
+    actual=$(mysql_query -e "
+        SET SESSION sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,NO_AUTO_VALUE_ON_ZERO';
+        START TRANSACTION;
+        $cleanup_sql
+        $statement;
+        SELECT ($count_sql) INTO @target_rows;
+        SET @checkpoint_status=IF(@target_rows=$expected,'COMPLETE','FAILED');
+        INSERT INTO \`$CONTROL_SCHEMA\`.chunk_checkpoint
+            (run_id,database_kind,source_table,target_table,chunk_start,chunk_end,
+             script_hash,source_rows,target_rows,status)
+        VALUES
+            ('$(sql_escape "$RUN_ID")','$(sql_escape "$kind")',
+             '$(sql_escape "$source_label")','$(sql_escape "$target_label")',
+             0,0,'$hash',$expected,@target_rows,@checkpoint_status) AS new
+        ON DUPLICATE KEY UPDATE
+            script_hash=new.script_hash,source_rows=new.source_rows,
+            target_rows=new.target_rows,status=new.status,
+            finished_at=UTC_TIMESTAMP();
+        INSERT INTO \`$CONTROL_SCHEMA\`.operation_checkpoint
+            (run_id,phase_name,operation_name,database_kind,table_name,
+             chunk_start,chunk_end,script_hash,planned_rows,affected_rows,
+             status,started_at,finished_at,detail)
+        VALUES
+            ('$(sql_escape "$RUN_ID")','load-$kind','load-transform',
+             '$(sql_escape "$kind")','$(sql_escape "$target_label")',
+             0,0,'$hash',$expected,@target_rows,@checkpoint_status,
+             UTC_TIMESTAMP(),UTC_TIMESTAMP(),'atomic multi-table transform') AS new
+        ON DUPLICATE KEY UPDATE
+            script_hash=new.script_hash,planned_rows=new.planned_rows,
+            affected_rows=new.affected_rows,status=new.status,
+            finished_at=new.finished_at,detail=new.detail;
+        COMMIT;
+        SELECT @target_rows;")
+    [[ $actual == "$expected" ]] ||
+        die "$target_label count mismatch: expected=$expected actual=$actual"
+    log "Loaded transform $target_label: $actual row(s)"
 }
 
 load_statement_chunks() {
@@ -912,11 +1042,126 @@ load_channels_and_bans() {
          DELETE FROM \`$TARGET_SCHEMA\`.channels;" "$statement"
 }
 
+load_item_loot_reverse() {
+    local statement="
+        INSERT INTO \`$TARGET_SCHEMA\`.item_loot_items
+            (container_id,item_id,item_count,item_index,follow_rules,ffa,blocked,
+             counted,under_threshold,needs_quest,rnd_prop,rnd_suffix)
+        SELECT containerGUID,itemid,\`count\`,item_index,follow_loot_rules,
+               freeforall,is_blocked,is_counted,is_underthreshold,needs_quest,
+               randomPropertyId,randomSuffix
+        FROM \`$SOURCE_SCHEMA\`.item_loot_storage WHERE itemid<>0;
+        INSERT INTO \`$TARGET_SCHEMA\`.item_loot_money (container_id,money)
+        SELECT containerGUID,\`count\`
+        FROM \`$SOURCE_SCHEMA\`.item_loot_storage WHERE itemid=0"
+    local ambiguous
+    ambiguous=$(mysql_query -e "
+        SELECT COUNT(*) FROM (
+          SELECT containerGUID FROM \`$SOURCE_SCHEMA\`.item_loot_storage
+          WHERE itemid=0 GROUP BY containerGUID HAVING COUNT(*)>1
+        ) x;")
+    [[ $ambiguous == 0 ]] ||
+        die "item_loot_storage has $ambiguous container(s) with multiple money rows"
+    local expected hash
+    expected=$(mysql_query -e "SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.item_loot_storage;")
+    hash=$(printf '%s' "$statement" | sha256sum | awk '{print $1}')
+    execute_multi_transform_atomic characters item_loot_storage \
+        item_loot_items+item_loot_money "$hash" "$expected" \
+        "DELETE FROM \`$TARGET_SCHEMA\`.item_loot_items;
+         DELETE FROM \`$TARGET_SCHEMA\`.item_loot_money;" \
+        "$statement" \
+        "(SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.item_loot_items) +
+         (SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.item_loot_money)"
+}
+
+load_character_talents_reverse() {
+    local statement="
+        INSERT INTO \`$TARGET_SCHEMA\`.character_talent (guid,spell,talentGroup)
+        SELECT guid,spell,0 FROM \`$SOURCE_SCHEMA\`.character_talent
+        WHERE specMask & 1
+        UNION ALL
+        SELECT guid,spell,1 FROM \`$SOURCE_SCHEMA\`.character_talent
+        WHERE specMask & 2;"
+    local invalid expected hash
+    invalid=$(mysql_query -e "
+        SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.character_talent
+        WHERE specMask=0 OR specMask & ~3;")
+    [[ $invalid == 0 ]] ||
+        die "character_talent has $invalid invalid specMask row(s)"
+    expected=$(mysql_query -e "
+        SELECT SUM((specMask & 1)<>0)+SUM((specMask & 2)<>0)
+        FROM \`$SOURCE_SCHEMA\`.character_talent;")
+    expected=${expected:-0}
+    hash=$(printf '%s' "$statement" | sha256sum | awk '{print $1}')
+    execute_multi_transform_atomic characters character_talent character_talent \
+        "$hash" "$expected" "DELETE FROM \`$TARGET_SCHEMA\`.character_talent;" \
+        "$statement" "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.character_talent"
+}
+
+load_channels_reverse() {
+    local statement="
+        INSERT INTO \`$TARGET_SCHEMA\`.channels
+            (name,team,announce,ownership,password,bannedList,lastUsed)
+        SELECT c.name,c.team,c.announce,c.ownership,c.password,
+               NULLIF(GROUP_CONCAT(b.playerGUID ORDER BY b.playerGUID SEPARATOR ' '),''),
+               c.lastUsed
+        FROM \`$SOURCE_SCHEMA\`.channels c
+        LEFT JOIN \`$SOURCE_SCHEMA\`.channels_bans b ON b.channelId=c.channelId
+        GROUP BY c.channelId,c.name,c.team,c.announce,c.ownership,c.password,c.lastUsed;"
+    local expected hash
+    expected=$(source_snapshot_count characters channels)
+    hash=$(printf '%s' "$statement" | sha256sum | awk '{print $1}')
+    execute_multi_transform_atomic characters channels+channels_bans channels \
+        "$hash" "$expected" "DELETE FROM \`$TARGET_SCHEMA\`.channels;" \
+        "SET SESSION group_concat_max_len=1048576; $statement" \
+        "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.channels"
+}
+
+load_respawn_reverse() {
+    local statement="
+        INSERT INTO \`$TARGET_SCHEMA\`.respawn
+            (type,spawnId,respawnTime,mapId,instanceId)
+        SELECT 0,guid,respawnTime,mapId,instanceId
+        FROM \`$SOURCE_SCHEMA\`.creature_respawn
+        UNION ALL
+        SELECT 1,guid,respawnTime,mapId,instanceId
+        FROM \`$SOURCE_SCHEMA\`.gameobject_respawn;"
+    local expected hash
+    expected=$(mysql_query -e "
+        SELECT (SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.creature_respawn) +
+               (SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.gameobject_respawn);")
+    if (( expected > 0 )); then
+        [[ -n $SOURCE_WORLD_SCHEMA ]] ||
+            die "SOURCE_WORLD_SCHEMA is required to validate nonempty respawn tables"
+        table_exists "$SOURCE_WORLD_SCHEMA" creature ||
+            die "World creature table is required for respawn validation"
+        table_exists "$SOURCE_WORLD_SCHEMA" gameobject ||
+            die "World gameobject table is required for respawn validation"
+        local invalid_respawns
+        invalid_respawns=$(mysql_query -e "
+            SELECT
+              (SELECT COUNT(*)
+               FROM \`$SOURCE_SCHEMA\`.creature_respawn r
+               LEFT JOIN \`$SOURCE_WORLD_SCHEMA\`.creature w ON w.guid=r.guid
+               WHERE w.guid IS NULL OR w.map<>r.mapId) +
+              (SELECT COUNT(*)
+               FROM \`$SOURCE_SCHEMA\`.gameobject_respawn r
+               LEFT JOIN \`$SOURCE_WORLD_SCHEMA\`.gameobject w ON w.guid=r.guid
+               WHERE w.guid IS NULL OR w.map<>r.mapId);")
+        [[ $invalid_respawns == 0 ]] ||
+            die "$invalid_respawns respawn row(s) do not match the read-only world schema"
+    fi
+    hash=$(printf '%s' "$statement" | sha256sum | awk '{print $1}')
+    execute_multi_transform_atomic characters creature_respawn+gameobject_respawn \
+        respawn "$hash" "$expected" "DELETE FROM \`$TARGET_SCHEMA\`.respawn;" \
+        "$statement" "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.respawn"
+}
+
 handle_noncopy_mapping() {
     local kind=$1 source_table=$2 target_table=$3 disposition=$4 approval=$5 validation=$6
     case "$disposition" in
         TARGET_SEED)
-            log "Retaining AzerothCore seed table: $target_table"
+            log "Retaining target-core seed table: $target_table"
             ;;
         TARGET_EMPTY)
             [[ $(mysql_query -e "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.\`$target_table\`;") == 0 ]] ||
@@ -929,8 +1174,17 @@ handle_noncopy_mapping() {
             local rows
             rows=$(mysql_query -e "SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.\`$source_table\`;")
             if [[ $rows != 0 ]]; then
-                [[ $approval == APPROVED && $ALLOW_SOURCE_ARCHIVE == 1 ]] ||
+                [[ $ALLOW_SOURCE_ARCHIVE == 1 ]] ||
                     die "$source_table has $rows row(s) and is not approved for archival"
+                [[ $approval != REVIEW_REQUIRED || $ALLOW_GAMEPLAY_ARCHIVE == 1 ]] ||
+                    die "$source_table requires explicit gameplay-archive approval"
+                [[ $(mysql_query -e "
+                    SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.archive_manifest
+                    WHERE run_id='$(sql_escape "$RUN_ID")'
+                      AND database_kind='$(sql_escape "$kind")'
+                      AND source_table='$(sql_escape "$source_table")'
+                      AND row_count=$rows;") == 1 ]] ||
+                    die "$source_table has not been archived for this immutable source snapshot"
                 log "WARNING: $source_table has $rows source-only row(s); disposition: $validation"
             fi
             ;;
@@ -954,6 +1208,7 @@ perform_load() {
     local kind=$1
     LOAD_KIND=$kind
     require_phase assemble
+    require_phase archive-unsupported
     [[ $kind == auth ]] || require_phase load-auth
     schemas_for_kind "$kind"
     assert_schema_unchanged "$kind" "$SOURCE_SCHEMA"
@@ -968,7 +1223,8 @@ perform_load() {
         _default_policy _dependency_group disposition validation approval; do
         [[ $source_table == source_table ]] && continue
         [[ $source_table == "-" ]] || validate_identifier "${source_table//+/_}" source_table
-        [[ $target_table == "-" ]] || validate_identifier "$target_table" target_table
+        [[ $target_table == "-" ]] ||
+            validate_identifier "${target_table//+/_}" target_table
 
         case "$disposition" in
             COPY)
@@ -984,10 +1240,18 @@ perform_load() {
             TRANSFORM)
                 if [[ $expression == ITEM_LOOT_STORAGE ]]; then
                     load_item_loot_storage
+                elif [[ $expression == ITEM_LOOT_STORAGE_REVERSE ]]; then
+                    load_item_loot_reverse
                 elif [[ $expression == CHARACTER_TALENTS ]]; then
                     load_character_talents
+                elif [[ $expression == CHARACTER_TALENTS_REVERSE ]]; then
+                    load_character_talents_reverse
                 elif [[ $expression == CHANNELS ]]; then
                     load_channels_and_bans
+                elif [[ $expression == CHANNELS_REVERSE ]]; then
+                    load_channels_reverse
+                elif [[ $expression == RESPAWN_REVERSE ]]; then
+                    load_respawn_reverse
                 elif [[ $expression == RBAC_ACCOUNT_PERMISSIONS ]]; then
                     load_rbac_account_permissions
                 else
@@ -1028,6 +1292,15 @@ perform_load() {
                         if [[ $null_names != 0 ]]; then
                             log "Converting $null_names TrinityCore soft-deleted character name(s) from NULL to empty string"
                         fi
+                    elif [[ $expression == CHARACTERS_REVERSE ]]; then
+                        local invalid_empty_names
+                        invalid_empty_names=$(mysql_query -e "
+                            SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.characters
+                            WHERE name='' AND
+                              (deleteDate IS NULL OR deleteInfos_Name IS NULL
+                               OR deleteInfos_Account IS NULL OR account<>0);")
+                        [[ $invalid_empty_names == 0 ]] ||
+                            die "characters contains $invalid_empty_names malformed empty name row(s)"
                     elif [[ $expression == ACCOUNT ]]; then
                         local long_os
                         long_os=$(mysql_query -e "

@@ -3,6 +3,7 @@ CREATE DATABASE IF NOT EXISTS `{{CONTROL_SCHEMA}}`
 
 CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`migration_run` (
   `run_id` char(36) NOT NULL,
+  `migration_direction` enum('tc-to-ac','ac-to-tc') NOT NULL,
   `config_hash` char(64) NOT NULL,
   `source_auth_fingerprint` char(64) DEFAULT NULL,
   `source_characters_fingerprint` char(64) DEFAULT NULL,
@@ -14,6 +15,18 @@ CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`migration_run` (
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `status` enum('RUNNING','READY','FAILED','COMPLETE') NOT NULL DEFAULT 'RUNNING',
   PRIMARY KEY (`run_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`archive_manifest` (
+  `run_id` char(36) NOT NULL,
+  `database_kind` enum('auth','characters') NOT NULL,
+  `source_table` varchar(64) NOT NULL,
+  `row_count` bigint unsigned NOT NULL,
+  `dump_path` text NOT NULL,
+  `dump_sha256` char(64) NOT NULL,
+  `schema_fingerprint` char(64) NOT NULL,
+  `archived_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`run_id`,`database_kind`,`source_table`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`phase_checkpoint` (

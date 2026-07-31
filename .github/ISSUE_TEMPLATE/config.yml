@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/peycho/trinitycore-to-azerothcore-db/security/advisories/new
+    url: https://github.com/peycho/trinitycore-azerothcore-db-migrator/security/advisories/new
     about: Report security-sensitive issues privately

@@ -1,6 +1,7 @@
 # Rehearsal runbook
 
-1. Prepare clean pinned TrinityCore and AzerothCore checkouts as described in
+1. Choose and record `MIGRATION_DIRECTION`, then prepare clean pinned
+   TrinityCore and AzerothCore checkouts as described in
    [Repository setup](repository-setup.md). Put their paths in the rehearsal
    configuration and run `tests/static-checks.sh`.
 2. Restore recent production auth and characters backups into isolated source
@@ -11,7 +12,8 @@
 4. Copy and review the secure configuration. Set `REQUIRE_QUIESCENT=0` only
    because the restored rehearsal schemas have no writers.
 5. Run `preflight`; inspect source DDL, row-count snapshots, and
-   `source-orphan-audit.tsv`; then run `assemble`.
+   `source-orphan-audit.tsv`; run `archive-unsupported`, verify its manifest,
+   then run `assemble`.
 6. Review both schema-diff and type-risk reports against the checked-in mapping
    registries. Any live-only table or column requires a mapping change and a
    new run.
@@ -20,14 +22,14 @@
    `timing.tsv` before running `validate`. A reachable missing-owner item must
    produce `cleanup-blocked-items.tsv` and stop before item deletion. Resolve
    errors; do not downgrade them to warnings merely to complete the rehearsal.
-8. Start AzerothCore with copies of its normal configuration pointing only at
-   the rehearsal targets. Keep the world database read-only.
+8. Start the selected target core with copies of its normal configuration
+   pointing only at the rehearsal targets. Keep the world database read-only.
 9. Test SRP6 login, character list/login, position/homebind, equipment and
    bags, spells/talents/glyphs, cooldowns, quests, achievements, pets,
    guild/group/arena, mail, auction, channels, instance binds, logout, and
    relogin persistence.
-10. Record total database time, `sanitize-target` time, largest-table
-    throughput, deferred-index build duration, AzerothCore startup time, and
+10. Record direction, total database time, `sanitize-target` time, largest-table
+    throughput, deferred-index build duration, target-core startup time, and
     smoke-test results. Tune `LOAD_CHUNK_SIZE`, `CLEANUP_CHUNK_SIZE`, and
     `LARGE_TABLE_ROWS` from the evidence, then repeat from fresh targets.
 11. Kill one rehearsal during a large load chunk and one during an item cleanup

@@ -17,12 +17,14 @@ AZEROTHCORE_DIR=${AZEROTHCORE_DIR:-"$ROOT/../azerothcore-wotlk"}
 
 shellcheck "$ROOT/bin/migrate.sh" "$ROOT"/lib/*.sh
 
-for mapping in "$ROOT"/mappings/auth.csv "$ROOT"/mappings/characters.csv; do
+for mapping in "$ROOT"/mappings/{tc-to-ac,ac-to-tc}/{auth,characters}.csv; do
     awk -F, 'NF != 10 { print FILENAME ":" FNR ": expected 10 CSV fields, found " NF; bad=1 }
         END { exit bad }' "$mapping"
 done
-awk -F, 'NF != 7 { print FILENAME ":" FNR ": expected 7 CSV fields, found " NF; bad=1 }
-    END { exit bad }' "$ROOT/mappings/objects.csv"
+for objects in "$ROOT"/mappings/{tc-to-ac,ac-to-tc}/objects.csv; do
+    awk -F, 'NF != 7 { print FILENAME ":" FNR ": expected 7 CSV fields, found " NF; bad=1 }
+        END { exit bad }' "$objects"
+done
 
 compare_inventory() {
     local expected=$1
@@ -41,30 +43,44 @@ trap 'rm -rf "$temporary_dir"' EXIT
 
 rg '^CREATE TABLE' "$TRINITYCORE_DIR/sql/base/auth_database.sql" |
     sed -E 's/^CREATE TABLE `([^`]+)`.*/\1/' | sort > "$temporary_dir/tc-auth"
-awk -F, 'NR > 1 && !($2 == "-" && $8 == "BLOCKED") { print $1 }' \
-    "$ROOT/mappings/auth.csv" | tr '+' '\n' |
-    sed '/^-/d;/^$/d' | sort -u > "$temporary_dir/map-tc-auth"
 find "$AZEROTHCORE_DIR/data/sql/base/db_auth" -maxdepth 1 -name '*.sql' -printf '%f\n' |
     sed 's/\.sql$//' | sort > "$temporary_dir/ac-auth"
-cut -d, -f2 "$ROOT/mappings/auth.csv" | tail -n +2 |
-    sed '/^-/d;/^$/d' | sort -u > "$temporary_dir/map-ac-auth"
 
 rg '^CREATE TABLE' "$TRINITYCORE_DIR/sql/base/characters_database.sql" |
     sed -E 's/^CREATE TABLE `([^`]+)`.*/\1/' | sort > "$temporary_dir/tc-characters"
-awk -F, 'NR > 1 && !($2 == "-" && $8 == "BLOCKED") { print $1 }' \
-    "$ROOT/mappings/characters.csv" | tr '+' '\n' |
-    sed '/^-/d;/^$/d' | sort -u > "$temporary_dir/map-tc-characters"
 find "$AZEROTHCORE_DIR/data/sql/base/db_characters" -maxdepth 1 -name '*.sql' -printf '%f\n' |
     sed 's/\.sql$//' | sort > "$temporary_dir/ac-characters"
-cut -d, -f2 "$ROOT/mappings/characters.csv" | tail -n +2 |
-    sed '/^-/d;/^$/d' | sort -u > "$temporary_dir/map-ac-characters"
 
-compare_inventory "$temporary_dir/tc-auth" "$temporary_dir/map-tc-auth" "TrinityCore auth"
-compare_inventory "$temporary_dir/ac-auth" "$temporary_dir/map-ac-auth" "AzerothCore auth"
-compare_inventory "$temporary_dir/tc-characters" "$temporary_dir/map-tc-characters" "TrinityCore characters"
-compare_inventory "$temporary_dir/ac-characters" "$temporary_dir/map-ac-characters" "AzerothCore characters"
+mapping_inventory() {
+    local mapping=$1 column=$2 destination=$3
+    awk -F, -v column="$column" '
+        NR>1 && !(column==1 && $2=="-" && $8=="BLOCKED") { print $column }
+    ' "$mapping" |
+        tr '+' '\n' | sed '/^-/d;/^$/d' | sort -u > "$destination"
+}
 
-for variable in LOAD_CHUNK_SIZE CLEANUP_CHUNK_SIZE LARGE_TABLE_ROWS DEFER_SECONDARY_INDEXES; do
+for direction in tc-to-ac ac-to-tc; do
+    if [[ $direction == tc-to-ac ]]; then
+        source_prefix=tc
+        target_prefix=ac
+    else
+        source_prefix=ac
+        target_prefix=tc
+    fi
+    for kind in auth characters; do
+        mapping="$ROOT/mappings/$direction/$kind.csv"
+        mapping_inventory "$mapping" 1 "$temporary_dir/map-source"
+        mapping_inventory "$mapping" 2 "$temporary_dir/map-target"
+        compare_inventory "$temporary_dir/$source_prefix-$kind" \
+            "$temporary_dir/map-source" "$direction source $kind"
+        compare_inventory "$temporary_dir/$target_prefix-$kind" \
+            "$temporary_dir/map-target" "$direction target $kind"
+    done
+done
+
+for variable in MIGRATION_DIRECTION ARCHIVE_DIR ALLOW_SOURCE_ARCHIVE \
+    ALLOW_GAMEPLAY_ARCHIVE LOAD_CHUNK_SIZE CLEANUP_CHUNK_SIZE \
+    LARGE_TABLE_ROWS DEFER_SECONDARY_INDEXES; do
     rg -q "^${variable}=" "$ROOT/config/migration.env.example" ||
         {
             printf 'Missing performance configuration: %s\n' "$variable" >&2

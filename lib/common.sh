@@ -42,7 +42,7 @@ load_configuration() {
     source "$config_file"
 
     local required=(
-        MYSQL_HOST MYSQL_PORT MYSQL_USER SOURCE_AUTH_SCHEMA
+        MYSQL_HOST MYSQL_PORT MYSQL_USER MIGRATION_DIRECTION SOURCE_AUTH_SCHEMA
         SOURCE_CHARACTERS_SCHEMA TARGET_AUTH_SCHEMA TARGET_CHARACTERS_SCHEMA
         CONTROL_SCHEMA REALM_ID TRINITYCORE_DIR AZEROTHCORE_DIR
         EXPECTED_TRINITYCORE_COMMIT EXPECTED_AZEROTHCORE_COMMIT
@@ -59,8 +59,12 @@ load_configuration() {
     SOURCE_WORLD_SCHEMA=${SOURCE_WORLD_SCHEMA:-}
     REQUIRE_QUIESCENT=${REQUIRE_QUIESCENT:-1}
     ALLOW_SOURCE_ARCHIVE=${ALLOW_SOURCE_ARCHIVE:-1}
+    ALLOW_GAMEPLAY_ARCHIVE=${ALLOW_GAMEPLAY_ARCHIVE:-0}
+    ARCHIVE_DIR=${ARCHIVE_DIR:-}
     MIGRATION_RUN_ID=${MIGRATION_RUN_ID:-}
 
+    [[ $MIGRATION_DIRECTION == tc-to-ac || $MIGRATION_DIRECTION == ac-to-tc ]] ||
+        die "MIGRATION_DIRECTION must be tc-to-ac or ac-to-tc"
     validate_identifier "$SOURCE_AUTH_SCHEMA" SOURCE_AUTH_SCHEMA
     validate_identifier "$SOURCE_CHARACTERS_SCHEMA" SOURCE_CHARACTERS_SCHEMA
     validate_identifier "$TARGET_AUTH_SCHEMA" TARGET_AUTH_SCHEMA
@@ -80,6 +84,8 @@ load_configuration() {
         die "DEFER_SECONDARY_INDEXES must be 0 or 1"
     [[ $REQUIRE_QUIESCENT =~ ^[01]$ ]] || die "REQUIRE_QUIESCENT must be 0 or 1"
     [[ $ALLOW_SOURCE_ARCHIVE =~ ^[01]$ ]] || die "ALLOW_SOURCE_ARCHIVE must be 0 or 1"
+    [[ $ALLOW_GAMEPLAY_ARCHIVE =~ ^[01]$ ]] ||
+        die "ALLOW_GAMEPLAY_ARCHIVE must be 0 or 1"
 
     TRINITYCORE_DIR=$(absolute_path "$TRINITYCORE_DIR")
     AZEROTHCORE_DIR=$(absolute_path "$AZEROTHCORE_DIR")
@@ -98,11 +104,13 @@ load_configuration() {
     CONFIG_HASH=$(
         printf '%s\n' \
             "$MYSQL_HOST" "$MYSQL_PORT" "$MYSQL_SOCKET" \
+            "$MIGRATION_DIRECTION" \
             "$SOURCE_AUTH_SCHEMA" "$SOURCE_CHARACTERS_SCHEMA" "$SOURCE_WORLD_SCHEMA" \
             "$TARGET_AUTH_SCHEMA" "$TARGET_CHARACTERS_SCHEMA" "$CONTROL_SCHEMA" \
             "$REALM_ID" "$EXPECTED_TRINITYCORE_COMMIT" "$EXPECTED_AZEROTHCORE_COMMIT" \
             "$LOAD_CHUNK_SIZE" "$CLEANUP_CHUNK_SIZE" "$LARGE_TABLE_ROWS" \
-            "$DEFER_SECONDARY_INDEXES" "$TOOLKIT_HASH" |
+            "$DEFER_SECONDARY_INDEXES" "$ALLOW_SOURCE_ARCHIVE" \
+            "$ALLOW_GAMEPLAY_ARCHIVE" "$TOOLKIT_HASH" |
             sha256sum | awk '{print $1}'
     )
 
@@ -236,6 +244,17 @@ initialize_control_schema() {
     render_sql "$MIGRATION_ROOT/sql/00_control_schema.sql" "$rendered"
     mysql "${MYSQL_ARGS[@]}" < "$rendered"
     rm -f "$rendered"
+
+    # Existing control schemas from the one-way release are intentionally not
+    # resumable because their run identity did not include a direction.
+    local has_direction
+    has_direction=$(mysql_query -e "
+        SELECT COUNT(*) FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA='$(sql_escape "$CONTROL_SCHEMA")'
+          AND TABLE_NAME='migration_run'
+          AND COLUMN_NAME='migration_direction';")
+    [[ $has_direction == 1 ]] ||
+        die "Control schema predates bidirectional runs; use a fresh control schema"
 }
 
 verify_run_configuration() {
