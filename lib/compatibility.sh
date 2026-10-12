@@ -81,7 +81,10 @@ write_trinitycore_semantic_manifest() {
         src/server/game/Maps/Map.cpp \
         src/server/game/Petitions/PetitionMgr.cpp \
         src/server/game/Spells/SpellHistory.cpp \
-        src/server/game/Spells/SpellHistory.h
+        src/server/game/Spells/SpellHistory.h \
+        src/server/game/Entities/Item/ItemDefines.h \
+        src/server/game/Loot/Loot.h \
+        "${FORMAT2_GAME_INPUTS[@]}"
 }
 
 write_azerothcore_semantic_manifest() {
@@ -108,8 +111,19 @@ write_azerothcore_semantic_manifest() {
         src/server/game/Instances/InstanceSaveMgr.cpp \
         src/server/game/Petitions/PetitionMgr.cpp \
         src/server/game/Spells/SpellMgr.cpp \
-        src/server/game/World/World.cpp
+        src/server/game/World/World.cpp \
+        "${FORMAT2_GAME_INPUTS[@]}"
 }
+
+# Format 2 explicitly protects serializers and gameplay definitions which do
+# not necessarily contain a table name from the discovery pattern.
+FORMAT2_GAME_INPUTS=()
+for subsystem in Entities/Item/Item Entities/Item/Container/Bag Entities/Corpse/Corpse Mails/Mail \
+    Loot/LootItemStorage Battlegrounds/ArenaTeam Guilds/Guild Guilds/GuildMgr \
+    Accounts/RBAC; do
+    FORMAT2_GAME_INPUTS+=("src/server/game/$subsystem.cpp" "src/server/game/$subsystem.h")
+done
+FORMAT2_GAME_INPUTS+=(src/server/game/Handlers/MailHandler.cpp src/server/game/Loot/LootMgr.h)
 
 load_compatibility_profile() {
     [[ $COMPATIBILITY_PROFILE =~ ^[A-Za-z0-9._-]+$ ]] ||
@@ -120,7 +134,9 @@ load_compatibility_profile() {
 
     # shellcheck disable=SC1090
     source "$profile_file"
-    [[ ${PROFILE_FORMAT:-} == 1 ]] || die "Unsupported compatibility profile format"
+    [[ ${PROFILE_FORMAT:-} != 1 ]] ||
+        die "Compatibility profile v1 is retired; use the corresponding older toolkit release"
+    [[ ${PROFILE_FORMAT:-} == 2 ]] || die "Unsupported compatibility profile format"
     [[ ${PROFILE_ID:-} == "$COMPATIBILITY_PROFILE" ]] ||
         die "Compatibility profile ID does not match its directory"
     [[ ${PROFILE_APPROVAL:-} == APPROVED ]] ||

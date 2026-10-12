@@ -47,3 +47,49 @@ checksums, every deferred index `RESTORED`, and no source/world writes.
 After a failed validation, item candidates remain available for diagnosis.
 After successful validation their count/min/max/checksum signature remains in the
 report and checkpoint, while the large candidate staging rows are purged.
+
+## Automated fixture rehearsals
+
+Provision a dedicated disposable MySQL 8 instance. For example:
+
+```bash
+docker run --detach --name migrator-rehearsal \
+  --publish 127.0.0.1:33317:3306 \
+  --env MYSQL_ALLOW_EMPTY_PASSWORD=yes mysql:8.0.46
+MIGRATOR_DISPOSABLE_MYSQL=1 tests/rehearsal-tests.sh
+docker stop migrator-rehearsal
+docker rm migrator-rehearsal
+```
+
+The explicit disposable-server flag is required. The harness connects only to
+localhost and rejects port 3306. Override `REHEARSAL_MYSQL_PORT` for another
+isolated port; `REHEARSAL_MYSQL_DEFAULTS_FILE` may supply administrator client
+options. An administrator named `root` must be able to create test users and
+databases. Python 3 and MySQL 8 client tools are required.
+
+The harness creates random databases and a separate migration user, grants
+read-only source/world privileges, and removes only its own objects. It tests
+both directions, source DDL/data fingerprints, boundary blockers, native update
+ledgers, uptime archives, duplicate loot payloads, stale pet relations,
+interruption/resume, completed-phase no-ops, and restored indexes. Test approval
+exists only in a temporary toolkit copy. CI runs the same harness against the
+reviewed core revisions.
+
+For v2, inspect `source-blockers.tsv` before target assembly, and resolve blocked
+usernames, unsupported mail flags, empty-caster character auras, overflowing
+uptime ends, ambiguous money rows, and out-of-range reverse loot payloads in a
+reviewed source preparation step. Start a new migration run after resolution.
+Inspect `loot-index-normalization.tsv` for AC → TC and verify the full uptime
+archive before copying its common columns. Target cleanup reports must account
+for dangling pet aura, spell, and cooldown rows in both directions.
+
+Extend native-core smoke tests to cover login/reconnect with boundary-length
+names, item charges/enchantments and guild banks, corpse equipment loading,
+common mail flags across save/relogin, stored-loot consumption after slot
+normalization, pet spellbook persistence, arena member counters, petitions,
+and extended instance binds. Track the TC high-bit mail-save limitation in the
+[v2 review record](profile-v2-review.md) separately.
+
+Fixture success does not approve the profile. Follow the
+[profile maintenance workflow](compatibility-profiles.md) for private native-core
+and production-sized rehearsals; retain their evidence before release approval.

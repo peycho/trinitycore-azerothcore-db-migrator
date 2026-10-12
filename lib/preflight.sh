@@ -3,10 +3,11 @@
 capture_schema_dump() {
     local schema=$1
     local destination=$2
+    schema_dump_object_arguments "$schema"
     mysqldump "${MYSQLDUMP_ARGS[@]}" \
-        --no-data --routines --triggers --events \
+        --no-data "${SCHEMA_DUMP_OBJECT_ARGS[@]}" \
         --hex-blob --set-gtid-purged=OFF --skip-dump-date \
-        "$schema" > "$destination"
+        "$schema" > "$destination" || die "Could not capture complete schema dump: $schema"
 }
 
 capture_server_metadata() {
@@ -133,7 +134,22 @@ capture_source_orphan_audit() {
             SELECT 'realmcharacters_without_account',COUNT(*),'REBUILD_FOR_CONFIGURED_REALM'
             FROM \`$SOURCE_AUTH_SCHEMA\`.realmcharacters rc
             LEFT JOIN \`$SOURCE_AUTH_SCHEMA\`.account a ON a.id=rc.acctid
-            WHERE a.id IS NULL;"
+            WHERE a.id IS NULL
+            UNION ALL
+            SELECT 'pet_aura_without_pet',COUNT(*),'DROP_DANGLING_RELATION'
+            FROM \`$SOURCE_CHARACTERS_SCHEMA\`.pet_aura s
+            LEFT JOIN \`$SOURCE_CHARACTERS_SCHEMA\`.character_pet p ON p.id=s.guid
+            WHERE p.id IS NULL
+            UNION ALL
+            SELECT 'pet_spell_without_pet',COUNT(*),'DROP_DANGLING_RELATION'
+            FROM \`$SOURCE_CHARACTERS_SCHEMA\`.pet_spell s
+            LEFT JOIN \`$SOURCE_CHARACTERS_SCHEMA\`.character_pet p ON p.id=s.guid
+            WHERE p.id IS NULL
+            UNION ALL
+            SELECT 'pet_cooldown_without_pet',COUNT(*),'DROP_DANGLING_RELATION'
+            FROM \`$SOURCE_CHARACTERS_SCHEMA\`.pet_spell_cooldown s
+            LEFT JOIN \`$SOURCE_CHARACTERS_SCHEMA\`.character_pet p ON p.id=s.guid
+            WHERE p.id IS NULL;"
     } > "$destination"
 }
 
@@ -285,6 +301,7 @@ perform_preflight() {
     capture_source_counts characters "$SOURCE_CHARACTERS_SCHEMA" \
         "$run_reports/source-characters-row-counts.tsv"
     capture_source_orphan_audit "$run_reports/source-orphan-audit.tsv"
+    check_source_representations
 
     log "Preflight captured source schemas for run $RUN_ID"
 }

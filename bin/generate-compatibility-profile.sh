@@ -4,6 +4,7 @@
 # shellcheck disable=SC1091,SC2016
 
 set -Eeuo pipefail
+export LC_ALL=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MIGRATION_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -56,7 +57,7 @@ tc_revision=$(git -C "$TRINITYCORE_DIR" rev-parse HEAD)
 ac_revision=$(git -C "$AZEROTHCORE_DIR" rev-parse HEAD)
 profile_file="$candidate_dir/profile.env"
 {
-    printf 'PROFILE_FORMAT=1\n'
+    printf 'PROFILE_FORMAT=2\n'
     printf 'PROFILE_ID=%s\n' "$candidate_id"
     printf 'PROFILE_APPROVAL=UNREVIEWED\n'
     printf 'REVIEWED_TRINITYCORE_REVISION=%s\n' "$tc_revision"

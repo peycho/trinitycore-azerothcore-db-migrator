@@ -117,8 +117,13 @@ validate_mapping_counts() {
                         "SELECT
                            (SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.item_loot_items) +
                            (SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.item_loot_money);" \
-                        "SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.item_loot_storage;" \
-                        "Consolidated loot must split without row loss"
+                        "SELECT COUNT(*) - (
+                           SELECT COALESCE(SUM(removed_rows),0)
+                           FROM \`$CONTROL_SCHEMA\`.cleanup_table_summary
+                           WHERE run_id='$(sql_escape "$RUN_ID")' AND database_kind='characters'
+                             AND table_name IN ('item_loot_items','item_loot_money')
+                         ) FROM \`$SOURCE_SCHEMA\`.item_loot_storage;" \
+                        "Consolidated loot rows minus approved target cleanup"
                 elif [[ $expression == CHARACTER_TALENTS_REVERSE ]]; then
                     check_equal \
                         "count.characters.character_talent_reverse" \
@@ -160,6 +165,48 @@ validate_mapping_counts() {
                 ;;
         esac
     done < "$(mapping_file_for "$kind")"
+}
+
+validate_updated_representations() {
+    check_zero account_username_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_AUTH_SCHEMA\`.account s
+        LEFT JOIN \`$TARGET_AUTH_SCHEMA\`.account t ON t.id=s.id
+        WHERE t.id IS NULL OR BINARY t.username<>BINARY s.username;" \
+        "Account usernames must be preserved byte-for-byte"
+    check_zero mail_flags_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.mail s
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.mail t ON t.id=s.id
+        LEFT JOIN \`$CONTROL_SCHEMA\`.cleanup_orphan_character o
+          ON o.run_id='$(sql_escape "$RUN_ID")' AND (o.guid=s.receiver OR o.guid=s.sender)
+        WHERE o.guid IS NULL AND (t.id IS NULL OR t.checked<>s.checked);" \
+        "Retained mail flags must be preserved exactly"
+    local pet_table
+    for pet_table in pet_aura pet_spell pet_spell_cooldown; do
+        check_zero "$pet_table.without_pet" "
+            SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.\`$pet_table\` s
+            LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_pet p ON p.id=s.guid
+            WHERE p.id IS NULL;" "Pet relations must reference retained pets"
+    done
+    if [[ $MIGRATION_DIRECTION == tc-to-ac ]]; then
+        check_zero uptime_outcome_mismatch "
+            SELECT COUNT(*) FROM \`$SOURCE_AUTH_SCHEMA\`.uptime s
+            LEFT JOIN \`$TARGET_AUTH_SCHEMA\`.uptime t
+              ON t.realmid=s.realmid AND t.starttime=s.starttime
+            WHERE t.realmid IS NULL OR t.uptime<>s.uptime OR t.maxplayers<>s.maxplayers
+               OR BINARY t.revision<>BINARY s.revision OR t.EndTime IS NULL
+               OR t.EndTime<>s.starttime+s.uptime OR t.ShutdownType<>0
+               OR t.ExitCode IS NOT NULL OR t.ShutdownReason<>'';" \
+            "Historical sessions have a derived end and unknown outcome, not a crash"
+    else
+        require_source_archive auth "$SOURCE_AUTH_SCHEMA" uptime APPROVED
+        check_zero uptime_common_mismatch "
+            SELECT COUNT(*) FROM \`$SOURCE_AUTH_SCHEMA\`.uptime s
+            LEFT JOIN \`$TARGET_AUTH_SCHEMA\`.uptime t
+              ON t.realmid=s.realmid AND t.starttime=s.starttime
+            WHERE t.realmid IS NULL OR t.uptime<>s.uptime OR t.maxplayers<>s.maxplayers
+               OR BINARY t.revision<>BINARY s.revision;" \
+            "Common session history survives the reverse copy"
+    fi
 }
 
 perform_validation_reverse() {
@@ -308,24 +355,37 @@ perform_validation_reverse() {
         "Character cooldowns must use the reviewed reverse representation"
     check_zero pet_cooldown_reverse_mismatch "
         SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.pet_spell_cooldown s
+        JOIN \`$SOURCE_CHARACTERS_SCHEMA\`.character_pet p ON p.id=s.guid
+        LEFT JOIN \`$CONTROL_SCHEMA\`.cleanup_orphan_character o
+          ON o.run_id='$(sql_escape "$RUN_ID")' AND o.guid=p.owner
         LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.pet_spell_cooldown t
           ON t.guid=s.guid AND t.spell=s.spell
-        WHERE t.guid IS NULL OR t.time<>s.time
+        WHERE o.guid IS NULL AND (t.guid IS NULL OR t.time<>s.time
            OR t.categoryId<>COALESCE(s.category,0)
-           OR t.categoryEnd<>IF(COALESCE(s.category,0)=0,0,s.time);" \
+           OR t.categoryEnd<>IF(COALESCE(s.category,0)=0,0,s.time));" \
         "Pet cooldowns must use the reviewed reverse representation"
+    local normalized
+    normalized=$(normalized_reverse_loot_query)
     check_zero item_loot_reverse_mismatch "
-        SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.item_loot_storage s
+        SELECT COUNT(*) FROM ($normalized) s
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_instance retained ON retained.guid=s.containerGUID
         LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_items i
-          ON s.itemid<>0 AND i.container_id=s.containerGUID
+          ON i.container_id=s.containerGUID
          AND i.item_id=s.itemid AND i.item_count=s.count
-         AND i.item_index=s.item_index AND i.rnd_prop=s.randomPropertyId
+         AND i.item_index=s.normalized_index AND i.rnd_prop=s.randomPropertyId
          AND i.rnd_suffix=s.randomSuffix
+         AND i.follow_rules=s.follow_loot_rules AND i.ffa=s.freeforall
+         AND i.blocked=s.is_blocked AND i.counted=s.is_counted
+         AND i.under_threshold=s.is_underthreshold AND i.needs_quest=s.needs_quest
+        WHERE i.container_id IS NULL;" \
+        "Normalized slots preserve every retained loot payload, including duplicates"
+    check_zero item_loot_money_reverse_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.item_loot_storage s
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_instance retained ON retained.guid=s.containerGUID
         LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.item_loot_money m
-          ON s.itemid=0 AND m.container_id=s.containerGUID AND m.money=s.count
-        WHERE (s.itemid=0 AND m.container_id IS NULL)
-           OR (s.itemid<>0 AND i.container_id IS NULL);" \
-        "Every consolidated loot row must survive the split"
+          ON m.container_id=s.containerGUID AND m.money=s.count
+        WHERE s.itemid=0 AND m.container_id IS NULL;" \
+        "Every retained money row must survive the split"
     check_zero channel_ban_reverse_mismatch "
         SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.channels_bans b
         JOIN \`$SOURCE_CHARACTERS_SCHEMA\`.channels sc ON sc.channelId=b.channelId
@@ -371,6 +431,7 @@ perform_validation_reverse() {
         WHERE run_id='$(sql_escape "$RUN_ID")' AND row_count=0;" \
         "Archive manifests must represent nonempty source-only tables"
 
+    validate_updated_representations
     validate_mapping_counts auth
     validate_mapping_counts characters
     analyze_schema "$TARGET_AUTH_SCHEMA"
@@ -676,6 +737,7 @@ perform_validation() {
            WHERE petition_id<>petitionguid);" \
         "New petition IDs are seeded from preserved petition GUIDs"
 
+    validate_updated_representations
     validate_mapping_counts auth
     validate_mapping_counts characters
     analyze_schema "$TARGET_AUTH_SCHEMA"

@@ -1,5 +1,9 @@
 # Production cutover runbook
 
+The v2 candidate must first be approved through the
+[compatibility acceptance workflow](compatibility-profiles.md). An unreviewed
+profile is a no-go even when disposable fixture tests pass.
+
 ## Before the window
 
 - Confirm both core checkouts are present, readable, referenced by the
@@ -25,7 +29,8 @@
 3. Take the final consistent backups and record their locations/checksums.
 4. Run `compatibility`, then `preflight`; archive the compatibility report, run
    ID, and source fingerprints, and review the
-   source orphan audit against the approved rehearsal.
+   source orphan audit and `source-blockers.tsv` against the approved rehearsal.
+   Incompatible account names, mail flags, or aura casters are a no-go.
 5. Run `archive-unsupported`, verify its SHA-256 manifest, then run `assemble`
    and inspect update hashes and schema/type reports.
 6. Run `load-auth`, then `load-characters`.

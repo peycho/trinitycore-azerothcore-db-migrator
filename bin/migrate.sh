@@ -14,6 +14,7 @@ source "$MIGRATION_ROOT/lib/archive.sh"
 source "$MIGRATION_ROOT/lib/load.sh"
 source "$MIGRATION_ROOT/lib/sanitize.sh"
 source "$MIGRATION_ROOT/lib/validate.sh"
+source "$MIGRATION_ROOT/lib/representations.sh"
 
 usage() {
     cat <<'EOF'
