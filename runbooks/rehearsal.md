@@ -50,12 +50,12 @@ report and checkpoint, while the large candidate staging rows are purged.
 
 ## Automated fixture rehearsals
 
-Provision a dedicated disposable MySQL 8 instance. For example:
+Provision a dedicated disposable MySQL 8.4.x instance. For example:
 
 ```bash
 docker run --detach --name migrator-rehearsal \
   --publish 127.0.0.1:33317:3306 \
-  --env MYSQL_ALLOW_EMPTY_PASSWORD=yes mysql:8.0.46
+  --env MYSQL_ALLOW_EMPTY_PASSWORD=yes mysql:8.4
 MIGRATOR_DISPOSABLE_MYSQL=1 tests/rehearsal-tests.sh
 docker stop migrator-rehearsal
 docker rm migrator-rehearsal

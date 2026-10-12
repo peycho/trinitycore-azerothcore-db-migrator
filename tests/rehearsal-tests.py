@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bidirectional tests against a caller-provisioned disposable MySQL 8 server."""
+"""Bidirectional tests against a caller-provisioned disposable MySQL 8.4 server."""
 import gzip
 import hashlib
 import os
@@ -228,7 +228,9 @@ def assert_ready(values):
 
 def main():
     global OWNED_USER
-    assert sql('SELECT @@version').startswith('8.'), 'MySQL 8 is required'
+    server_version = sql('SELECT @@version')
+    assert server_version.startswith('8.4.'), f'MySQL 8.4.x is required; server reports {server_version}'
+    print(f'Disposable MySQL server: {server_version}', flush=True)
     # Refuse collisions; cleanup can only drop this run's freshly owned names.
     for schema in SCHEMAS:
         equal(f"SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='{schema}'", 0)

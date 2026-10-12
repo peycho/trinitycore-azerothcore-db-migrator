@@ -69,6 +69,8 @@ trigger, or event blocks preflight until added to the selected direction's
 - Local Git checkouts of [TrinityCore](https://github.com/TrinityCore/TrinityCore)
   3.3.5 and [AzerothCore](https://github.com/azerothcore/azerothcore-wotlk)
 
+CI and the automated rehearsal harness use the MySQL 8.4.x server baseline.
+
 Both core repositories are required on the host running the migration. They
 supply the native source/target schema definitions and released target updates.
 The toolkit records each actual full Git revision but grants compatibility only
@@ -273,7 +275,7 @@ Run repository checks:
 tests/static-checks.sh
 ```
 
-Run automated database checks against an isolated MySQL 8 server on localhost
+Run automated database checks against an isolated MySQL 8.4.x server on localhost
 port 33317:
 
 ```bash

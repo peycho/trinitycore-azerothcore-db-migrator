@@ -48,9 +48,12 @@ flags; native TC high-bit behavior must be tracked separately during smoke tests
 | Gate | Evidence |
 | --- | --- |
 | Static analysis and compatibility behavior | Passed locally on 2026-10-12: ShellCheck, C-locale inventories, expanded-reader guards, retired/unreviewed rejection, candidate reproducibility, and failed-DDL checks. |
-| Disposable MySQL migrations and failure/resume checks | Passed locally on MySQL 8.0.46 with matching client tools: both directions reached `READY`, including blocker boundaries, archive verification, duplicate payloads, pet cleanup, interruption/resume, restored indexes, exact serialized fields, reruns, and source/world immutability. |
+| Disposable MySQL migrations and failure/resume checks | Passed locally on MySQL 8.4.10 with MySQL 8.0.46 client tools: both directions reached `READY`, including blocker boundaries, archive verification, duplicate payloads, pet cleanup, interruption/resume, restored indexes, exact serialized fields, reruns, and source/world immutability. |
 | Native-core gameplay smoke tests | Pending: requires runnable cores, appropriate world databases, client/data assets, and representative accounts. |
 | Two production-sized isolated rehearsals | Pending: requires restored production-sized snapshots and retained private reports. |
+
+Earlier v2 fixture validation also passed on MySQL 8.0.46. CI and the current
+automated rehearsal harness use the MySQL 8.4.x server baseline.
 
 Reproduce the local checks with `tests/static-checks.sh` and the disposable
 MySQL harness described in [Rehearsal](rehearsal.md). Record actual test versions
