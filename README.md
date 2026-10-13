@@ -322,8 +322,6 @@ SRP6 material, email/IP data, or player/account information.
 
 ## License
 
-Copyright © 2026 Peycho Dimitrov and contributors.
-
 trinitycore-azerothcore-db-migrator is free software licensed under the
 [GNU General Public License, version 3 or any later version](COPYING).
 See [THIRD_PARTY.md](THIRD_PARTY.md) for upstream-project and trademark
