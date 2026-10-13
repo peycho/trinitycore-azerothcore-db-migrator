@@ -1,5 +1,27 @@
 #!/usr/bin/env bash
 
+require_source_archive() {
+    local kind=$1 schema=$2 table=$3 approval=$4 rows snapshot recorded path hash fingerprint
+    rows=$(mysql_query -e "SELECT COUNT(*) FROM \`$schema\`.\`$table\`;")
+    [[ $rows != 0 ]] || return 0
+    snapshot=$(source_snapshot_count "$kind" "$table")
+    [[ $rows == "$snapshot" ]] || die "Source row count changed for $schema.$table"
+    [[ $ALLOW_SOURCE_ARCHIVE == 1 ]] || die "$table is not approved for archival"
+    [[ $approval != REVIEW_REQUIRED || $ALLOW_GAMEPLAY_ARCHIVE == 1 ]] ||
+        die "$table requires explicit gameplay-archive approval"
+    recorded=$(mysql_query -e "SELECT dump_path,dump_sha256,schema_fingerprint
+        FROM \`$CONTROL_SCHEMA\`.archive_manifest
+        WHERE run_id='$(sql_escape "$RUN_ID")' AND database_kind='$kind'
+          AND source_table='$(sql_escape "$table")' AND row_count=$rows;")
+    IFS=$'\t' read -r path hash fingerprint <<< "$recorded"
+    [[ -n $path && -f $path && ! -L $path ]] ||
+        die "$table has not been archived or its archive is missing"
+    [[ $(sha256sum "$path" | awk '{print $1}') == "$hash" ]] ||
+        die "$table archive checksum mismatch"
+    [[ $(schema_fingerprint "$schema") == "$fingerprint" ]] ||
+        die "$table archive belongs to different source DDL"
+}
+
 archive_source_only_table() {
     local kind=$1 schema=$2 table=$3 schema_hash=$4 archive_root=$5 approval=$6
     local rows

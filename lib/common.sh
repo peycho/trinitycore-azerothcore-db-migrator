@@ -211,13 +211,35 @@ schema_table_count() {
     mysql_query -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='$(sql_escape "$schema")' AND TABLE_TYPE='BASE TABLE'"
 }
 
+schema_dump_object_arguments() {
+    local schema=$1 kind count metadata
+    SCHEMA_DUMP_OBJECT_ARGS=(--triggers)
+    # SHOW EVENTS requires EVENT even on an empty schema. Stock core schemas
+    # have no events/routines, so request those dumps only when inventory says
+    # they exist. Operators still need visibility for the object registry.
+    metadata=$(mysql_query -e "
+        SELECT 'events',COUNT(*) FROM information_schema.EVENTS
+        WHERE EVENT_SCHEMA='$(sql_escape "$schema")'
+        UNION ALL SELECT 'routines',COUNT(*) FROM information_schema.ROUTINES
+        WHERE ROUTINE_SCHEMA='$(sql_escape "$schema")';") ||
+        die "Could not inventory schema objects: $schema"
+    while IFS=$'\t' read -r kind count; do
+        [[ $count != 0 ]] || continue
+        SCHEMA_DUMP_OBJECT_ARGS+=("--$kind")
+    done <<< "$metadata"
+}
+
 schema_fingerprint() {
     local schema=$1
     local dump_file
     dump_file=$(mktemp)
-    mysqldump "${MYSQLDUMP_ARGS[@]}" \
+    schema_dump_object_arguments "$schema"
+    if ! mysqldump "${MYSQLDUMP_ARGS[@]}" \
         --no-data --skip-comments --skip-dump-date --compact \
-        --routines --triggers --events --set-gtid-purged=OFF "$schema" > "$dump_file"
+        "${SCHEMA_DUMP_OBJECT_ARGS[@]}" --set-gtid-purged=OFF "$schema" > "$dump_file"; then
+        rm -f "$dump_file"
+        die "Could not capture complete DDL for fingerprint: $schema"
+    fi
     sed -E -i 's/ AUTO_INCREMENT=[0-9]+//g' "$dump_file"
     sha256sum "$dump_file" | awk '{print $1}'
     rm -f "$dump_file"

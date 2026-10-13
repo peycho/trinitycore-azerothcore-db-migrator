@@ -2,10 +2,17 @@
 # shellcheck disable=SC2016
 
 set -Eeuo pipefail
+export LC_ALL=C
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TRINITYCORE_DIR=${TRINITYCORE_DIR:-"$ROOT/../TrinityCore"}
 AZEROTHCORE_DIR=${AZEROTHCORE_DIR:-"$ROOT/../azerothcore-wotlk"}
+TRINITYCORE_DIR=$(realpath -e "$TRINITYCORE_DIR")
+AZEROTHCORE_DIR=$(realpath -e "$AZEROTHCORE_DIR")
+export TRINITYCORE_DIR AZEROTHCORE_DIR
+export COMPATIBILITY_PROFILE=${COMPATIBILITY_PROFILE:-tc335-acwotlk-v2}
+# shellcheck source=tests/test-support.sh
+source "$ROOT/tests/test-support.sh"
 
 [[ -f "$TRINITYCORE_DIR/sql/base/auth_database.sql" ]] || {
     printf 'TrinityCore SQL checkout not found: %s\n' "$TRINITYCORE_DIR" >&2
@@ -16,7 +23,7 @@ AZEROTHCORE_DIR=${AZEROTHCORE_DIR:-"$ROOT/../azerothcore-wotlk"}
     exit 1
 }
 
-shellcheck "$ROOT/bin/migrate.sh" "$ROOT"/lib/*.sh
+shellcheck "$ROOT"/bin/*.sh "$ROOT"/lib/*.sh "$ROOT"/tests/*.sh
 
 for mapping in "$ROOT"/mappings/{tc-to-ac,ac-to-tc}/{auth,characters}.csv; do
     awk -F, 'NF != 10 { print FILENAME ":" FNR ": expected 10 CSV fields, found " NF; bad=1 }
@@ -52,7 +59,7 @@ rg '^CREATE TABLE' "$TRINITYCORE_DIR/sql/base/characters_database.sql" |
 find "$AZEROTHCORE_DIR/data/sql/base/db_characters" -maxdepth 1 -name '*.sql' -printf '%f\n' |
     sed 's/\.sql$//' | sort > "$temporary_dir/ac-characters"
 
-profile="$ROOT/compatibility/tc335-acwotlk-v1"
+profile="$ROOT/compatibility/$COMPATIBILITY_PROFILE"
 cmp "$temporary_dir/tc-auth" "$profile/trinitycore-auth.tables"
 cmp "$temporary_dir/tc-characters" "$profile/trinitycore-characters.tables"
 cmp "$temporary_dir/ac-auth" "$profile/azerothcore-auth.tables"
@@ -99,8 +106,17 @@ done
         printf 'Exact upstream commits must not be operator configuration.\n' >&2
         exit 1
     }
-"$ROOT/bin/migrate.sh" --config "$ROOT/tests/rehearsal.env" compatibility
+prepare_test_toolkit "$temporary_dir/toolkit"
+write_test_config "$temporary_dir/migration.env" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
+"$temporary_dir/toolkit/bin/migrate.sh" --config "$temporary_dir/migration.env" compatibility
 "$ROOT/tests/compatibility-profile-tests.sh"
+"$ROOT/tests/schema-dump-tests.sh"
+if MIGRATOR_DISPOSABLE_MYSQL=1 REHEARSAL_MYSQL_PORT=03306 \
+    "$ROOT/tests/rehearsal-tests.sh" > "$temporary_dir/port-guard.txt" 2>&1; then
+    printf 'Rehearsal accepted a production-port alias\n' >&2
+    exit 1
+fi
+rg -q 'non-production port' "$temporary_dir/port-guard.txt"
 ! rg -q '(^|[^A-Z_])CHUNK_SIZE=' "$ROOT/config" "$ROOT/tests" \
     --glob '*.env' --glob '*.env.example' ||
     {

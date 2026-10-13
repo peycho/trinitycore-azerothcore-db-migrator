@@ -238,6 +238,11 @@ build_common_spec() {
 build_named_transform_spec() {
     local transform=$1
     case "$transform" in
+        UPTIME)
+            printf '%s\t%s\n' \
+                '`realmid`,`starttime`,`uptime`,`maxplayers`,`revision`,`EndTime`,`ShutdownType`,`ExitCode`,`ShutdownReason`' \
+                $'s.`realmid`,s.`starttime`,s.`uptime`,s.`maxplayers`,s.`revision`,s.`starttime`+s.`uptime`,0,NULL,\'\''
+            ;;
         ACCOUNT)
             printf '%s\t%s\n' \
                 '`id`,`username`,`salt`,`verifier`,`session_key`,`totp_secret`,`email`,`reg_mail`,`joindate`,`last_ip`,`last_attempt_ip`,`failed_logins`,`locked`,`lock_country`,`last_login`,`online`,`expansion`,`Flags`,`mutetime`,`mutereason`,`muteby`,`locale`,`os`,`recruiter`,`totaltime`' \
@@ -1043,14 +1048,16 @@ load_channels_and_bans() {
 }
 
 load_item_loot_reverse() {
+    local normalized
+    normalized=$(normalized_reverse_loot_query)
     local statement="
         INSERT INTO \`$TARGET_SCHEMA\`.item_loot_items
             (container_id,item_id,item_count,item_index,follow_rules,ffa,blocked,
              counted,under_threshold,needs_quest,rnd_prop,rnd_suffix)
-        SELECT containerGUID,itemid,\`count\`,item_index,follow_loot_rules,
+        SELECT containerGUID,itemid,\`count\`,normalized_index,follow_loot_rules,
                freeforall,is_blocked,is_counted,is_underthreshold,needs_quest,
                randomPropertyId,randomSuffix
-        FROM \`$SOURCE_SCHEMA\`.item_loot_storage WHERE itemid<>0;
+        FROM ($normalized) normalized;
         INSERT INTO \`$TARGET_SCHEMA\`.item_loot_money (container_id,money)
         SELECT containerGUID,\`count\`
         FROM \`$SOURCE_SCHEMA\`.item_loot_storage WHERE itemid=0"
@@ -1065,6 +1072,13 @@ load_item_loot_reverse() {
     local expected hash
     expected=$(mysql_query -e "SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.item_loot_storage;")
     hash=$(printf '%s' "$statement" | sha256sum | awk '{print $1}')
+    printf '%s;\n' "$statement" > "$REPORTS_DIR/$RUN_ID/generated-characters-item-loot-reverse.sql"
+    {
+        printf 'container_guid\titem_id\toriginal_index\tnormalized_index\tquantity\n'
+        mysql_query -e "SELECT containerGUID,itemid,item_index,normalized_index,\`count\`
+            FROM ($normalized) normalized WHERE item_index<>normalized_index
+            ORDER BY containerGUID,normalized_index;"
+    } > "$REPORTS_DIR/$RUN_ID/loot-index-normalization.tsv"
     execute_multi_transform_atomic characters item_loot_storage \
         item_loot_items+item_loot_money "$hash" "$expected" \
         "DELETE FROM \`$TARGET_SCHEMA\`.item_loot_items;
@@ -1213,7 +1227,15 @@ perform_load() {
     schemas_for_kind "$kind"
     assert_schema_unchanged "$kind" "$SOURCE_SCHEMA"
     check_quiescence
+    check_source_representations
     mapping_inventory_check "$kind"
+
+    # Verify required archives before any COPY/TRANSFORM can omit metadata.
+    local archive_source _at _asc _atc _ae _ad _ag archive_disposition _av archive_approval
+    while IFS=, read -r archive_source _at _asc _atc _ae _ad _ag archive_disposition _av archive_approval; do
+        [[ $archive_disposition == SOURCE_ARCHIVE ]] || continue
+        require_source_archive "$kind" "$SOURCE_SCHEMA" "$archive_source" "$archive_approval"
+    done < "$(mapping_file_for "$kind")"
 
     local mapping_file
     mapping_file=$(mapping_file_for "$kind")

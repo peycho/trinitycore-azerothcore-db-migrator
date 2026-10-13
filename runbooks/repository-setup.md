@@ -57,3 +57,12 @@ is no production override.
 The live TrinityCore database remains the authoritative source for actual
 production DDL and data. The TrinityCore checkout establishes the reviewed
 schema baseline; it does not replace the preflight live-schema capture.
+
+## Current candidate baseline
+
+The example configurations select `tc335-acwotlk-v2`, which remains unreviewed
+until release acceptance. Its exact local review revisions and limitations are
+listed in the [v2 review record](profile-v2-review.md). For reproducible candidate
+tests, use checkouts at those revisions and the disposable test workflows.
+Normal migration commands require approval; the retired v1 baseline needs its
+corresponding older toolkit release.

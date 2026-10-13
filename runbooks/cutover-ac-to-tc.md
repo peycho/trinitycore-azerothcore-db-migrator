@@ -1,5 +1,9 @@
 # AzerothCore to TrinityCore production cutover
 
+The v2 candidate must first be approved through the
+[compatibility acceptance workflow](compatibility-profiles.md). An unreviewed
+profile is a no-go even when disposable fixture tests pass.
+
 ## Before the maintenance window
 
 - Complete two migrations from the same production snapshot with
@@ -19,7 +23,8 @@
 1. Stop AzerothCore authserver and worldserver and verify database quiescence.
 2. Take and verify final backups.
 3. Run `compatibility`, then `preflight`; inspect schema drift and the orphan
-   audit, then run `archive-unsupported`.
+   audit and `source-blockers.tsv`, then run `archive-unsupported`. Verify the
+   full uptime archive and retain `loot-index-normalization.tsv` after loading.
 4. Run `assemble`, `load-auth`, `load-characters`, and `sanitize-target`.
 5. Run `validate`; continue only when the report is `READY`, every archive hash
    verifies, and every deferred index is restored.

@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 
 set -Eeuo pipefail
+export LC_ALL=C
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROFILE="$ROOT/compatibility/tc335-acwotlk-v1"
+COMPATIBILITY_PROFILE=${COMPATIBILITY_PROFILE:-tc335-acwotlk-v2}
+PROFILE="$ROOT/compatibility/$COMPATIBILITY_PROFILE"
 TC_SOURCE=${TRINITYCORE_DIR:-"$ROOT/../TrinityCore"}
 AC_SOURCE=${AZEROTHCORE_DIR:-"$ROOT/../azerothcore-wotlk"}
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT
+# shellcheck source=tests/test-support.sh
+source "$ROOT/tests/test-support.sh"
+prepare_test_toolkit "$TEST_ROOT/toolkit"
+TEST_TOOLKIT="$TEST_ROOT/toolkit"
 
 copy_manifest_files() {
     local manifest=$1 source=$2 destination=$3 relative
@@ -38,12 +44,10 @@ prepare_repository "$tc"
 prepare_repository "$ac"
 
 config="$TEST_ROOT/migration.env"
-sed -e "s#^TRINITYCORE_DIR=.*#TRINITYCORE_DIR=$tc#" \
-    -e "s#^AZEROTHCORE_DIR=.*#AZEROTHCORE_DIR=$ac#" \
-    "$ROOT/tests/rehearsal.env" > "$config"
+write_test_config "$config" "$tc" "$ac"
 
 expect_pass() {
-    "$ROOT/bin/migrate.sh" --config "$config" compatibility >/dev/null 2>&1 || {
+    "$TEST_TOOLKIT/bin/migrate.sh" --config "$config" compatibility >/dev/null 2>&1 || {
         printf 'Expected compatibility success: %s\n' "$1" >&2
         exit 1
     }
@@ -51,7 +55,7 @@ expect_pass() {
 
 expect_fail() {
     local output report
-    if output=$("$ROOT/bin/migrate.sh" --config "$config" compatibility 2>&1); then
+    if output=$("$TEST_TOOLKIT/bin/migrate.sh" --config "$config" compatibility 2>&1); then
         printf 'Expected compatibility failure: %s\n' "$1" >&2
         exit 1
     fi
@@ -65,6 +69,40 @@ expect_fail() {
 }
 
 expect_pass baseline
+
+for relative in src/server/game/Entities/Item/Item.h \
+    src/server/game/Entities/Item/ItemDefines.h src/server/game/Entities/Item/Container/Bag.cpp \
+    src/server/game/Entities/Corpse/Corpse.cpp src/server/game/Mails/Mail.h \
+    src/server/game/Loot/LootItemStorage.cpp src/server/game/Battlegrounds/ArenaTeam.cpp \
+    src/server/game/Guilds/GuildMgr.cpp; do
+    printf '%s\n' '// protected format-2 change' >> "$tc/$relative"
+    expect_fail "expanded-reader:$relative"
+    git -C "$tc" checkout -q -- "$relative"
+done
+
+approval_file="$TEST_TOOLKIT/compatibility/$COMPATIBILITY_PROFILE/profile.env"
+sed -i 's/^PROFILE_APPROVAL=APPROVED$/PROFILE_APPROVAL=UNREVIEWED/' "$approval_file"
+if output=$("$TEST_TOOLKIT/bin/migrate.sh" --config "$config" compatibility 2>&1); then
+    printf 'Unreviewed profile was accepted\n' >&2
+    exit 1
+fi
+[[ $output == *'not approved'* ]]
+sed -i 's/^PROFILE_APPROVAL=UNREVIEWED$/PROFILE_APPROVAL=APPROVED/' "$approval_file"
+cp "$config" "$TEST_ROOT/retired.env"
+printf 'COMPATIBILITY_PROFILE=tc335-acwotlk-v1\n' >> "$TEST_ROOT/retired.env"
+if output=$("$TEST_TOOLKIT/bin/migrate.sh" --config "$TEST_ROOT/retired.env" compatibility 2>&1); then
+    printf 'Retired profile was accepted\n' >&2
+    exit 1
+fi
+[[ $output == *'retired'* && $output == *'older toolkit'* ]]
+
+"$TEST_TOOLKIT/bin/generate-compatibility-profile.sh" "$tc" "$ac" \
+    "$COMPATIBILITY_PROFILE" "$TEST_ROOT/generated" >/dev/null
+rg -q '^PROFILE_FORMAT=2$' "$TEST_ROOT/generated/$COMPATIBILITY_PROFILE/profile.env"
+rg -q '^PROFILE_APPROVAL=UNREVIEWED$' "$TEST_ROOT/generated/$COMPATIBILITY_PROFILE/profile.env"
+for manifest in "$PROFILE"/*.sha256 "$PROFILE"/*.tables; do
+    cmp "$manifest" "$TEST_ROOT/generated/$COMPATIBILITY_PROFILE/$(basename "$manifest")"
+done
 
 mkdir -p "$ac/data/sql/updates/db_world" "$ac/src/server/game"
 printf '%s\n' '-- world-only compatibility fixture' > "$ac/data/sql/updates/db_world/test.sql"
@@ -94,7 +132,7 @@ git -C "$ac" -c user.name=compatibility-test \
     -c user.email=compatibility@example.invalid -c commit.gpgsign=false \
     commit -qm unrelated
 new_revision=$(git -C "$ac" rev-parse HEAD)
-command_output=$("$ROOT/bin/migrate.sh" --config "$config" compatibility 2>&1)
+command_output=$("$TEST_TOOLKIT/bin/migrate.sh" --config "$config" compatibility 2>&1)
 report=${command_output##*Wrote }
 rg -q "azerothcore-revision.*$new_revision.*INFO" "$report"
 
@@ -109,7 +147,7 @@ if bash -c '
         -c user.email=compatibility@example.invalid -c commit.gpgsign=false \
         commit -qm moved
     verify_repository_revisions
-' _ "$ROOT" "$config" "$ac" >/dev/null 2>&1; then
+' _ "$TEST_TOOLKIT" "$config" "$ac" >/dev/null 2>&1; then
     printf 'Expected checkout movement to invalidate loaded state\n' >&2
     exit 1
 fi

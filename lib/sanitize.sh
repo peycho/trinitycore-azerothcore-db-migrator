@@ -304,6 +304,13 @@ delete_orphan_pets() {
 }
 
 delete_dangling_relations() {
+    local pet_table
+    for pet_table in pet_aura pet_spell pet_spell_cooldown; do
+        run_cleanup_delete "dangling-$pet_table" "$pet_table" "
+            DELETE s FROM \`$TARGET_CHARACTERS_SCHEMA\`.\`$pet_table\` s
+            LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_pet p ON p.id=s.guid
+            WHERE p.id IS NULL;"
+    done
     run_cleanup_delete dangling-inventory character_inventory "
         DELETE i FROM \`$TARGET_CHARACTERS_SCHEMA\`.character_inventory i
         LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=i.guid

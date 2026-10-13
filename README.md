@@ -21,6 +21,13 @@ versions. Unrelated upstream commits are accepted; protected auth/characters
 SQL or reader changes require review, profile and mapping updates where needed,
 fixtures, and production-sized rehearsals.
 
+The current `tc335-acwotlk-v2` profile is an **UNREVIEWED release candidate**.
+Production commands reject it until native-core smoke tests and two
+production-sized isolated rehearsals pass. Repository tests enable the
+candidate only in disposable toolkit copies. The v1 artifacts remain historical
+evidence; use the older toolkit release for that baseline. See the
+[v2 review and acceptance record](runbooks/profile-v2-review.md).
+
 The checked-in mapping registries cover every table in the reviewed source and
 target schemas. Exact and safely compatible columns are copied by name after
 runtime metadata and value checks. Semantic changes use explicit transforms.
@@ -62,6 +69,8 @@ trigger, or event blocks preflight until added to the selected direction's
 - Local Git checkouts of [TrinityCore](https://github.com/TrinityCore/TrinityCore)
   3.3.5 and [AzerothCore](https://github.com/azerothcore/azerothcore-wotlk)
 
+CI and the automated rehearsal harness use the MySQL 8.4.x server baseline.
+
 Both core repositories are required on the host running the migration. They
 supply the native source/target schema definitions and released target updates.
 The toolkit records each actual full Git revision but grants compatibility only
@@ -92,7 +101,7 @@ Copy `config/migration.env.example` to a secure location and set:
 
 - source/target/control schema names;
 - `MIGRATION_DIRECTION=tc-to-ac` or `ac-to-tc`;
-- `COMPATIBILITY_PROFILE=tc335-acwotlk-v1`;
+- `COMPATIBILITY_PROFILE=tc335-acwotlk-v2`;
 - MySQL endpoint and option-file path;
 - `REALM_ID` matching the characters database;
 - load/cleanup chunk sizes, the large-table threshold, index deferral, and
@@ -150,6 +159,9 @@ The compatibility-profile release changes the control-schema identity and
 layout. Discard targets and control schemas created by an earlier release and
 start again at `preflight`; do not resume an older run.
 
+The v2 update retains that control-schema layout but changes toolkit identity.
+It also requires fresh targets, a new run, and format 2 profiles.
+
 `archive-unsupported` is mandatory after preflight. It no-ops when every
 source-only mapping is empty. Otherwise it requires `ARCHIVE_DIR` outside the
 repository and writes binary-safe compressed dumps plus a SHA-256 manifest
@@ -184,6 +196,11 @@ from TrinityCore.
 - Auth credentials preserve SRP6 `salt` and `verifier` byte-for-byte;
   `session_key_auth` maps to `session_key`; unsupported Battle.net session data
   is excluded; online state is reset.
+- Usernames must fit AzerothCore's database and its authserver's 17-byte
+  packet limit. Mail flags outside its defined mask `0x1f` and character auras
+  with empty caster GUIDs block preflight and loading.
+- Historical uptime rows receive a derived end time and unknown shutdown
+  outcome. An overflowing end time blocks migration.
 - Auth `AccountID/SecurityLevel` maps to AzerothCore `id/gmlevel`.
 - AzerothCore build information and RBAC definitions remain target-owned.
   Per-account TrinityCore RBAC overrides map to exactly one target permission
@@ -217,6 +234,10 @@ from TrinityCore.
 - Talent spec masks expand into TrinityCore talent-group rows.
 - Consolidated item loot splits into item and money tables; multiple money rows
   for one container block migration.
+- Non-money loot receives consecutive deterministic indexes per container,
+  preserving duplicate payloads and reporting changed indexes.
+- Full uptime history is archived before copying its common columns so
+  AzerothCore-only shutdown metadata remains recoverable.
 - Channel bans serialize deterministically into TrinityCore's banned list.
 - Entry points, instance-extension state, petitions, arena ratings, surveys,
   spell state, and cooldown state use explicit target-reader-compatible fields.
@@ -254,6 +275,17 @@ Run repository checks:
 tests/static-checks.sh
 ```
 
+Run automated database checks against an isolated MySQL 8.4.x server on localhost
+port 33317:
+
+```bash
+MIGRATOR_DISPOSABLE_MYSQL=1 tests/rehearsal-tests.sh
+```
+
+The harness requires Python 3, creates random test schemas and a migration user,
+and removes only those objects afterward. It does not start a database server.
+See [Rehearsal](runbooks/rehearsal.md) for provisioning and endpoint options.
+
 The included `tests/rehearsal.env` is only for a disposable MySQL instance on
 port 33316. It is not a production template. The static checker defaults to
 sibling core checkouts; override its paths when necessary:
@@ -289,8 +321,6 @@ Never publish real database dumps, credentials, generated migration reports,
 SRP6 material, email/IP data, or player/account information.
 
 ## License
-
-Copyright © 2026 Peycho Dimitrov and contributors.
 
 trinitycore-azerothcore-db-migrator is free software licensed under the
 [GNU General Public License, version 3 or any later version](COPYING).
