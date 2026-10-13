@@ -55,8 +55,9 @@ flags; native TC high-bit behavior must be tracked separately during smoke tests
 Earlier v2 fixture validation also passed on MySQL 8.0.46. CI and the current
 automated rehearsal harness use the MySQL 8.4.x server baseline.
 
-Reproduce the local checks with `tests/static-checks.sh` and the disposable
-MySQL harness described in [Rehearsal](rehearsal.md). Record actual test versions
+Reproduce the local checks using [Development and automated tests](development.md).
+For production-clone staging acceptance, follow the [migration guide](migration-guide.md).
+Record actual test versions
 and outcomes in the change description. Database
 `READY` means the migrated fixture data passed validation, not that release or
 production cutover is approved. Keep the v1 files unchanged; use fresh targets

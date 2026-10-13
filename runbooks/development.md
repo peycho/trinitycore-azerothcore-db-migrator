@@ -1,0 +1,89 @@
+# Development and automated tests
+
+Operator migrations use the [migration guide](migration-guide.md). These checks
+are for toolkit development and synthetic fixtures; they do not replace a
+production-sized rehearsal or native gameplay acceptance.
+
+## Static checks
+
+Install ShellCheck and the tools listed in the migration guide, and make both
+reviewed local core checkouts available. From the toolkit checkout:
+
+```bash
+TRINITYCORE_DIR=/srv/src/TrinityCore \
+AZEROTHCORE_DIR=/srv/src/azerothcore-wotlk \
+tests/static-checks.sh
+```
+
+The default paths are sibling `../TrinityCore` and `../azerothcore-wotlk`.
+`COMPATIBILITY_PROFILE` defaults to `tc335-acwotlk-v2`. The suite checks shell
+scripts, registry inventories, profile reproducibility/drift, retired and
+unreviewed rejection, complete schema dumps, and the disposable-port guard.
+Inventories use `LC_ALL=C`. Candidate approval exists only in disposable
+toolkit copies under `/tmp`; the checkout's approval is unchanged.
+
+## Disposable MySQL fixture rehearsals
+
+Python 3, MySQL 8 client tools, and a dedicated disposable MySQL **8.4.x** server
+are required. The harness needs an administrator named `root` that can create
+users and databases. It accepts localhost only and rejects port 3306.
+Never point it at the server holding restored production clones.
+
+For example, with Docker, from the toolkit checkout:
+
+```bash
+docker run --detach --name migrator-fixtures \
+  --publish 127.0.0.1:33317:3306 \
+  --env MYSQL_ALLOW_EMPTY_PASSWORD=yes mysql:8.4
+docker logs migrator-fixtures
+```
+
+Wait for MySQL startup to finish, then confirm connectivity:
+
+```bash
+mysql --host=127.0.0.1 --port=33317 --protocol=TCP --user=root \
+  -e 'SELECT @@version;'
+```
+
+Run the harness:
+
+```bash
+MIGRATOR_DISPOSABLE_MYSQL=1 \
+TRINITYCORE_DIR=/srv/src/TrinityCore \
+AZEROTHCORE_DIR=/srv/src/azerothcore-wotlk \
+tests/rehearsal-tests.sh
+```
+
+`REHEARSAL_MYSQL_PORT` overrides port 33317;
+`REHEARSAL_MYSQL_DEFAULTS_FILE` supplies administrator client options.
+Core/profile overrides reach the temporary configurations for every invoked
+check. The included `tests/rehearsal.env` and `tests/populated-rehearsal.env`
+are fixture configurations on port 33316, not templates for operator migrations.
+
+The harness creates random schemas and a separate migration user, grants
+read-only source/world permissions, and removes only its own objects. It tests
+both directions, native update ledgers, boundary blockers, schema and source
+data fingerprints, archive checksums, duplicate loot payloads, pet cleanup,
+interruption/resume, completed-phase reruns, and restored indexes.
+
+When finished, remove only the dedicated fixture server and its volume:
+
+```bash
+docker stop migrator-fixtures
+docker rm --volumes migrator-fixtures
+```
+
+## Fixtures and changes
+
+`tests/fixtures/orphan-cleanup-data.sql` covers dependency cleanup and
+unreachable items. `reachable-missing-owner-blockers.sql` is intentionally
+applied to a loaded target clone and must block sanitization across all five
+reachability root masks. `azerothcore-reverse-data.sql` exercises reverse
+transforms and unsupported-data archives.
+
+For loader, sanitizer, archive, or checkpoint changes, verify a populated
+end-to-end migration, affected-operation interruption/resume, completed-phase
+reruns, target schema fingerprints, restored indexes, and zero validation
+errors. Run checks again against the final toolkit identity after approval or
+protected content changes. CI pins the reviewed core revisions and uses the
+MySQL 8.4 server baseline.

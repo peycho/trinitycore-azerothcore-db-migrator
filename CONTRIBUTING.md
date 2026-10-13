@@ -14,23 +14,10 @@ reproducible fixtures, and performance improvements.
 
 ## Development setup
 
-Clone this repository together with the core repositories described in
-[the repository setup runbook](runbooks/repository-setup.md), then run:
-
-```bash
-tests/static-checks.sh
-```
-
-Database behavior must also be exercised against disposable MySQL 8 schemas.
-For loader, sanitizer, or checkpoint changes, test:
-
-- a clean end-to-end migration;
-- a rerun/no-op;
-- interruption and resume at the affected operation;
-- exact target schema fingerprints and restored indexes;
-- zero validation errors.
-
-Never point test configuration at production schemas.
+Follow [Development and automated tests](runbooks/development.md) for core-path
+configuration, static checks, disposable MySQL 8.4 fixture rehearsals, and the
+required checks for loader/sanitizer/checkpoint changes. Operator staging runs
+follow the [migration guide](runbooks/migration-guide.md).
 
 ## Pull requests
 
