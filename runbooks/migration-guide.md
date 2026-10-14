@@ -490,18 +490,39 @@ world separately before startup. Do not replay data-repair updates over loaded
 player data. Start your installed binaries with these private configurations
 and retain their startup logs.
 
-Test representative accounts and record each result:
+On a production-sized restore, test representative imported characters. Three
+to five characters can cover most of this checklist: include a pet class, a
+dual-spec character, a guild-bank user, and a character with existing instance
+binds. Use two player accounts for trade/mail/group checks and an existing GM
+account for permission checks. Compare with the frozen source snapshot or
+known pre-migration state. Account for elapsed time on cooldowns, mail expiry,
+and instance resets.
 
-| Area | Checks |
-| --- | --- |
-| Authentication | SRP6 login, character list/login, reconnect, boundary-length supported usernames |
-| Character state | Position/homebind, quests, achievements, cooldowns, logout/relogin persistence |
-| Items | Equipment/bags, charges/enchantments, guild-bank contents and withdrawal |
-| Mail and loot | Supported mail flags after save/relogin, attachments, stored-loot consumption and quantities |
-| Pets | Summoning, auras, spellbook/cooldown persistence, retained pet state |
-| Social systems | Guilds/groups, arena member counters, channels, petitions/signatures |
-| Talents and instances | Both specs, spells/glyphs, extended binds, instance entry, reverse respawns |
-| Corpses | Corpse loading, equipment appearance, resurrection |
+| Area | Actions | Passing result |
+| --- | --- | --- |
+| Authentication | Log in with existing credentials, inspect the character list, enter the world, log out and reconnect. Include the longest supported existing username when available. | Correct accounts/characters; no password reset or missing characters. |
+| Character state | Compare level, money, position, homebind, professions, quest log/completions, and important achievements. Use the hearthstone, travel between zones, and advance an existing quest. | Existing state matches; changed quest progress persists, allowing normal timers and position changes. |
+| Items and bags | Inspect equipment, bank and bag contents, gems and normal enchantments. Equip/unequip an item, move it between bags/bank, split a stack, consume one charge or consumable, and trade an unbound item. | Expected stats and quantities; no disappearing or duplicated items. |
+| Talents and spells | Inspect both talent specs and glyphs, switch specs, cast representative spells, and exercise a cooldown. | Correct talents/glyphs/spells for each spec; cooldown works and survives relog while active. |
+| Pets | Summon an existing pet, inspect its name/level/spellbook, cast an ability, dismiss and resummon it. For a hunter, test the stable. | Retained pet state and abilities persist; no unexpected loss of pets or spells. |
+| Mail | Open existing migrated mail, read its body, take an attachment, and check money/COD if present. Send one item and some copper between the test accounts. Inspect prepared auction/GM mail when available. | Attachment/money transferred exactly once; remaining mail and read state persist. Check the accepted GM-return behavior separately. |
+| Stored loot | Use a migrated container that already had stored loot. Take one item or money, close/reopen it, then relog with remaining loot. | Correct remaining payload and quantities; no duplicate or missing loot. |
+| Auctions | Inspect existing migrated listings. List one cheap item, cancel it, and retrieve it through mail; complete a purchase with a second account if available. | Correct listed item/quantity and mail settlement, allowing normal fees and delivery delays. |
+| Guilds and guild banks | Inspect guild membership/ranks and bank tabs. Deposit and withdraw one item using an authorized member; check a restricted member if available. | Correct contents and access; transfer persists without duplication. |
+| Groups, arena, channels | Group two characters, change the leader, then relog. Inspect an existing arena team's membership/ratings and counters. Join an existing custom channel and check its saved moderation/ban state when present. | Appropriate membership, permissions and stored state; functional group/channel interaction. |
+| Petitions | Inspect a migrated charter and its remaining valid signatures, then add a signature using another account if available. | Charter loads and signatures persist without duplication. |
+| Instances | Inspect an existing saved instance, enter it, exit/re-enter, and relog. Check an extended bind when available. For AC → TC, also exercise migrated respawns. | Correct instance identity/reset/extension and preserved saved progress. |
+| Corpses | Test an existing dead character/corpse when available. Also die on a test character, release, reclaim the corpse or resurrect, and relog. | Corpse loads with expected appearance; resurrection and equipment remain correct. |
+| Permissions | Use a harmless permitted GM command and verify a normal player cannot use it. Check any migrated per-account overrides. | Intended realm-scoped access with no unintended privilege grants. |
+| New characters | Create one normal character, enter the world, inspect starting items/spells, log out and log back in. | Native target creation works and the new character persists. |
+| Persistence and logs | After the checks, log everyone out, shut down both target servers cleanly, restart them, and repeat key observations. Review startup/login/save logs. | All saved changes persist; no new SQL, serialization, item-loading or crash errors. |
+
+Record each case as `PASS`, `FAIL`, or `NOT TESTED`, with a brief observation.
+If the snapshot has no charter, stored-loot container, extended bind, or other
+rare state to exercise, record that limitation rather than marking it passed.
+Accepted feature omissions, such as an inactive custom appearance system, must
+be listed separately from stock gameplay checks. Keep the checklist, target
+revision and startup/shutdown logs privately with `final-report.md`.
 
 At the reviewed TC revision, its mail-save code still narrows flags to eight
 bits. Record that upstream high-bit persistence limitation separately;
