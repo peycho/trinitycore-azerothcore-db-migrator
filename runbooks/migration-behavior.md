@@ -51,8 +51,15 @@ the selected mapping registries.
   active name is converted to AzerothCore's empty-string representation.
 - TrinityCore talent groups become AzerothCore bit masks; duplicate spells
   across both specs are collapsed with `BIT_OR`.
-- Spell rows receive both spec bits; cooldown category/end fields are
-  consolidated with the later expiration time.
+- Spell state is reconstructed from legitimate known anchors and verified
+  lower-rank relationships. Ordinary eligible spells retain both spec bits;
+  talent-based chains receive only their existing owners' specialization bits.
+  Inactive superseded ranks remain known. Unexplained disabled/inactive states,
+  incompatible chains and unsafe dependencies block migration. Direct talent
+  ranks are never expanded; native talent/temporary spells are delegated to AC
+  where appropriate. Profession/riding transforms must preserve existing skills.
+  See [spell reconstruction](spell-reconstruction.md) for the precise policy.
+- Cooldown category/end fields are consolidated with the later expiration time.
 - Instance extension enum value `EXTENDED` becomes the target boolean.
 - Item and money loot tables merge into `item_loot_storage`; money is stored as
   `itemid=0`.
@@ -79,6 +86,10 @@ the selected mapping registries.
 - Channel bans serialize deterministically into TrinityCore's banned list.
 - Entry points, instance-extension state, petitions, arena ratings, surveys,
   spell state, and cooldown state use explicit target-reader-compatible fields.
+- Spell conversion preserves reconstructed ordinary chains and derives enabled/
+  disabled talent-based state from the active group and unchanged talent owners.
+  Only the active selected direct talent rank is stored in TC's spellbook;
+  alternate selections remain in `character_talent`. Unrepresentable masks block.
 - Creature and gameobject respawns merge with TrinityCore spawn types `0` and
   `1`.
 - AzerothCore-only data is archived before it is omitted. The reverse path is

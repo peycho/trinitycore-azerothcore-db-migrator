@@ -1,5 +1,6 @@
 INSERT INTO `characters` (`guid`,`account`,`name`,`taximask`,`online`)
 VALUES (100,1,'Migrator','',1),(101,2,'Signer','',0);
+UPDATE `characters` SET race=1,class=1,level=80,talentGroupsCount=2;
 
 INSERT INTO `item_instance`
     (`guid`,`itemEntry`,`owner_guid`,`count`,`enchantments`)
@@ -18,7 +19,7 @@ INSERT INTO `item_loot_money` (`container_id`,`money`)
 VALUES (201,12345);
 
 INSERT INTO `character_spell` (`guid`,`spell`,`active`,`disabled`)
-VALUES (100,6603,1,0);
+VALUES (100,6603,1,0),(100,12282,1,0);
 
 INSERT INTO `character_talent` (`guid`,`spell`,`talentGroup`)
 VALUES (100,12282,0),(100,12282,1);

@@ -341,16 +341,6 @@ build_named_transform_spec() {
                 '`guid`,`spell`,`item`,`time`,`categoryId`,`categoryEnd`' \
                 's.`guid`,s.`spell`,s.`item`,s.`time`,COALESCE(s.`category`,0),IF(COALESCE(s.`category`,0)=0,0,s.`time`)'
             ;;
-        CHARACTER_SPELL)
-            printf '%s\t%s\n' \
-                '`guid`,`spell`,`specMask`' \
-                's.`guid`,s.`spell`,3'
-            ;;
-        CHARACTER_SPELL_REVERSE)
-            printf '%s\t%s\n' \
-                '`guid`,`spell`,`active`,`disabled`' \
-                's.`guid`,s.`spell`,1,0'
-            ;;
         CHARACTER_ARENA_STATS)
             printf '%s\t%s\n' \
                 '`guid`,`slot`,`matchMakerRating`,`maxMMR`' \
@@ -1260,7 +1250,9 @@ perform_load() {
                     "$generated_targets" "$generated_expressions"
                 ;;
             TRANSFORM)
-                if [[ $expression == ITEM_LOOT_STORAGE ]]; then
+                if [[ $expression == CHARACTER_SPELL || $expression == CHARACTER_SPELL_REVERSE ]]; then
+                    load_character_spells
+                elif [[ $expression == ITEM_LOOT_STORAGE ]]; then
                     load_item_loot_storage
                 elif [[ $expression == ITEM_LOOT_STORAGE_REVERSE ]]; then
                     load_item_loot_reverse

@@ -15,6 +15,7 @@ source "$MIGRATION_ROOT/lib/load.sh"
 source "$MIGRATION_ROOT/lib/sanitize.sh"
 source "$MIGRATION_ROOT/lib/validate.sh"
 source "$MIGRATION_ROOT/lib/representations.sh"
+source "$MIGRATION_ROOT/lib/spells.sh"
 
 usage() {
     cat <<'EOF'
@@ -66,6 +67,7 @@ create_run_id
 verify_repository_compatibility "$REPORTS_DIR/$RUN_ID/compatibility-report.tsv"
 initialize_control_schema
 verify_run_configuration
+verify_spell_snapshot_if_present
 
 case "$COMMAND" in
     preflight)

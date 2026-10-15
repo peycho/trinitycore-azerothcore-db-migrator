@@ -11,8 +11,11 @@ use the older toolkit release for v1 migrations.
 
 Operator setup, candidate staging approval, and compatibility checks are in
 the [migration guide](migration-guide.md). This document covers maintainer
-work when introducing a new reviewed baseline. World SQL and unrelated C++
-changes remain outside the profile. There is no production approval override.
+work when introducing a new reviewed baseline. General world SQL and unrelated
+C++ changes remain outside the profile. Seven AC DBC overlay definition files
+are protected because the spell-profile generator uses their ordered layouts.
+Live spell metadata is separately fingerprinted for each run. There is no
+production approval override.
 
 ## Reviewing a candidate
 
@@ -28,7 +31,11 @@ bin/generate-compatibility-profile.sh \
 
 The candidate is `UNREVIEWED`. Review protected SQL, serialization, gameplay
 meaning, and native reader behavior; update mappings, blockers, transforms,
-validation, and fixtures as required. Record the full revisions and evidence.
+validation, and fixtures as required. The generated `spell-metadata.json`
+contains WDBC layouts, additive/override reader rules, integer core corrections,
+conservative unsupported-correction guards and native spell-script dispositions.
+Review these alongside the expanded spell/DBC/trainer readers. Record the full
+revisions and evidence.
 Never replace an existing approved profile's manifests.
 
 The checked-in [v2 candidate](profile-v2-review.md) remains unreviewed. Use

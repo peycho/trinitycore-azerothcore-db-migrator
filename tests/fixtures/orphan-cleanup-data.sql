@@ -2,6 +2,7 @@
 -- does not exist. None of these characters is an organization leader.
 INSERT INTO `characters` (`guid`,`account`,`name`,`taximask`,`online`)
 VALUES (900,999,'Orphaned','',0);
+UPDATE `characters` SET race=1,class=1,level=80 WHERE guid=900;
 
 INSERT INTO `character_spell` (`guid`,`spell`,`active`,`disabled`)
 VALUES (900,6603,1,0);

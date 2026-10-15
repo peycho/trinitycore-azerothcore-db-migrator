@@ -70,6 +70,9 @@ Use MySQL **8.4.x** for this rehearsal; this is the tested server baseline.
 Install MySQL 8 client tools, Bash 4+, Git, ripgrep (`rg`), and GNU core utilities, including
 `realpath`, `find`, `sort`, `cmp`, `diff`, `xargs`, `sha1sum`, `sha256sum`,
 `sed`, `awk`, and `gzip`.
+Install Python 3 for spell metadata/reconstruction. Retain the DBC assets used
+by each selected core; nonempty spell/talent migrations require both asset sets
+and both read-only worlds, as described in [spell reconstruction](spell-reconstruction.md).
 
 ```bash
 mysql --version
@@ -162,6 +165,7 @@ CREATE USER 'migration_operator'@'localhost' IDENTIFIED BY 'replace-with-a-stron
 GRANT SELECT, SHOW VIEW, LOCK TABLES ON `trinity_auth`.* TO 'migration_operator'@'localhost';
 GRANT SELECT, SHOW VIEW, LOCK TABLES ON `trinity_characters`.* TO 'migration_operator'@'localhost';
 GRANT SELECT ON `trinity_world`.* TO 'migration_operator'@'localhost';
+GRANT SELECT ON `acore_world`.* TO 'migration_operator'@'localhost';
 GRANT ALL PRIVILEGES ON `acore_auth_migrated`.* TO 'migration_operator'@'localhost';
 GRANT ALL PRIVILEGES ON `acore_characters_migrated`.* TO 'migration_operator'@'localhost';
 GRANT ALL PRIVILEGES ON `acore_migration_control_rehearsal`.* TO 'migration_operator'@'localhost';
@@ -238,6 +242,9 @@ MIGRATION_DIRECTION=tc-to-ac
 SOURCE_AUTH_SCHEMA=trinity_auth
 SOURCE_CHARACTERS_SCHEMA=trinity_characters
 SOURCE_WORLD_SCHEMA=trinity_world
+TARGET_WORLD_SCHEMA=acore_world
+TRINITYCORE_DBC_DIR=/absolute/path/tc-dbc
+AZEROTHCORE_DBC_DIR=/absolute/path/ac-dbc
 TARGET_AUTH_SCHEMA=acore_auth_migrated
 TARGET_CHARACTERS_SCHEMA=acore_characters_migrated
 CONTROL_SCHEMA=acore_migration_control_rehearsal
@@ -267,13 +274,16 @@ MIGRATION_DIRECTION=ac-to-tc
 SOURCE_AUTH_SCHEMA=acore_auth
 SOURCE_CHARACTERS_SCHEMA=acore_characters
 SOURCE_WORLD_SCHEMA=acore_world
+TARGET_WORLD_SCHEMA=trinity_world
 TARGET_AUTH_SCHEMA=trinity_auth_migrated
 TARGET_CHARACTERS_SCHEMA=trinity_characters_migrated
 CONTROL_SCHEMA=trinity_migration_control_rehearsal
 ```
 
-The source world is optional if no world-backed check needs it. Reverse
-migrations with nonempty creature/gameobject respawns require it. Keep
+Both worlds and DBC directories are required for nonempty spell/talent
+conversion. Metadata access is SELECT only; neither world is created or
+updated by the runner. Reverse migrations with nonempty creature/gameobject
+respawns also require the source world. Keep
 `REQUIRE_QUIESCENT=1` and stop source connections. Disable this check only for
 restored, isolated clones with independently confirmed absence of writers.
 The check cannot prevent a job from reconnecting: keep writers stopped.
@@ -320,6 +330,10 @@ Inspect `server-metadata.tsv`, `source-*-schema.sql`,
 `source-*-row-counts.tsv`, `source-orphan-audit.tsv`, and `source-blockers.tsv`.
 The blocker file must contain no blocker rows. The orphan audit can contain
 approved cleanup candidates; review the expected removals before loading.
+Inspect `spell-state-blockers.tsv`, `spell-fingerprints.tsv` and
+`spell-expected.tsv` as well. Unsafe spell states block before assembly;
+verified predecessor derivations can increase persistent row counts.
+Do not resolve a missing-rank problem by granting trainer spells or deleting talents.
 
 If preflight fails, use the [problem table](#problems-and-evidence) below.
 For source changes, fix only an explicitly reviewed staging preparation copy

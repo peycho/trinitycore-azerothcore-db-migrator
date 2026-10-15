@@ -1,0 +1,232 @@
+#!/usr/bin/env bash
+# shellcheck disable=SC2016
+
+# Only the Python SELECT reader touches source/world data. Expected rows are
+# immutable control data; actual provenance commits with each target chunk.
+prepare_spell_snapshot() {
+    local mode=${1:-verify} temporary input_hash expected_hash existing
+    require_command python3
+    mkdir -p "$REPORTS_DIR/$RUN_ID"
+    temporary=$(mktemp -d)
+    if ! python3 "$MIGRATION_ROOT/lib/spells.py" \
+        --profile "$COMPATIBILITY_PROFILE_DIR/spell-metadata.json" \
+        --output "$temporary" --source-characters "$SOURCE_CHARACTERS_SCHEMA" \
+        --source-world "$SOURCE_WORLD_SCHEMA" --target-world "$TARGET_WORLD_SCHEMA" \
+        --tc-dbc "$TRINITYCORE_DBC_DIR" --ac-dbc "$AZEROTHCORE_DBC_DIR" \
+        --control "$CONTROL_SCHEMA" --run-id "$RUN_ID" --direction "$MIGRATION_DIRECTION" \
+        --mysql "${MYSQL_ARGS[@]}"; then
+        mkdir -p "$REPORTS_DIR/$RUN_ID"
+        if [[ -f $temporary/spell-state-blockers.tsv ]]; then
+            cp "$temporary/spell-state-blockers.tsv" "$REPORTS_DIR/$RUN_ID/"
+            local guid spell reason detail
+            while IFS=$'\t' read -r guid spell reason detail; do
+                [[ $guid == guid ]] && continue
+                mysql_query -e "
+                    INSERT INTO \`$CONTROL_SCHEMA\`.migration_reject
+                        (run_id,database_kind,source_table,source_key,reason_code,reason_detail)
+                    VALUES ('$(sql_escape "$RUN_ID")','characters','character_spell',
+                        '$(sql_escape "$guid:$spell")','$(sql_escape "$reason")',
+                        '$(sql_escape "$detail")');"
+            done < "$temporary/spell-state-blockers.tsv"
+        fi
+        rm -rf "$temporary"
+        mysql_query -e "UPDATE \`$CONTROL_SCHEMA\`.migration_run SET status='FAILED'
+            WHERE run_id='$(sql_escape "$RUN_ID")';"
+        die "Spell state is incompatible; see spell-state-blockers.tsv; resolve and start a new run"
+    fi
+    IFS=$'\t' read -r input_hash expected_hash < "$temporary/spell-digests.tsv"
+    existing=$(mysql_query -e "SELECT CONCAT(input_hash,':',expected_hash)
+        FROM \`$CONTROL_SCHEMA\`.spell_input_snapshot WHERE run_id='$(sql_escape "$RUN_ID")';") ||
+        die "Could not read the spell input checkpoint"
+    if [[ -n $existing && $existing != "$input_hash:$expected_hash" ]]; then
+        cp "$temporary/spell-fingerprints.tsv" "$REPORTS_DIR/$RUN_ID/spell-drift-fingerprints.tsv"
+        rm -rf "$temporary"
+        mysql_query -e "UPDATE \`$CONTROL_SCHEMA\`.migration_run SET status='FAILED'
+            WHERE run_id='$(sql_escape "$RUN_ID")';"
+        die "Spell inputs or reconstruction changed after preflight; start a new run"
+    fi
+    if [[ -z $existing ]]; then
+        [[ $mode == capture ]] || die "Missing spell snapshot; start a new run"
+        {
+            printf 'START TRANSACTION;\n'
+            cat "$temporary/spell-expected.sql"
+            printf "INSERT INTO \`%s\`.spell_input_snapshot (run_id,input_hash,expected_hash) VALUES ('%s','%s','%s');\n" \
+                "$CONTROL_SCHEMA" "$RUN_ID" "$input_hash" "$expected_hash"
+            printf 'COMMIT;\n'
+        } > "$temporary/capture.sql"
+        if ! mysql "${MYSQL_ARGS[@]}" < "$temporary/capture.sql"; then
+            rm -rf "$temporary"
+            die "Could not commit the spell expectation snapshot"
+        fi
+        cp "$temporary/spell-fingerprints.tsv" "$REPORTS_DIR/$RUN_ID/"
+        cp "$temporary/spell-state-blockers.tsv" "$REPORTS_DIR/$RUN_ID/"
+        cp "$temporary/spell-expected.tsv" "$REPORTS_DIR/$RUN_ID/"
+    fi
+    # Independently recomputed rows also verify that committed expected data
+    # has not been edited since capture. Canonical TSV is hashed by Python.
+    local actual_hash
+    actual_hash=$(mysql_query -e "SELECT guid,spell,spec_mask,active,disabled,disposition,derived,provenance
+        FROM \`$CONTROL_SCHEMA\`.spell_expected
+        WHERE run_id='$(sql_escape "$RUN_ID")' ORDER BY guid,spell;" | sha256sum | awk '{print $1}') ||
+        die "Could not verify committed spell expectations"
+    [[ $actual_hash == "$expected_hash" ]] || {
+        rm -rf "$temporary"
+        die "Committed spell expectation differs from reconstructed source state"
+    }
+    rm -rf "$temporary"
+}
+
+verify_spell_snapshot_if_present() {
+    if [[ $(mysql_query -e "SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.spell_input_snapshot
+        WHERE run_id='$(sql_escape "$RUN_ID")';") == 1 ]]; then
+        prepare_spell_snapshot verify
+    fi
+}
+
+load_character_spells() {
+    local input_hash expected_hash hash expected start end maximum inserted columns values snapshot bounds
+    snapshot=$(mysql_query -e "
+        SELECT input_hash,expected_hash FROM \`$CONTROL_SCHEMA\`.spell_input_snapshot
+        WHERE run_id='$(sql_escape "$RUN_ID")';") || die "Could not read spell checkpoint hashes"
+    IFS=$'\t' read -r input_hash expected_hash <<< "$snapshot"
+    [[ -n $input_hash && -n $expected_hash ]] || die "Spell snapshot is required before loading"
+    hash=$(printf '%s\n' 'spell-state-v1' "$MIGRATION_DIRECTION" "$input_hash" "$expected_hash" "$TOOLKIT_HASH" |
+        sha256sum | awk '{print $1}')
+    columns='guid,spell,specMask'
+    values='guid,spell,spec_mask'
+    if [[ $MIGRATION_DIRECTION == ac-to-tc ]]; then
+        columns='guid,spell,active,disabled'
+        values='guid,spell,active,disabled'
+    fi
+    expected=$(mysql_query -e "SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.spell_expected
+        WHERE run_id='$(sql_escape "$RUN_ID")' AND disposition='PERSISTENT';") || die "Could not count reconstructed spells"
+    defer_secondary_indexes characters character_spell "$expected"
+    bounds=$(mysql_query -e "SELECT COALESCE(MIN(guid),0),COALESCE(MAX(guid),0)
+        FROM \`$CONTROL_SCHEMA\`.spell_expected WHERE run_id='$(sql_escape "$RUN_ID")';") || die "Could not read spell chunk bounds"
+    read -r start maximum <<< "$bounds"
+    local generated="$REPORTS_DIR/$RUN_ID/generated-characters-character_spell.sql"
+    printf '%s\n' "-- spell-state-v1; inputs=$input_hash; expected=$expected_hash" > "$generated"
+    while :; do
+        end=$((start + LOAD_CHUNK_SIZE - 1))
+        (( end > maximum )) && end=$maximum
+        local predicate
+        predicate="run_id='$(sql_escape "$RUN_ID")' AND guid BETWEEN $start AND $end"
+        local statement="INSERT INTO \`$TARGET_SCHEMA\`.character_spell ($columns)
+            SELECT $values FROM \`$CONTROL_SCHEMA\`.spell_expected
+            WHERE $predicate AND disposition='PERSISTENT' ORDER BY guid,spell;"
+        printf '%s\n' "$statement" >> "$generated"
+        if ! checkpoint_complete characters character_spell "$start" "$end" "$hash"; then
+            mark_operation_running load-characters load-spells characters character_spell \
+                "$start" "$end" "$hash" 0
+            if ! inserted=$(mysql_query -e "
+                SET SESSION sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION,NO_AUTO_VALUE_ON_ZERO';
+                START TRANSACTION;
+                DELETE FROM \`$TARGET_SCHEMA\`.character_spell WHERE guid BETWEEN $start AND $end;
+                $statement
+                SET @inserted=ROW_COUNT();
+                DELETE FROM \`$CONTROL_SCHEMA\`.spell_provenance WHERE $predicate;
+                INSERT INTO \`$CONTROL_SCHEMA\`.spell_provenance
+                    SELECT * FROM \`$CONTROL_SCHEMA\`.spell_expected WHERE $predicate;
+                INSERT INTO \`$CONTROL_SCHEMA\`.chunk_checkpoint
+                    (run_id,database_kind,source_table,target_table,chunk_start,chunk_end,
+                     script_hash,source_rows,target_rows,status)
+                VALUES ('$(sql_escape "$RUN_ID")','characters','character_spell','character_spell',
+                    $start,$end,'$hash',@inserted,@inserted,'COMPLETE') AS new
+                ON DUPLICATE KEY UPDATE script_hash=new.script_hash,source_rows=new.source_rows,
+                    target_rows=new.target_rows,status='COMPLETE',finished_at=UTC_TIMESTAMP();
+                INSERT INTO \`$CONTROL_SCHEMA\`.operation_checkpoint
+                    (run_id,phase_name,operation_name,database_kind,table_name,chunk_start,chunk_end,
+                     script_hash,planned_rows,affected_rows,status,finished_at,detail)
+                VALUES ('$(sql_escape "$RUN_ID")','load-characters','load-spells','characters','character_spell',
+                    $start,$end,'$hash',@inserted,@inserted,'COMPLETE',UTC_TIMESTAMP(),'spell rows and provenance committed atomically') AS new
+                ON DUPLICATE KEY UPDATE status='COMPLETE',script_hash=new.script_hash,
+                    affected_rows=new.affected_rows,finished_at=new.finished_at;
+                COMMIT;
+                SELECT @inserted;"); then
+                die "Atomic spell load failed for GUID range [$start,$end]"
+            fi
+            log "Loaded reconstructed spells [$start,$end]: $inserted row(s)"
+        fi
+        (( end >= maximum )) && break
+        start=$(mysql_query -e "SELECT COALESCE(MIN(guid),$((maximum + 1)))
+            FROM \`$CONTROL_SCHEMA\`.spell_expected WHERE run_id='$(sql_escape "$RUN_ID")' AND guid>$end;") ||
+            die "Could not advance the spell chunk"
+        (( start > maximum )) && break
+    done
+    restore_secondary_indexes characters character_spell
+    write_spell_reports
+}
+
+validate_character_spells() {
+    local fields='t.specMask<>e.spec_mask'
+    [[ $MIGRATION_DIRECTION == tc-to-ac ]] || fields='t.active<>e.active OR t.disabled<>e.disabled'
+    check_zero character_spell_semantic_mismatch "
+        SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.spell_expected e
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=e.guid
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_spell t ON t.guid=e.guid AND t.spell=e.spell
+        WHERE e.run_id='$(sql_escape "$RUN_ID")' AND e.disposition='PERSISTENT'
+          AND (t.guid IS NULL OR $fields);" \
+        "Every reconstructed persistent spell must have exactly the authorized target state"
+    check_zero character_spell_unexpected "
+        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.character_spell t
+        LEFT JOIN \`$CONTROL_SCHEMA\`.spell_expected e
+          ON e.run_id='$(sql_escape "$RUN_ID")' AND e.guid=t.guid AND e.spell=t.spell AND e.disposition='PERSISTENT'
+        WHERE e.guid IS NULL;" "No spell may be granted outside the verified reconstructed set"
+    check_zero character_spell_provenance_mismatch "
+        SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.spell_expected e
+        LEFT JOIN \`$CONTROL_SCHEMA\`.spell_provenance p ON p.run_id=e.run_id AND p.guid=e.guid AND p.spell=e.spell
+        WHERE e.run_id='$(sql_escape "$RUN_ID")' AND (p.guid IS NULL OR p.spec_mask<>e.spec_mask
+          OR p.disposition<>e.disposition OR p.active<>e.active OR p.disabled<>e.disabled
+          OR p.derived<>e.derived OR BINARY p.provenance<>BINARY e.provenance);" \
+        "Committed spell provenance must cover persistent and runtime-owned representations"
+    check_zero character_spell_unexpected_provenance "
+        SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.spell_provenance p
+        LEFT JOIN \`$CONTROL_SCHEMA\`.spell_expected e ON e.run_id=p.run_id AND e.guid=p.guid AND e.spell=p.spell
+        WHERE p.run_id='$(sql_escape "$RUN_ID")' AND e.guid IS NULL;" \
+        "Reports must not contain provenance outside the reconstructed source state"
+    local talent_state="SELECT guid,spell,specMask mask FROM \`$TARGET_CHARACTERS_SCHEMA\`.character_talent"
+    if [[ $MIGRATION_DIRECTION == ac-to-tc ]]; then
+        talent_state="SELECT guid,spell,BIT_OR(1 << talentGroup) mask
+            FROM \`$TARGET_CHARACTERS_SCHEMA\`.character_talent GROUP BY guid,spell"
+    fi
+    check_zero character_spell_delegated_talent_mismatch "
+        SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.spell_expected e
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=e.guid
+        LEFT JOIN ($talent_state) t ON t.guid=e.guid AND t.spell=e.spell
+        WHERE e.run_id='$(sql_escape "$RUN_ID")' AND e.disposition='TALENT'
+          AND (t.guid IS NULL OR t.mask<>e.spec_mask);" \
+        "Delegated direct talent spells require exactly their unchanged talent owners"
+    check_zero character_spell_runtime_owner_mismatch "
+        SELECT COUNT(*) FROM (
+          SELECT e.guid,e.spell,e.spec_mask,COALESCE(BIT_OR(t.mask),0) owned_mask
+          FROM \`$CONTROL_SCHEMA\`.spell_expected e
+          JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=e.guid
+          CROSS JOIN JSON_TABLE(e.provenance,'$.derivations[*]'
+            COLUMNS (anchor INT UNSIGNED PATH '\$[0]')) proof
+          LEFT JOIN ($talent_state) t ON t.guid=e.guid AND t.spell=proof.anchor
+          WHERE e.run_id='$(sql_escape "$RUN_ID")' AND e.disposition='RUNTIME'
+          GROUP BY e.guid,e.spell,e.spec_mask
+        ) ownership WHERE spec_mask<>owned_mask;" \
+        "Runtime temporary spells must be covered by verified target talent ownership"
+    check_zero character_spell_specialization_context_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.characters s
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters t ON t.guid=s.guid
+        WHERE s.activeTalentGroup<>t.activeTalentGroup OR s.talentGroupsCount<>t.talentGroupsCount;" \
+        "Spell conversion must retain specialization count and active group"
+    check_zero character_skill_semantic_mismatch "
+        SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_skills s
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=s.guid
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_skills t ON t.guid=s.guid AND t.skill=s.skill
+        WHERE t.guid IS NULL OR t.value<>s.value OR t.max<>s.max;" \
+        "Spell reconstruction must not alter stored skill values or caps"
+    write_spell_reports
+}
+
+write_spell_reports() {
+    mkdir -p "$REPORTS_DIR/$RUN_ID"
+    {
+        printf 'guid\tspell\tspec_mask\tdisposition\tderived\tprovenance\n'
+        mysql_query -e "SELECT guid,spell,spec_mask,disposition,derived,provenance
+            FROM \`$CONTROL_SCHEMA\`.spell_provenance WHERE run_id='$(sql_escape "$RUN_ID")' ORDER BY guid,spell;"
+    } > "$REPORTS_DIR/$RUN_ID/spell-reconstruction.tsv"
+}

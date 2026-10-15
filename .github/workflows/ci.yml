@@ -42,7 +42,7 @@ jobs:
           path: azerothcore-wotlk
 
       - name: Install static-analysis tools
-        run: sudo apt-get update && sudo apt-get install -y ripgrep shellcheck default-mysql-client python3
+        run: sudo apt-get update && sudo apt-get install -y ripgrep shellcheck default-mysql-client python3 g++
 
       - name: Run static checks
         working-directory: trinitycore-azerothcore-db-migrator

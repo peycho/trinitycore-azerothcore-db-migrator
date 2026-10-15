@@ -43,6 +43,9 @@ write_path_manifest "$AZEROTHCORE_DIR" "$candidate_dir/azerothcore-sql.sha256" s
     data/sql/updates/db_auth data/sql/updates/db_characters
 write_trinitycore_semantic_manifest "$candidate_dir/trinitycore-semantic.sha256"
 write_azerothcore_semantic_manifest "$candidate_dir/azerothcore-semantic.sha256"
+require_command python3
+python3 "$MIGRATION_ROOT/bin/generate-spell-metadata-profile.py" \
+    "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR" "$candidate_dir/spell-metadata.json"
 
 rg '^CREATE TABLE' "$TRINITYCORE_DIR/sql/base/auth_database.sql" |
     sed -E 's/^CREATE TABLE `([^`]+)`.*/\1/' | LC_ALL=C sort > "$candidate_dir/trinitycore-auth.tables"

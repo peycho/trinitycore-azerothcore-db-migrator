@@ -74,7 +74,9 @@ for relative in src/server/game/Entities/Item/Item.h \
     src/server/game/Entities/Item/ItemDefines.h src/server/game/Entities/Item/Container/Bag.cpp \
     src/server/game/Entities/Corpse/Corpse.cpp src/server/game/Mails/Mail.h \
     src/server/game/Loot/LootItemStorage.cpp src/server/game/Battlegrounds/ArenaTeam.cpp \
-    src/server/game/Guilds/GuildMgr.cpp; do
+    src/server/game/Guilds/GuildMgr.cpp src/server/game/Spells/SpellMgr.cpp \
+    src/server/game/Spells/SpellInfo.cpp src/server/shared/DataStores/DBCfmt.h \
+    src/server/game/Entities/Creature/Trainer.cpp; do
     printf '%s\n' '// protected format-2 change' >> "$tc/$relative"
     expect_fail "expanded-reader:$relative"
     git -C "$tc" checkout -q -- "$relative"
@@ -103,6 +105,7 @@ rg -q '^PROFILE_APPROVAL=UNREVIEWED$' "$TEST_ROOT/generated/$COMPATIBILITY_PROFI
 for manifest in "$PROFILE"/*.sha256 "$PROFILE"/*.tables; do
     cmp "$manifest" "$TEST_ROOT/generated/$COMPATIBILITY_PROFILE/$(basename "$manifest")"
 done
+cmp "$PROFILE/spell-metadata.json" "$TEST_ROOT/generated/$COMPATIBILITY_PROFILE/spell-metadata.json"
 
 mkdir -p "$ac/data/sql/updates/db_world" "$ac/src/server/game"
 printf '%s\n' '-- world-only compatibility fixture' > "$ac/data/sql/updates/db_world/test.sql"

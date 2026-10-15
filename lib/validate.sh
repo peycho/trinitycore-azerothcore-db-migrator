@@ -96,6 +96,13 @@ validate_mapping_counts() {
                             (SELECT COUNT(*) FROM \`$SOURCE_SCHEMA\`.item_loot_money WHERE money > 0) -
                             $removed;" \
                         "Combined item and money loot rows minus approved target cleanup"
+                elif [[ $expression == CHARACTER_SPELL || $expression == CHARACTER_SPELL_REVERSE ]]; then
+                    check_equal "count.characters.character_spell" \
+                        "SELECT COUNT(*) FROM \`$TARGET_SCHEMA\`.character_spell;" \
+                        "SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.spell_expected e
+                         JOIN \`$TARGET_SCHEMA\`.characters c ON c.guid=e.guid
+                         WHERE e.run_id='$(sql_escape "$RUN_ID")' AND e.disposition='PERSISTENT';" \
+                        "Reconstructed persistent spell rows for retained characters"
                 elif [[ $expression == CHARACTER_TALENTS ]]; then
                     local removed
                     removed=$(mysql_query -e "
@@ -333,10 +340,7 @@ perform_validation_reverse() {
         WHERE rc.realmid=$REALM_ID
           AND rc.numchars<>LEAST(COALESCE(c.numchars,0),255);" \
         "realmcharacters must match retained characters"
-    check_zero character_spell_reverse_mismatch "
-        SELECT COUNT(*) FROM \`$TARGET_CHARACTERS_SCHEMA\`.character_spell
-        WHERE active<>1 OR disabled<>0;" \
-        "AzerothCore spell rows must become active TrinityCore spells"
+    validate_character_spells
     check_zero character_talent_reverse_mismatch "
         SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_talent s
         LEFT JOIN (
@@ -659,11 +663,7 @@ perform_validation() {
          AND mapped.realmId=ap.realmId
         WHERE mapped.accountId IS NULL OR mapped.granted<>ap.granted;" \
         "Account RBAC overrides must preserve exact permission names, grants, and realm scopes"
-    check_zero character_spell_mask_mismatch "
-        SELECT COUNT(*)
-        FROM \`$TARGET_CHARACTERS_SCHEMA\`.character_spell
-        WHERE specMask <> 3;" \
-        "TrinityCore character spells must be available in both target specs"
+    validate_character_spells
     check_zero character_talent_mask_mismatch "
         SELECT COUNT(*)
         FROM (
@@ -875,6 +875,7 @@ purge_validated_item_candidates() {
 write_final_report() {
     local run_reports="$REPORTS_DIR/$RUN_ID"
     mkdir -p "$run_reports"
+    write_spell_reports
     local report="$run_reports/final-report.md"
     local run_status failures warnings run_identity
     run_status=$(mysql_query -e "
@@ -913,6 +914,17 @@ write_final_report() {
         printf -- '- Status: **%s**\n' "$run_status"
         printf -- '- Failed validation checks: **%s**\n' "$failures"
         printf -- '- Warnings: **%s**\n\n' "$warnings"
+        printf '## Spell reconstruction\n\n'
+        printf 'Rows and specialization decisions: `spell-reconstruction.tsv`. Input evidence: `spell-fingerprints.tsv`.\n\n'
+        printf '| Representation | Rows | Derived rows |\n|---|---:|---:|\n'
+        mysql_query -e "SELECT CONCAT('| ',disposition,' | ',COUNT(*),' | ',SUM(derived),' |')
+            FROM \`$CONTROL_SCHEMA\`.spell_provenance WHERE run_id='$(sql_escape "$RUN_ID")'
+            GROUP BY disposition ORDER BY disposition;"
+        printf '\nStored persistent rows with specialization-limited masks: '
+        mysql_query -e "SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.spell_provenance
+            WHERE run_id='$(sql_escape "$RUN_ID")' AND derived=0
+              AND disposition='PERSISTENT' AND spec_mask<>3;"
+        printf '\n'
         printf '## Validation results\n\n'
         printf '| Check | Severity | Observed | Expected | Passed | Detail |\n'
         printf '|---|---:|---:|---:|:---:|---|\n'

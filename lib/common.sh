@@ -57,6 +57,12 @@ load_configuration() {
     MYSQL_DEFAULTS_FILE=${MYSQL_DEFAULTS_FILE:-}
     MYSQL_SOCKET=${MYSQL_SOCKET:-}
     SOURCE_WORLD_SCHEMA=${SOURCE_WORLD_SCHEMA:-}
+    TARGET_WORLD_SCHEMA=${TARGET_WORLD_SCHEMA:-}
+    TRINITYCORE_DBC_DIR=${TRINITYCORE_DBC_DIR:-}
+    AZEROTHCORE_DBC_DIR=${AZEROTHCORE_DBC_DIR:-}
+    for name in TRINITYCORE_DBC_DIR AZEROTHCORE_DBC_DIR; do
+        [[ -z ${!name} ]] || printf -v "$name" '%s' "$(absolute_path "${!name}")"
+    done
     REQUIRE_QUIESCENT=${REQUIRE_QUIESCENT:-1}
     ALLOW_SOURCE_ARCHIVE=${ALLOW_SOURCE_ARCHIVE:-1}
     ALLOW_GAMEPLAY_ARCHIVE=${ALLOW_GAMEPLAY_ARCHIVE:-0}
@@ -74,6 +80,20 @@ load_configuration() {
     if [[ -n $SOURCE_WORLD_SCHEMA ]]; then
         validate_identifier "$SOURCE_WORLD_SCHEMA" SOURCE_WORLD_SCHEMA
     fi
+    [[ -z $TARGET_WORLD_SCHEMA ]] || validate_identifier "$TARGET_WORLD_SCHEMA" TARGET_WORLD_SCHEMA
+    local writable readonly
+    for writable in "$TARGET_AUTH_SCHEMA" "$TARGET_CHARACTERS_SCHEMA" "$CONTROL_SCHEMA"; do
+        for readonly in "$SOURCE_AUTH_SCHEMA" "$SOURCE_CHARACTERS_SCHEMA" "$SOURCE_WORLD_SCHEMA" "$TARGET_WORLD_SCHEMA"; do
+            [[ -z $readonly || $writable != "$readonly" ]] ||
+                die "Writable schema $writable overlaps a source/world schema"
+        done
+    done
+    [[ $CONTROL_SCHEMA != "$TARGET_AUTH_SCHEMA" && $CONTROL_SCHEMA != "$TARGET_CHARACTERS_SCHEMA" ]] ||
+        die "Control schema must differ from character/auth targets"
+    [[ $SOURCE_AUTH_SCHEMA != "$SOURCE_CHARACTERS_SCHEMA" ]] ||
+        die "Source auth and characters schemas must differ"
+    [[ -z $SOURCE_WORLD_SCHEMA || -z $TARGET_WORLD_SCHEMA || $SOURCE_WORLD_SCHEMA != "$TARGET_WORLD_SCHEMA" ]] ||
+        die "Source and target world schemas must differ"
     [[ $LOAD_CHUNK_SIZE =~ ^[1-9][0-9]*$ ]] ||
         die "LOAD_CHUNK_SIZE must be a positive integer"
     [[ $CLEANUP_CHUNK_SIZE =~ ^[1-9][0-9]*$ ]] ||
@@ -98,7 +118,8 @@ load_configuration() {
     mkdir -p "$REPORTS_DIR" "$VAR_DIR"
     TOOLKIT_HASH=$(
         find "$MIGRATION_ROOT/bin" "$MIGRATION_ROOT/lib" "$MIGRATION_ROOT/sql" \
-            "$MIGRATION_ROOT/mappings" "$MIGRATION_ROOT/compatibility" -type f -print |
+            "$MIGRATION_ROOT/mappings" "$MIGRATION_ROOT/compatibility" -type f \
+            ! -path '*/__pycache__/*' ! -name '*.pyc' -print |
             LC_ALL=C sort |
             xargs sha256sum |
             sha256sum |
@@ -109,6 +130,7 @@ load_configuration() {
             "$MYSQL_HOST" "$MYSQL_PORT" "$MYSQL_SOCKET" \
             "$MIGRATION_DIRECTION" \
             "$SOURCE_AUTH_SCHEMA" "$SOURCE_CHARACTERS_SCHEMA" "$SOURCE_WORLD_SCHEMA" \
+            "$TARGET_WORLD_SCHEMA" "$TRINITYCORE_DBC_DIR" "$AZEROTHCORE_DBC_DIR" \
             "$TARGET_AUTH_SCHEMA" "$TARGET_CHARACTERS_SCHEMA" "$CONTROL_SCHEMA" \
             "$REALM_ID" "$COMPATIBILITY_PROFILE" \
             "$TRINITYCORE_REVISION" "$AZEROTHCORE_REVISION" \

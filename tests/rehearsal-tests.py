@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import uuid
+import importlib.util
 
 ROOT, WORK = map(Path, sys.argv[1:])
 TOOLKIT = WORK / 'toolkit'
@@ -30,6 +31,14 @@ PREFIX = 'migrator_test_' + uuid.uuid4().hex[:12]
 SCHEMAS = [PREFIX + suffix for suffix in ('_auth', '_chars', '_ac_auth', '_ac_chars',
                                         '_tc_auth', '_tc_chars', '_fcontrol', '_rcontrol', '_world')]
 AUTH, CHARS, AC_AUTH, AC_CHARS, TC_AUTH, TC_CHARS, FC, RC, WORLD = SCHEMAS
+AC_WORLD = PREFIX + '_ac_world'
+SCHEMAS.append(AC_WORLD)
+spec = importlib.util.spec_from_file_location('spell_fixtures', ROOT/'tests/spell-fixtures.py')
+SPELL_FIXTURES = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(SPELL_FIXTURES)
+import json
+SPELL_PROFILE = json.loads((TOOLKIT/'compatibility'/os.environ['COMPATIBILITY_PROFILE']/'spell-metadata.json').read_text())
+SPELL_FIXTURES.write_assets(WORK,SPELL_PROFILE)
 USER = PREFIX
 LOG = WORK / 'rehearsal.log'
 OWNED_SCHEMAS = []
@@ -62,7 +71,10 @@ def config(direction, suffix=''):
     values = dict(MYSQL_DEFAULTS_FILE=str(RUNNER_OPTION_FILE), MYSQL_HOST='127.0.0.1', MYSQL_PORT=PORT,
                   MYSQL_USER=USER, MYSQL_SOCKET='', MIGRATION_DIRECTION=direction,
                   SOURCE_AUTH_SCHEMA=source_auth, SOURCE_CHARACTERS_SCHEMA=source_chars,
-                  SOURCE_WORLD_SCHEMA=WORLD, TARGET_AUTH_SCHEMA=target_auth,
+                  SOURCE_WORLD_SCHEMA=WORLD if forward else AC_WORLD,
+                  TARGET_WORLD_SCHEMA=AC_WORLD if forward else WORLD,
+                  TRINITYCORE_DBC_DIR=str(WORK/'tc-dbc'),AZEROTHCORE_DBC_DIR=str(WORK/'ac-dbc'),
+                  TARGET_AUTH_SCHEMA=target_auth,
                   TARGET_CHARACTERS_SCHEMA=target_chars, CONTROL_SCHEMA=control, REALM_ID='1',
                   TRINITYCORE_DIR=str(TC), AZEROTHCORE_DIR=str(AC),
                   COMPATIBILITY_PROFILE=os.environ['COMPATIBILITY_PROFILE'],
@@ -95,7 +107,7 @@ def phase(cfg, name, expected=None):
 def library(cfg, body, expected=None):
     script = '''set -Eeuo pipefail
 MIGRATION_ROOT=$1
-for module in common compatibility preflight assemble archive load sanitize validate representations; do
+for module in common compatibility preflight assemble archive load sanitize validate representations spells; do
     source "$MIGRATION_ROOT/lib/$module.sh"
 done
 trap cleanup_compatibility_state EXIT
@@ -128,7 +140,7 @@ def snapshot(*schemas):
     return hashlib.sha256('\n'.join(hashes).encode()).hexdigest()
 
 
-def interrupt(cfg, name, token, after_ddl=False):
+def interrupt(cfg, name, token, after_ddl=False, after_commit=False, resume=True):
     """Pause a real MySQL session, kill its process group, then resume the runner."""
     proxy_dir = WORK / 'proxy'
     proxy_dir.mkdir(exist_ok=True)
@@ -141,16 +153,19 @@ if '-e' in args:
     statement=args[i]
     token=os.environ.get('MIGRATOR_PAUSE_TOKEN','')
     if token and token in statement:
-        if os.environ.get('MIGRATOR_AFTER_DDL')=='1':
+        if os.environ.get('MIGRATOR_AFTER_DDL')=='1' or os.environ.get('MIGRATOR_AFTER_COMMIT')=='1':
             args[i]=statement+'; DO SLEEP(30);'
         elif 'COMMIT;' in statement:
             args[i]=statement.replace('COMMIT;','DO SLEEP(30); COMMIT;',1)
+    if os.environ.get('MIGRATOR_FAIL_TOKEN') and os.environ['MIGRATOR_FAIL_TOKEN'] in statement and 'COMMIT;' in statement:
+        args[i]=statement.replace('COMMIT;',"SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fixture rollback'; COMMIT;",1)
 os.execv(os.environ['MIGRATOR_REAL_MYSQL'],[os.environ['MIGRATOR_REAL_MYSQL'],*args])
 ''')
     proxy.chmod(0o755)
     env = os.environ | dict(PATH=str(proxy_dir) + ':' + os.environ['PATH'],
                             MIGRATOR_REAL_MYSQL=MYSQL, MIGRATOR_PAUSE_TOKEN=token,
-                            MIGRATOR_AFTER_DDL='1' if after_ddl else '0')
+                            MIGRATOR_AFTER_DDL='1' if after_ddl else '0',
+                            MIGRATOR_AFTER_COMMIT='1' if after_commit else '0')
     with LOG.open('a') as output:
         proc = subprocess.Popen([str(TOOLKIT / 'bin/migrate.sh'), '--config', str(cfg), name],
                                 stdout=output, stderr=output, env=env, start_new_session=True)
@@ -187,7 +202,8 @@ os.execv(os.environ['MIGRATOR_REAL_MYSQL'],[os.environ['MIGRATOR_REAL_MYSQL'],*a
         equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.pet_spell WHERE guid=777', 1)
     if after_ddl:
         assert int(sql(f"SELECT COUNT(*) FROM `{control}`.deferred_index WHERE status='DROPPED'")) > 0
-    phase(cfg, name)
+    if resume:
+        phase(cfg, name)
 
 
 def seed_pet_relations(schema, reverse=False):
@@ -241,9 +257,10 @@ def main():
     for schema in SCHEMAS:
         sql(f'CREATE DATABASE `{schema}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
         OWNED_SCHEMAS.append(schema)
-        permissions = 'SELECT,SHOW VIEW,LOCK TABLES' if schema in (AUTH, CHARS, WORLD) else 'ALL'
+        permissions = 'SELECT,SHOW VIEW,LOCK TABLES' if schema in (AUTH, CHARS, WORLD, AC_WORLD) else 'ALL'
         sql(f"GRANT {permissions} ON `{schema}`.* TO '{USER}'@'%'")
     # Seed native sources as the test administrator; runner credentials cannot write them.
+    SPELL_FIXTURES.seed_worlds(sql,TC,AC,WORLD,AC_WORLD,SPELL_PROFILE)
     sql((TC / 'sql/base/auth_database.sql').read_text(), AUTH)
     sql((TC / 'sql/base/characters_database.sql').read_text(), CHARS)
     library(forward, '''initialize_control_schema
@@ -255,6 +272,7 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
         'VALUES (1,217,1,-1),(2,217,0,1)', AUTH)
     sql((ROOT / 'tests/fixtures/characters-data.sql').read_text(), CHARS)
     sql((ROOT / 'tests/fixtures/orphan-cleanup-data.sql').read_text(), CHARS)
+    sql((ROOT / 'tests/fixtures/spell-state-data.sql').read_text(), CHARS)
     sql('UPDATE arena_team_member SET weekGames=4,weekWins=2,seasonGames=10,seasonWins=5,personalRating=1540 '
         'WHERE guid=100', CHARS)
     sql("INSERT INTO character_pet (id,entry,owner,name) VALUES (300,1,100,'RetainedPet')", CHARS)
@@ -301,11 +319,24 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     for schema in (AC_AUTH, AC_CHARS):
         sql(f'DROP DATABASE `{schema}`;CREATE DATABASE `{schema}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci')
     # Rejections are tested before the final immutable source snapshot/run.
-    before = snapshot(AUTH, CHARS)
+    before = snapshot(AUTH, CHARS, WORLD, AC_WORLD)
     print('Running TrinityCore -> AzerothCore', flush=True)
     for name in ('preflight', 'archive-unsupported', 'assemble', 'load-auth'):
         phase(forward, name)
-    interrupt(forward, 'load-characters', f'ALTER TABLE `{AC_CHARS}`.`corpse` ADD', after_ddl=True)
+    interrupt(forward, 'load-characters', f'ALTER TABLE `{AC_CHARS}`.`corpse` ADD', after_ddl=True,resume=False)
+    spell_insert = f'INSERT INTO `{AC_CHARS}`.character_spell'
+    interrupt(forward,'load-characters',spell_insert,resume=False)
+    equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell',0)
+    equal(f"SELECT COUNT(*) FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}'",0)
+    fail_env = os.environ | dict(PATH=str(WORK/'proxy')+':'+os.environ['PATH'],MIGRATOR_REAL_MYSQL=MYSQL,
+                                 MIGRATOR_FAIL_TOKEN=spell_insert)
+    run([str(TOOLKIT/'bin/migrate.sh'),'--config',str(forward),'load-characters'],expected='MySQL query failed',env=fail_env)
+    equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell',0)
+    equal(f"SELECT COUNT(*) FROM `{FC}`.chunk_checkpoint WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND target_table='character_spell'",0)
+    interrupt(forward,'load-characters',spell_insert,after_commit=True,resume=False)
+    equal(f"SELECT COUNT(*) FROM `{FC}`.chunk_checkpoint WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND target_table='character_spell' AND status='COMPLETE'",1)
+    assert int(sql(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell')) > 0
+    phase(forward,'load-characters')
     interrupt(forward, 'sanitize-target', f'DELETE s FROM `{AC_CHARS}`.`pet_spell`')
     phase(forward, 'validate')
     assert_ready(fv)
@@ -313,7 +344,26 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
           'WHERE starttime=2000000000', '2000000100\t0\tNULL\t0')
     equal(f'SELECT COUNT(*) FROM `{AC_AUTH}`.rbac_permissions WHERE id=945 AND name=\'Command: account info\'', 1)
     equal(f'SELECT COUNT(*) FROM `{AC_AUTH}`.rbac_account_permissions', 2)
-    assert snapshot(AUTH, CHARS) == before, 'Forward migration wrote to sources'
+    assert snapshot(AUTH, CHARS, WORLD, AC_WORLD) == before, 'Forward migration wrote to sources/worlds'
+    for guid, indices, mask in [(110,[0,1,2],3),(111,[3,4],3),(112,[5,6],3),
+                                (110,[7],1),(111,[8],3),(112,[9],2),(113,[10,11],3)]:
+        ids = [spell for index in indices for spell in SPELL_FIXTURES.CHAINS[index]]
+        equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid={guid} '
+              f'AND spell IN ({",".join(map(str,ids))}) AND specMask={mask}',len(ids))
+    # The old conversion cannot satisfy even the three audited paladin chains.
+    ids = [spell for chain in SPELL_FIXTURES.CHAINS[:3] for spell in chain]
+    old_known = int(sql(f'SELECT COUNT(*) FROM `{CHARS}`.character_spell WHERE guid=110 '
+                        f'AND spell IN ({",".join(map(str,ids))})'))
+    assert old_known < len(ids), 'Regression must fail under stored-row-only conversion'
+    equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=114',13)
+    equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=110 AND spell=25899',2)
+    equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=111 AND spell=900010',0)
+    equal(f"SELECT disposition FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=111 AND spell=900010",'RUNTIME')
+    equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=111 AND spell=900001',1)
+    equal(f'SELECT value,max FROM `{AC_CHARS}`.character_skills WHERE guid=113 AND skill=171','320\t450')
+    trainer_rows = WORK/'trainer-spells.tsv'
+    trainer_rows.write_text(sql(f'SELECT guid,spell,specMask FROM `{AC_CHARS}`.character_spell ORDER BY guid,spell')+'\n')
+    run(['python3',str(ROOT/'tests/trainer-spell-tests.py'),str(AC),str(trainer_rows)])
     after = snapshot(AC_AUTH, AC_CHARS)
     for name in ('preflight', 'archive-unsupported', 'assemble', 'load-auth', 'load-characters', 'sanitize-target', 'validate'):
         phase(forward, name)
@@ -327,7 +377,7 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
         'INSERT INTO rbac_account_permissions (accountId,permissionId,granted,realmId) VALUES (1,217,1,2)', AUTH)
     library(rbac_cfg, 'LOAD_KIND=auth;schemas_for_kind auth;load_rbac_account_permissions', 'unsupported realm scope')
     sql('DELETE FROM rbac_account_permissions WHERE realmId=2', AUTH)
-    assert snapshot(AUTH, CHARS) == before, 'RBAC test did not restore its synthetic input'
+    assert snapshot(AUTH, CHARS, WORLD, AC_WORLD) == before, 'RBAC test did not restore its synthetic input'
     # The migrated native AC schemas now become the frozen reverse sources.
     for table in ('character_talent', 'character_spell', 'character_spell_cooldown',
                   'pet_spell_cooldown', 'item_loot_storage', 'channels_bans', 'channels',
@@ -346,7 +396,7 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
         "VALUES (1,2000000200,20,4,'second fixture',2000000220,1,0,'normal shutdown')", AC_AUTH)
     sql('CREATE TABLE creature (guid INT UNSIGNED PRIMARY KEY,map SMALLINT UNSIGNED);'
         'CREATE TABLE gameobject (guid INT UNSIGNED PRIMARY KEY,map SMALLINT UNSIGNED);'
-        'INSERT INTO creature VALUES (700,0);INSERT INTO gameobject VALUES (701,0)', WORLD)
+        'INSERT INTO creature VALUES (700,0);INSERT INTO gameobject VALUES (701,0)', AC_WORLD)
     library(reverse, 'initialize_control_schema')
     sql('UPDATE item_loot_storage SET `count`=2147483648 WHERE itemid=2591', AC_CHARS)
     guard('ac-to-tc', 'LOOT_INTEGER_OUT_OF_RANGE')
@@ -360,7 +410,7 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     for schema in (AC_AUTH, AC_CHARS):
         sql(f"REVOKE ALL PRIVILEGES ON `{schema}`.* FROM '{USER}'@'%'")
         sql(f"GRANT SELECT,SHOW VIEW,LOCK TABLES ON `{schema}`.* TO '{USER}'@'%'")
-    before_reverse = snapshot(AC_AUTH, AC_CHARS, WORLD)
+    before_reverse = snapshot(AC_AUTH, AC_CHARS, WORLD, AC_WORLD)
     print('Running AzerothCore -> TrinityCore', flush=True)
     for name in ('preflight', 'archive-unsupported', 'assemble'):
         phase(reverse, name)
@@ -389,11 +439,59 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.item_loot_items WHERE container_id=201 AND item_id=2590', 2)
     equal(f'SELECT money FROM `{TC_CHARS}`.item_loot_money WHERE container_id=202', 99)
     assert (TOOLKIT / 'reports' / rv['MIGRATION_RUN_ID'] / 'loot-index-normalization.tsv').stat().st_size > 100
-    assert snapshot(AC_AUTH, AC_CHARS, WORLD) == before_reverse, 'Reverse migration wrote to sources or world'
+    assert snapshot(AC_AUTH, AC_CHARS, WORLD, AC_WORLD) == before_reverse, 'Reverse migration wrote to sources or world'
     after_reverse = snapshot(TC_AUTH, TC_CHARS)
     for name in ('preflight', 'archive-unsupported', 'assemble', 'load-auth', 'load-characters', 'sanitize-target', 'validate'):
         phase(reverse, name)
     assert snapshot(TC_AUTH, TC_CHARS) == after_reverse, 'Reverse rerun changed data or DDL'
+    print('Checking spell blockers and immutable-input guards',flush=True)
+    def spell_guard(reason,edit,restore):
+        original_inputs = snapshot(AUTH,CHARS,WORLD,AC_WORLD)
+        cfg,values = config('tc-to-ac','-spell-guard')
+        sql(edit)
+        try:
+            library(cfg,'initialize_control_schema\nprepare_spell_snapshot capture','Spell state is incompatible')
+            report = TOOLKIT/'reports'/values['MIGRATION_RUN_ID']/'spell-state-blockers.tsv'
+            assert reason in report.read_text(),report.read_text()
+            equal(f"SELECT COUNT(*) FROM `{FC}`.spell_input_snapshot WHERE run_id='{values['MIGRATION_RUN_ID']}'",0)
+        finally:
+            sql(restore)
+        assert snapshot(AUTH,CHARS,WORLD,AC_WORLD)==original_inputs,'Spell guard modified an input'
+    spell_guard('UNREPRESENTABLE_DISABLED_SPELL',
+        f'UPDATE `{CHARS}`.character_spell SET disabled=1 WHERE guid=110 AND spell=48782',
+        f'UPDATE `{CHARS}`.character_spell SET disabled=0 WHERE guid=110 AND spell=48782')
+    spell_guard('UNSUPPORTED_DEPENDENT_LEARN',
+        f'INSERT INTO `{CHARS}`.character_spell VALUES (113,900011,1,0)',
+        f'DELETE FROM `{CHARS}`.character_spell WHERE guid=113 AND spell=900011')
+    spell_guard('MALFORMED_SPELL_CHAIN',
+        f'UPDATE `{WORLD}`.spell_ranks SET `rank`=3 WHERE first_spell_id=465 AND spell_id=10290',
+        f'UPDATE `{WORLD}`.spell_ranks SET `rank`=2 WHERE first_spell_id=465 AND spell_id=10290')
+    spell_guard('CYCLIC_SPELL_RELATIONSHIP',
+        f'INSERT INTO `{WORLD}`.spell_required VALUES (48782,48942),(48942,48782)',
+        f'DELETE FROM `{WORLD}`.spell_required WHERE spell_id IN (48782,48942)')
+    spell_guard('INCOMPATIBLE_SPELL_CHAIN',
+        f'UPDATE `{AC_WORLD}`.spell_ranks SET spell_id=900011 WHERE first_spell_id=465 AND spell_id=643',
+        f'UPDATE `{AC_WORLD}`.spell_ranks SET spell_id=643 WHERE first_spell_id=465 AND spell_id=900011')
+    drift, dv = config('tc-to-ac','-spell-drift')
+    library(drift,'initialize_control_schema\nprepare_spell_snapshot capture')
+    original_inputs = snapshot(AUTH,CHARS,WORLD,AC_WORLD)
+    sql(f'UPDATE `{CHARS}`.character_spell SET spell=48781 WHERE guid=110 AND spell=48782')
+    library(drift,'prepare_spell_snapshot verify','Spell inputs or reconstruction changed')
+    sql(f'UPDATE `{CHARS}`.character_spell SET spell=48782 WHERE guid=110 AND spell=48781')
+    sql(f'UPDATE `{AC_WORLD}`.spell_custom_attr SET attributes=1 WHERE spell_id=6603')
+    library(drift,'prepare_spell_snapshot verify','Spell inputs or reconstruction changed')
+    sql(f'UPDATE `{AC_WORLD}`.spell_custom_attr SET attributes=0 WHERE spell_id=6603')
+    asset = WORK/'ac-dbc/Spell.dbc'
+    original_asset = asset.read_bytes()
+    # Change a valid, unused numeric field without changing file length.
+    changed = bytearray(original_asset)
+    changed[24] ^= 1
+    asset.write_bytes(changed)
+    library(drift,'prepare_spell_snapshot verify','Spell inputs or reconstruction changed')
+    asset.write_bytes(original_asset)
+    assert snapshot(AUTH,CHARS,WORLD,AC_WORLD)==original_inputs
+    assert snapshot(AC_AUTH,AC_CHARS,WORLD,AC_WORLD)==before_reverse,'Spell guards modified the reverse source/worlds'
+    assert snapshot(TC_AUTH,TC_CHARS)==after_reverse,'Spell guards modified the reverse target'
     print('Disposable bidirectional MySQL rehearsals passed.', flush=True)
 
 

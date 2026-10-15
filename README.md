@@ -30,6 +30,7 @@ is historical and requires the corresponding older toolkit release.
 | --- | --- |
 | [Migration guide](runbooks/migration-guide.md) | Complete operator workflow; start here |
 | [Migration behavior](runbooks/migration-behavior.md) | Data policies and semantic transforms |
+| [Spell reconstruction](runbooks/spell-reconstruction.md) | Omitted ranks, specialization safety and gameplay checks |
 | [v2 review record](runbooks/profile-v2-review.md) | Reviewed changes, limitations, acceptance evidence |
 | [Development and tests](runbooks/development.md) | Static checks and disposable fixture rehearsals |
 | [Compatibility maintenance](runbooks/compatibility-profiles.md) | Generating and reviewing future profiles |

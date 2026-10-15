@@ -8,6 +8,10 @@ for `ac-to-tc`.
 The control schema also stores the orphan-character manifest, compact
 `BINARY(16)` item root/candidate sets, affected-row cleanup summaries,
 operation checkpoints, and exact deferred-index definitions.
+Spell input snapshots, immutable expected spell rows and committed provenance
+are also control-owned. Spell reconstruction is prepared before assembly from
+read-only worlds/DBC assets and numeric source character state. GUID chunk
+transactions commit target spell rows, their provenance and checkpoints together.
 
 The shell runner generates explicit `INSERT ... SELECT` statements from:
 

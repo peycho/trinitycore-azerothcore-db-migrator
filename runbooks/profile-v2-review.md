@@ -61,4 +61,52 @@ Record actual test versions
 and outcomes in the change description. Database
 `READY` means the migrated fixture data passed validation, not that release or
 production cutover is approved. Keep the v1 files unchanged; use fresh targets
-and a new run with this toolkit. The control-schema layout is unchanged.
+and a new run with this toolkit. Spell reconstruction now adds control-owned
+input snapshots, expected rows and provenance; older runs require fresh targets
+and a new control schema rather than resuming with changed toolkit content.
+
+## Spell-state review amendment, 2026-10-14
+
+TC's load-time predecessor reconstruction and dependent-save omission require
+semantic spell reconstruction instead of stored-row copying. Inactive ranks
+remain known; disabled rows require verified specialization ownership. Direct
+talent selections, temporary talent spells and profession/riding effects have
+separate policies. See [spell reconstruction](spell-reconstruction.md) for exact
+inputs, blockers, reports, reverse behavior and gameplay acceptance.
+
+The pins above remain unchanged. AC staging
+`f089543d9dfb3aaba2615fbf9427ea3e54a346e3` matches the pinned AC SQL manifests
+and all expanded protected spell/DBC/trainer/Spells-script inputs. The configured
+local AC revision also matches these protected inputs. Unrelated raid script
+changes are outside this protection boundary; revisions are recorded rather
+than silently substituted. The expanded TC inputs match its pinned revision.
+
+The amendment does not approve the release or certify existing staging data.
+Existing migrated databases require a fresh migration; a repair after player
+writes needs separate review. Native gameplay checks and production-sized
+rehearsals remain outstanding for the changed toolkit identity.
+
+Local amendment validation passed on 2026-10-14:
+
+- ShellCheck, documentation links, registry inventories, expanded-reader drift
+  guards, metadata/profile reproducibility, unreviewed/retired rejection and
+  schema-dump failure checks.
+- Eleven focused semantic tests covering highest-only/complete/overlapping
+  chains, masks in both groups, inactive/disabled states, direct talent ranks,
+  temporary dependencies, profession/riding caps, malformed/cyclic/incompatible
+  metadata, additive TC overlays and reverse semantic round trips.
+- Dedicated disposable MySQL 8.4.10 bidirectional rehearsals reached `READY`
+  with zero validation errors, including exact reconstructed sets, committed
+  ownership/provenance, real paladin/priest/warlock rank IDs, skill preservation,
+  SQL rollback, interruptions before/after spell commit, resume, completed reruns,
+  source/world fingerprints, same-count input drift and unrelated-data checks.
+- The protected AC trainer-state function was compiled in an isolated harness
+  with mocked getters and exercised against migrated direct/wrapped spell rows
+  in both specializations. This is consumer verification, not native gameplay.
+- Read-only supplied WDBC assets matched the pinned layouts. With stock AC
+  rank metadata and synthetic class skills, the example paladin anchors produced
+  27 known ranks; tested priest and warlock ordinary chains produced 26 and 23.
+
+Native trainer/casting/spec/persistence and profession gameplay checks are
+**NOT TESTED** for this amendment. Two production-sized isolated rehearsals
+also remain pending. These local checks do not change approval status.

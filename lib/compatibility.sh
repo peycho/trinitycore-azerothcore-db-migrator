@@ -82,6 +82,21 @@ write_trinitycore_semantic_manifest() {
         src/server/game/Petitions/PetitionMgr.cpp \
         src/server/game/Spells/SpellHistory.cpp \
         src/server/game/Spells/SpellHistory.h \
+        src/server/game/Spells/SpellMgr.cpp \
+        src/server/game/Spells/SpellMgr.h \
+        src/server/game/Spells/SpellInfo.cpp \
+        src/server/game/Spells/SpellInfo.h \
+        src/server/game/DataStores/DBCStores.cpp \
+        src/server/shared/DataStores \
+        src/common/DataStores \
+        src/server/shared/SharedDefines.h \
+        src/server/game/Entities/Creature/Trainer.cpp \
+        src/server/game/Globals/ObjectMgr.cpp \
+        src/server/game/Globals/ObjectMgr.h \
+        src/server/game/Spells/SpellEffects.cpp \
+        src/server/game/Scripting/ScriptMgr.cpp \
+        src/server/game/Scripting/ScriptMgr.h \
+        src/server/scripts/Spells \
         src/server/game/Entities/Item/ItemDefines.h \
         src/server/game/Loot/Loot.h \
         "${FORMAT2_GAME_INPUTS[@]}"
@@ -111,7 +126,29 @@ write_azerothcore_semantic_manifest() {
         src/server/game/Instances/InstanceSaveMgr.cpp \
         src/server/game/Petitions/PetitionMgr.cpp \
         src/server/game/Spells/SpellMgr.cpp \
+        src/server/game/Spells/SpellMgr.h \
+        src/server/game/Spells/SpellInfo.cpp \
+        src/server/game/Spells/SpellInfo.h \
+        src/server/game/Spells/SpellInfoCorrections.cpp \
+        src/server/game/DataStores/DBCStores.cpp \
+        src/server/shared/DataStores \
+        src/common/DataStores \
+        src/server/shared/SharedDefines.h \
+        src/server/game/Entities/Creature/Trainer.cpp \
+        src/server/game/Globals/ObjectMgr.cpp \
+        src/server/game/Globals/ObjectMgr.h \
+        src/server/game/Spells/SpellEffects.cpp \
+        src/server/game/Scripting/ScriptMgr.cpp \
+        src/server/game/Scripting/ScriptMgr.h \
+        src/server/scripts/Spells \
         src/server/game/World/World.cpp \
+        data/sql/base/db_world/spell_dbc.sql \
+        data/sql/base/db_world/talent_dbc.sql \
+        data/sql/base/db_world/talenttab_dbc.sql \
+        data/sql/base/db_world/skillline_dbc.sql \
+        data/sql/base/db_world/skilllineability_dbc.sql \
+        data/sql/base/db_world/skillraceclassinfo_dbc.sql \
+        data/sql/base/db_world/skilltiers_dbc.sql \
         "${FORMAT2_GAME_INPUTS[@]}"
 }
 
@@ -141,6 +178,8 @@ load_compatibility_profile() {
         die "Compatibility profile ID does not match its directory"
     [[ ${PROFILE_APPROVAL:-} == APPROVED ]] ||
         die "Compatibility profile is not approved: $COMPATIBILITY_PROFILE"
+    [[ -r $COMPATIBILITY_PROFILE_DIR/spell-metadata.json ]] ||
+        die "Compatibility profile predates spell reconstruction; use a fresh candidate"
 
     local required=(
         TRINITYCORE_SQL_MANIFEST TRINITYCORE_SEMANTIC_MANIFEST
@@ -155,6 +194,22 @@ load_compatibility_profile() {
         [[ -r "$COMPATIBILITY_PROFILE_DIR/${!name}" ]] ||
             die "Compatibility profile artifact is unreadable: ${!name}"
     done
+    require_command python3
+    python3 - "$COMPATIBILITY_PROFILE_DIR/spell-metadata.json" \
+        "$COMPATIBILITY_PROFILE_DIR/$TRINITYCORE_SEMANTIC_MANIFEST" \
+        "$COMPATIBILITY_PROFILE_DIR/$AZEROTHCORE_SEMANTIC_MANIFEST" <<'PY' ||
+import json
+from pathlib import Path
+import sys
+profile,tc,ac = map(Path,sys.argv[1:])
+rules = json.loads(profile.read_text())
+for core,path in [('tc',tc),('ac',ac)]:
+    manifest = {line.split('  ',1)[1]:line.split('  ',1)[0] for line in path.read_text().splitlines()}
+    inputs = rules.get('inputs',{}).get(core,{})
+    if not inputs or any(manifest.get(name)!=sha for name,sha in inputs.items()):
+        sys.exit('Spell metadata rules are stale or outside protected profile inputs')
+PY
+        die "Spell metadata rules do not match the compatibility profile"
     [[ ${REVIEWED_TRINITYCORE_REVISION:-} =~ ^[0-9a-f]{40}$ ]] ||
         die "Compatibility profile has an invalid reviewed TrinityCore revision"
     [[ ${REVIEWED_AZEROTHCORE_REVISION:-} =~ ^[0-9a-f]{40}$ ]] ||

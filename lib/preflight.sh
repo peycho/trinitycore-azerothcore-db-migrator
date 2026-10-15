@@ -303,5 +303,7 @@ perform_preflight() {
     capture_source_orphan_audit "$run_reports/source-orphan-audit.tsv"
     check_source_representations
 
+    prepare_spell_snapshot capture
+
     log "Preflight captured source schemas for run $RUN_ID"
 }

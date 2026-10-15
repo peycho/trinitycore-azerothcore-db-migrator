@@ -1,0 +1,124 @@
+"""Small WDBC assets with real Wrath spell IDs and rank ordering."""
+import json
+from pathlib import Path
+import re
+import struct
+
+CHAINS = [
+    [465,10290,643,10291,1032,10292,10293,27149,48941,48942],
+    [635,639,647,1026,1042,3472,10328,10329,25292,27135,27136,48781,48782],
+    [853,5588,5589,10308],
+    [17,592,600,3747,6065,6066,10898,10899,10900,10901,25217,25218,48065,48066],
+    [589,594,970,992,2767,10892,10893,10894,25367,25368,48124,48125],
+    [172,6222,6223,7648,11671,11672,25311,27216,47812,47813],
+    [686,695,705,1088,1106,7641,11659,11660,11661,25307,27209,47808,47809],
+    [20473,20929,20930,27174,33072,48824,48825],
+    [34914,34916,34917,48159,48160],
+    [17877,18867,18868,18869,18870,18871,27263,30546,47826,47827],
+    [2259,3101,3464,11611,28596,51304],
+    [33388,33391,34090,34091],
+    [900001,900002,900003],
+]
+CLASS_SKILLS = {skill:(400,400) for skill in [183,267,594,613,78,355,593]}
+
+
+def stores(profile):
+    data = {name: {} for name in profile['stores']}
+    def record(store, ident):
+        row = [0] * len(profile['stores'][store]['columns'])
+        row[0] = ident
+        data[store][ident] = row
+        return row
+    for chain in CHAINS:
+        for spell in chain:
+            row = record('Spell', spell)
+            row[71] = 10
+    for spell in [6603,12282,12663,12664,12300,12301,20911,25899,900000,900010,900011,900012]:
+        row = record('Spell', spell)
+        row[71] = 3
+    # Match the stock class skill associations and relevant effect/family
+    # fields. Devotion is non-stackable; mana-based healing/damage ranks are
+    # separately available. Holy Light / Shadow Bolt rank 1 learn class skills.
+    for index, cls, skill, family, effects in [
+        (0,2,267,10,[65,0,0]),(1,2,594,10,[10,0,0]),(2,2,267,10,[6,0,0]),
+        (3,5,613,6,[6,0,0]),(4,5,78,6,[6,0,0]),(5,9,355,5,[6,3,0]),
+        (6,9,593,5,[2,0,0]),(7,2,594,10,[3,0,0]),(8,5,78,6,[6,6,6]),
+        (9,9,593,5,[64,2,0]),
+    ]:
+        line = data['SkillLine'].get(skill) or record('SkillLine',skill)
+        line[1] = 7
+        info = data['SkillRaceClassInfo'].get(skill) or record('SkillRaceClassInfo',skill)
+        info[1],info[3],info[4] = skill,1<<(cls-1),0x410
+        for spell in CHAINS[index]:
+            data['Spell'][spell][208] = family
+            data['Spell'][spell][71:74] = effects
+            ability = record('SkillLineAbility',spell)
+            ability[1],ability[2],ability[4] = skill,spell,1<<(cls-1)
+            if spell == CHAINS[index][0] and index in (1,6):
+                ability[9] = 2
+    for ident, cls, ranks, spellbook in [
+        (1,1,[12282,12663,12664],0),(2,1,[12300,12301],0),
+        (3,2,[20473],1),(4,5,[34914],1),(5,9,[17877],1),(6,2,[20911],1),
+        (7,5,[900000],0),
+    ]:
+        tab = record('TalentTab', ident)
+        tab[20] = 1 << (cls-1)
+        talent = record('Talent', ident)
+        talent[1], talent[19] = ident, spellbook
+        talent[4:4+len(ranks)] = ranks
+        for spell in ranks:
+            if not spellbook:
+                data['Spell'][spell][4] |= 0x40
+                data['Spell'][spell][71] = 6
+    # A ranked additional talent spell is persistent, a hidden unranked
+    # dependent is runtime temporary; neither is granted in an unowned spec.
+    data['Spell'][900000][71] = 36
+    data['Spell'][900000][116] = 900001
+    data['Spell'][900000][72] = 36
+    data['Spell'][900000][117] = 900010
+    data['Spell'][900010][4] = 0x80
+    for skill, chain in [(171,CHAINS[10]),(762,CHAINS[11])]:
+        row = record('SkillLine', skill)
+        row[1] = 11 if skill == 171 else 7
+        tier = record('SkillTiers', skill)
+        race = record('SkillRaceClassInfo', skill)
+        race[1],race[6] = skill,skill
+        for step, spell in enumerate(chain,1):
+            row = data['Spell'][spell]
+            row[71],row[110],row[80],row[74] = 118,skill,step-1,1
+            ability = record('SkillLineAbility', spell)
+            ability[1],ability[2] = skill,spell
+            tier[16+step] = step*75
+    return data
+
+
+def write_assets(directory, profile):
+    data = stores(profile)
+    for core in ['tc','ac']:
+        root = directory / (core+'-dbc')
+        root.mkdir()
+        for name, records in data.items():
+            fields = len(profile['stores'][name]['columns'])
+            body = b''.join(struct.pack('<'+'I'*fields,*row) for _,row in sorted(records.items()))
+            (root/(name+'.dbc')).write_bytes(struct.pack('<4s4I',b'WDBC',len(records),fields,fields*4,1)+body+b'\0')
+
+
+def seed_worlds(sql, tc, ac, tc_world, ac_world, profile):
+    for name, layout in profile['stores'].items():
+        source = (ac/f'data/sql/base/db_world/{layout["table"]}.sql').read_text()
+        ddl = re.search(r'CREATE TABLE `[^`]+` \(.*?\) ENGINE=[^;]+;',source,re.S)[0]
+        sql(ddl, ac_world)
+    tc_ddl = (tc/'sql/base/dev/world_database.sql').read_text()
+    ddl = re.search(r'CREATE TABLE `spell_dbc` \(.*?\) ENGINE=[^;]+;',tc_ddl,re.S)[0]
+    sql(ddl,tc_world)
+    for world in [tc_world,ac_world]:
+        sql('CREATE TABLE spell_ranks (first_spell_id INT UNSIGNED,spell_id INT UNSIGNED,`rank` TINYINT UNSIGNED);'
+            'CREATE TABLE spell_required (spell_id INT UNSIGNED,req_spell INT UNSIGNED);'
+            'CREATE TABLE spell_script_names (spell_id INT,ScriptName VARCHAR(128));'
+            'CREATE TABLE spell_custom_attr ('+('entry' if world==tc_world else 'spell_id')+' INT,attributes INT UNSIGNED);',world)
+        values = ','.join(f'({chain[0]},{spell},{rank})' for chain in CHAINS for rank,spell in enumerate(chain,1))
+        sql('INSERT INTO spell_ranks VALUES '+values,world)
+        sql('INSERT INTO spell_required VALUES (25899,20911)',world)
+        sql('INSERT INTO spell_custom_attr VALUES (6603,0)',world)
+    sql('CREATE TABLE spell_learn_spell (entry INT,SpellID INT,Active TINYINT);'
+        'INSERT INTO spell_learn_spell VALUES (900011,900012,1)',tc_world)

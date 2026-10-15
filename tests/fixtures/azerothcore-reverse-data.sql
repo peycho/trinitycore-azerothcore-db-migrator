@@ -1,6 +1,6 @@
 -- Apply to a disposable native AzerothCore characters schema.
 INSERT INTO `character_talent` (`guid`,`spell`,`specMask`)
-VALUES (100,12282,1),(100,12300,2),(100,12301,3);
+VALUES (100,12282,1),(100,12301,2);
 
 INSERT INTO `character_spell` (`guid`,`spell`,`specMask`)
 VALUES (100,6603,3);

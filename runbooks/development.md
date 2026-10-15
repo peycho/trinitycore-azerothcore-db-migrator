@@ -6,7 +6,7 @@ production-sized rehearsal or native gameplay acceptance.
 
 ## Static checks
 
-Install ShellCheck and the tools listed in the migration guide, and make both
+Install ShellCheck, Python 3 and the tools listed in the migration guide, and make both
 reviewed local core checkouts available. From the toolkit checkout:
 
 ```bash
@@ -19,12 +19,13 @@ The default paths are sibling `../TrinityCore` and `../azerothcore-wotlk`.
 `COMPATIBILITY_PROFILE` defaults to `tc335-acwotlk-v2`. The suite checks shell
 scripts, registry inventories, profile reproducibility/drift, retired and
 unreviewed rejection, complete schema dumps, and the disposable-port guard.
+It also runs synthetic WDBC semantic regressions for spell-rank reconstruction.
 Inventories use `LC_ALL=C`. Candidate approval exists only in disposable
 toolkit copies under `/tmp`; the checkout's approval is unchanged.
 
 ## Disposable MySQL fixture rehearsals
 
-Python 3, MySQL 8 client tools, and a dedicated disposable MySQL **8.4.x** server
+Python 3, g++ (C++17), MySQL 8 client tools, and a dedicated disposable MySQL **8.4.x** server
 are required. The harness needs an administrator named `root` that can create
 users and databases. It accepts localhost only and rejects port 3306.
 Never point it at the server holding restored production clones.
@@ -65,6 +66,20 @@ read-only source/world permissions, and removes only its own objects. It tests
 both directions, native update ledgers, boundary blockers, schema and source
 data fingerprints, archive checksums, duplicate loot payloads, pet cleanup,
 interruption/resume, completed-phase reruns, and restored indexes.
+Spell fixtures create separate TC/AC worlds with read-only grants and small,
+generated WDBC assets. They exercise the audited paladin chains, priest/warlock
+chains, complete/overlapping spellbooks, both specialization bits, disabled and
+inactive records, temporary talent spells, profession/riding tiers, exact masks,
+unsupported relationships, same-count metadata/source drift and spell transaction
+failure/interruption before and after commit. The trainer harness compiles the
+protected AC trainer-state function with mocked getters and checks migrated
+direct/wrapped spell rows in both specs; this is not a worldserver gameplay test.
+
+Focused semantic tests without MySQL:
+
+```bash
+python3 tests/spell-state-tests.py
+```
 
 When finished, remove only the dedicated fixture server and its volume:
 

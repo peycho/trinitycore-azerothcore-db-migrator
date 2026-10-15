@@ -163,3 +163,26 @@ CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`cleanup_item_candidate` (
   `guid` int unsigned NOT NULL,
   PRIMARY KEY (`run_uuid`,`guid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`spell_input_snapshot` (
+  `run_id` char(36) NOT NULL,
+  `input_hash` char(64) NOT NULL,
+  `expected_hash` char(64) NOT NULL,
+  PRIMARY KEY (`run_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`spell_expected` (
+  `run_id` char(36) NOT NULL,
+  `guid` int unsigned NOT NULL,
+  `spell` int unsigned NOT NULL,
+  `spec_mask` tinyint unsigned NOT NULL,
+  `active` tinyint unsigned NOT NULL,
+  `disabled` tinyint unsigned NOT NULL,
+  `disposition` enum('PERSISTENT','RUNTIME','TALENT') NOT NULL,
+  `derived` tinyint unsigned NOT NULL,
+  `provenance` longtext NOT NULL,
+  PRIMARY KEY (`run_id`,`guid`,`spell`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`spell_provenance`
+  LIKE `{{CONTROL_SCHEMA}}`.`spell_expected`;
