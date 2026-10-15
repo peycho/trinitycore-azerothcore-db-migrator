@@ -13,6 +13,12 @@ world metadata and the DBC assets used by the source core. Keep game servers
 stopped against that copy. Preserve the existing migration staging databases.
 This guide introduces no production or existing-staging repair command.
 
+For repeated cleanup from the Linux shell, use the
+[cleanup console guide](cleanup-console.md). It wraps the audit and reviewed
+talent/item policies with one private config file, per-import sessions, archived
+originals, execution/error reports and guarded apply/restore commands. The raw
+audit command below remains available for standalone inspection.
+
 ## Run a standalone read-only audit
 
 Use `tools/audit-tc-source.py` from the repository checkout. It does not require
@@ -120,8 +126,41 @@ representation, serialized-data and native-gameplay gates.
 | Unknown spell or skill | Verify the matching world/DBC/custom data first. Custom definitions or snapshot mismatches may explain it. |
 | Skill value exceeds cap or profession/riding mismatch | Review native skill state and configuration. Do not raise caps, reduce values, change profession slots or remove recipes automatically. |
 | Missing parent or duplicated item placement | Establish the exact valid owner and all inventory/mail/guild/auction roots. Do not delete an item simply because its recorded character owner is absent. |
-| Missing item/quest template | Review matching source-world data, retained custom definitions and historical content. Do not erase quest history or items in bulk. |
+| Missing item template | Preserve item instances by default, including custom items absent from client DBCs or the supplied world templates. Report for review; template absence alone does not authorize removal. |
+| Missing quest template | Review matching source-world data, retained custom definitions and historical content. Do not erase quest history in bulk. |
 | Migration-only script, correction or chain guard | Fix/review compatibility coverage in the migrator. This is not a source-cleanup instruction. |
+
+Custom items need not appear in client DBCs. The audit's
+`ITEM_TEMPLATE_MISSING` finding compares `item_instance.itemEntry` against the
+supplied source world's `item_template.entry`, not an item DBC. It is a
+`REVIEW` finding, not a cleanup requirement. Entry `0` remains visible for
+review and is not automatically changed or removed. Investigate independently
+invalid ownership or placement under the separate reference policy above;
+missing templates alone must not decide an item's fate.
+
+For zero-entry instances referenced as containers by `character_inventory.bag`,
+use the read-only [container inspection](../tools/inspect-zero-entry-containers.sql)
+on the preparation copy. It lists contained-item references and whether their
+characters and item instances exist, including dangling references. Preserve
+these contents while investigating; a container GUID does not establish its
+original item entry, bag capacity or a safe replacement placement.
+
+In both pinned cores, inventory loading handles a missing container differently
+from an item that fails an equipment or storage check. If the container cannot
+be found in the loaded bag maps, the loader deletes the contained item's
+inventory reference and continues without adding it to the recovery-mail
+queue. The item instance is not deleted by that branch, but its inventory
+placement is lost. Do not assume login will mail these contents back. Any
+separately reviewed recovery must preserve the existing item GUIDs, quantities
+and attributes, archive original placements and provide an exact rollback.
+
+Preserving a character-database item row does not make it usable in the target
+core. Both reviewed cores delete inventory items on load when their runtime
+item template is missing. Retained custom items therefore need compatible
+target-world definitions to survive that load; otherwise native removal can
+occur after login. Source preparation and migration do not need to pre-delete
+these items or trigger logins to clean them. Changes to custom world definitions
+remain a separate reviewed task; the migrator keeps world schemas read-only.
 
 The existing `tools/cleanup-staging-source.sql` describes one older reviewed
 dataset. Its hard-coded IDs and counts are not a general database cleaner.
@@ -144,10 +183,12 @@ For each accepted cleanup category, prepare a dataset-specific SQL transaction
 5. Demonstrate preserved valid talents/points, spell availability, skills/caps,
    profession slots, recipes, item placement and unrelated data.
 
-An audit finding is not approval for such a batch. The repository currently
-provides the read-only inspector and review workflow, not a generic repair
-applicator. After reviewing actual output, write a narrow batch for confirmed
-records rather than guessing a rule from the first error message.
+An audit finding is not approval for such a batch. For verified non-rank talent
+values, use the [invalid talent planner](talent-cleanup.md) to generate narrow,
+reviewable archive/apply/restore SQL from the exact audit keys. The planner is
+offline and never connects to a database. It supports only that reason code;
+other categories still need their own reviewed policies and batches. This is
+not a generic database cleaner.
 
 Repeat both audit scopes after preparation, comparing against the untouched
 baseline and retained archive. Feed the prepared source into a **new migration

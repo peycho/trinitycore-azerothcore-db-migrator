@@ -1,0 +1,265 @@
+-- Generated review candidate for exact audited invalid talent keys.
+-- Use fresh mysql batch clients with --skip-force. No interactive SOURCE.
+-- Setup creates only a NEW archive; source preparation writes are separate.
+CREATE DATABASE `@ARCHIVE@` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE `@ARCHIVE@`;
+CREATE TABLE batch (
+ id TINYINT PRIMARY KEY, batch_key CHAR(64) NOT NULL,
+ source_schema VARCHAR(64) NOT NULL, source_uuid CHAR(36) NOT NULL,
+ audit_sha256 CHAR(64) NOT NULL, selected_sha256 CHAR(64) NOT NULL,
+ rank_sha256 CHAR(64) NOT NULL, state ENUM('NEW','PREPARED','APPLIED','RESTORED') NOT NULL,
+ prepared_at DATETIME NULL, applied_at DATETIME NULL, restored_at DATETIME NULL,
+ selected_rows INT UNSIGNED NOT NULL, affected_characters INT UNSIGNED NOT NULL,
+ before_talent_rows BIGINT UNSIGNED NULL
+) ENGINE=InnoDB;
+INSERT INTO batch VALUES(1,'@BATCH@','@SOURCE@','@UUID@','@AUDIT@',
+ '@EXPECTED_HASH@','@RANK_HASH@','NEW',NULL,NULL,NULL,@COUNT@,@GUID_COUNT@,NULL);
+CREATE TABLE expected (
+ guid INT UNSIGNED NOT NULL, spell MEDIUMINT UNSIGNED NOT NULL,
+ talentGroup TINYINT UNSIGNED NOT NULL, PRIMARY KEY(guid,spell,talentGroup)
+) ENGINE=InnoDB;
+CREATE TABLE valid_rank_spell(spell MEDIUMINT UNSIGNED PRIMARY KEY) ENGINE=InnoDB;
+CREATE TABLE reviewed_columns (
+ table_name VARCHAR(64) NOT NULL, column_name VARCHAR(64) NOT NULL,
+ column_type VARCHAR(512) NOT NULL, nullable VARCHAR(3) NOT NULL,
+ column_key VARCHAR(3) NOT NULL, PRIMARY KEY(table_name,column_name)
+) ENGINE=InnoDB;
+@EXPECTED_INSERT@
+@RANK_INSERT@
+@COLUMN_INSERT@
+CREATE TABLE character_before LIKE `@SOURCE@`.characters;
+CREATE TABLE talent_before LIKE `@SOURCE@`.character_talent;
+CREATE TABLE talent_removed LIKE `@SOURCE@`.character_talent;
+
+DELIMITER //
+-- Parameterless read-only metadata helper. The installer needs complete
+-- metadata visibility; a restricted writer must not silently overlook triggers.
+CREATE PROCEDURE guard_environment() SQL SECURITY DEFINER
+BEGIN
+ DECLARE metadata_reader VARCHAR(512);
+ SET metadata_reader=CONCAT(QUOTE(SUBSTRING_INDEX(CURRENT_USER(),'@',1)),
+   '@',QUOTE(SUBSTRING_INDEX(CURRENT_USER(),'@',-1)));
+ IF (SELECT COUNT(DISTINCT PRIVILEGE_TYPE) FROM information_schema.USER_PRIVILEGES
+   WHERE GRANTEE=metadata_reader AND PRIVILEGE_TYPE IN ('SELECT','TRIGGER'))<>2 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Setup administrator needs direct global SELECT/TRIGGER metadata visibility';
+ END IF;
+ IF NOT (@talent_cleanup_ack <=> 'STOPPED_PREPARATION_COPY_ONLY') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit stopped preparation-copy acknowledgement required';
+ END IF;
+ IF @@server_uuid<>'@UUID@' OR @@version NOT LIKE '8.4.%' THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Server UUID/version differs from audited source';
+ END IF;
+ IF (SELECT COUNT(*) FROM batch WHERE id=1 AND batch_key='@BATCH@'
+   AND source_schema='@SOURCE@' AND source_uuid='@UUID@' AND audit_sha256='@AUDIT@'
+   AND selected_sha256='@EXPECTED_HASH@' AND rank_sha256='@RANK_HASH@'
+   AND selected_rows=@COUNT@ AND affected_characters=@GUID_COUNT@)<>1 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Archive ownership/provenance differs';
+ END IF;
+ IF FIND_IN_SET('STRICT_TRANS_TABLES',@@sql_mode)=0 AND FIND_IN_SET('STRICT_ALL_TABLES',@@sql_mode)=0 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Strict SQL mode required for batch procedures';
+ END IF;
+ IF (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_TYPE='BASE TABLE' AND ENGINE='InnoDB'
+    AND ((TABLE_SCHEMA='@SOURCE@' AND TABLE_NAME IN ('characters','character_talent'))
+      OR (TABLE_SCHEMA='@ARCHIVE@' AND TABLE_NAME IN ('batch','expected','valid_rank_spell',
+           'reviewed_columns','character_before','talent_before','talent_removed'))))<>9 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Missing table or non-InnoDB source/archive';
+ END IF;
+ SET SESSION group_concat_max_len=@CONCAT_LIMIT@;
+ IF (SELECT COUNT(*) FROM expected)<>@COUNT@ OR NOT ((SELECT SHA2(GROUP_CONCAT(
+   CONCAT_WS(':',guid,spell,talentGroup) ORDER BY guid,spell,talentGroup SEPARATOR '|'),256)
+   FROM expected)<=>'@EXPECTED_HASH@') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Exact reviewed talent keys changed';
+ END IF;
+ IF (SELECT COUNT(*) FROM valid_rank_spell)<>@RANK_COUNT@ OR NOT ((SELECT SHA2(
+   GROUP_CONCAT(spell ORDER BY spell SEPARATOR '|'),256) FROM valid_rank_spell)<=>'@RANK_HASH@')
+ OR EXISTS(SELECT 1 FROM expected e JOIN valid_rank_spell r ON r.spell=e.spell) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Rank catalog changed or removal would include a selectable rank';
+ END IF;
+ IF (SELECT COUNT(*) FROM reviewed_columns)<>@COLUMN_COUNT@ OR NOT ((SELECT SHA2(GROUP_CONCAT(
+   CONCAT_WS(':',table_name,column_name,column_type,nullable,column_key)
+   ORDER BY BINARY table_name,BINARY column_name SEPARATOR '|'),256) FROM reviewed_columns)<=>'@COLUMN_HASH@') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Reviewed source column metadata changed';
+ END IF;
+ IF (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='@SOURCE@'
+     AND TABLE_NAME IN ('characters','character_talent'))<>@COLUMN_COUNT@
+ OR EXISTS(SELECT 1 FROM reviewed_columns r LEFT JOIN information_schema.COLUMNS s
+    ON s.TABLE_SCHEMA='@SOURCE@' AND s.TABLE_NAME=r.table_name AND s.COLUMN_NAME=r.column_name
+    WHERE s.COLUMN_NAME IS NULL OR BINARY s.COLUMN_TYPE<>BINARY r.column_type
+       OR s.IS_NULLABLE<>r.nullable OR s.COLUMN_KEY<>r.column_key
+       -- DEFAULT_GENERATED describes an ordinary expression default, whose
+       -- stored value SELECT * copies explicitly. Computed columns have a
+       -- generation expression and cannot be populated through that path.
+       OR COALESCE(s.GENERATION_EXPRESSION,'')<>''
+       OR s.EXTRA REGEXP '(^| )(VIRTUAL|STORED) GENERATED( |$)'
+       OR s.EXTRA LIKE '%INVISIBLE%') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source schema differs from audited columns or has unsupported generated/invisible fields';
+ END IF;
+ IF (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='@ARCHIVE@'
+     AND TABLE_NAME IN ('character_before','talent_before','talent_removed'))<>@COLUMN_COUNT@+3
+ OR EXISTS(SELECT 1 FROM (
+    SELECT 'characters' AS src,'character_before' AS dst
+    UNION ALL SELECT 'character_talent','talent_before'
+    UNION ALL SELECT 'character_talent','talent_removed') p
+   JOIN information_schema.COLUMNS s ON s.TABLE_SCHEMA='@SOURCE@' AND s.TABLE_NAME=p.src
+   LEFT JOIN information_schema.COLUMNS a ON a.TABLE_SCHEMA='@ARCHIVE@' AND a.TABLE_NAME=p.dst
+       AND a.ORDINAL_POSITION=s.ORDINAL_POSITION
+   WHERE a.COLUMN_NAME IS NULL OR NOT (BINARY s.COLUMN_NAME<=>BINARY a.COLUMN_NAME)
+     OR NOT (BINARY s.COLUMN_TYPE<=>BINARY a.COLUMN_TYPE) OR NOT (s.IS_NULLABLE<=>a.IS_NULLABLE)
+     OR NOT (BINARY s.COLUMN_DEFAULT<=>BINARY a.COLUMN_DEFAULT)
+     OR NOT (s.CHARACTER_SET_NAME<=>a.CHARACTER_SET_NAME) OR NOT (s.COLLATION_NAME<=>a.COLLATION_NAME)
+     OR NOT (s.EXTRA<=>a.EXTRA) OR NOT (s.GENERATION_EXPRESSION<=>a.GENERATION_EXPRESSION)) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source/archive schema drift detected';
+ END IF;
+ IF EXISTS(SELECT 1 FROM information_schema.TRIGGERS WHERE EVENT_OBJECT_SCHEMA='@SOURCE@') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source triggers require separate review';
+ END IF;
+ IF EXISTS(SELECT 1 FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_NAME IS NOT NULL
+    AND ((TABLE_SCHEMA='@SOURCE@' AND TABLE_NAME='character_talent')
+     OR (REFERENCED_TABLE_SCHEMA='@SOURCE@' AND REFERENCED_TABLE_NAME='character_talent'))) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Talent foreign keys require separate review';
+ END IF;
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.characters c JOIN (SELECT DISTINCT guid FROM expected) e ON e.guid=c.guid
+    WHERE c.online=0)<>@GUID_COUNT@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Affected character missing or flagged online';
+ END IF;
+END//
+
+CREATE PROCEDURE check_original() SQL SECURITY INVOKER
+BEGIN
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.character_talent)<>@SOURCE_COUNT@
+ OR (SELECT COUNT(*) FROM `@SOURCE@`.character_talent s JOIN expected e
+    ON s.guid=e.guid AND s.spell=e.spell AND s.talentGroup=e.talentGroup)<>@COUNT@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Audited talent row count or exact selected keys changed';
+ END IF;
+ -- Match the auditor: orphan child rows are a separate category, not a grant
+ -- source and not silently included in this cleanup.
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.character_talent s JOIN `@SOURCE@`.characters c ON c.guid=s.guid
+     LEFT JOIN valid_rank_spell r ON r.spell=s.spell WHERE r.spell IS NULL)<>@COUNT@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Invalid talent set differs from selected audit keys; run a new audit';
+ END IF;
+END//
+
+CREATE PROCEDURE check_archive() SQL SECURITY INVOKER
+BEGIN
+ IF (SELECT COUNT(*) FROM character_before)<>@GUID_COUNT@
+ OR (SELECT COUNT(*) FROM character_before a JOIN `@SOURCE@`.characters s ON s.guid=a.guid
+     WHERE @CHAR_EQUAL@)<>@GUID_COUNT@
+ OR (SELECT COUNT(*) FROM character_before a JOIN (SELECT DISTINCT guid FROM expected) e ON a.guid=e.guid)<>@GUID_COUNT@
+ OR (SELECT COUNT(*) FROM talent_removed)<>@COUNT@
+ OR (SELECT COUNT(*) FROM talent_removed a JOIN expected e
+     ON a.guid=e.guid AND a.spell=e.spell AND a.talentGroup=e.talentGroup)<>@COUNT@
+ OR NOT ((SELECT COUNT(*) FROM talent_before)<=>(SELECT before_talent_rows FROM batch WHERE id=1))
+ OR (SELECT COUNT(*) FROM talent_before a JOIN expected e
+     ON a.guid=e.guid AND a.spell=e.spell AND a.talentGroup=e.talentGroup)<>@COUNT@
+ OR EXISTS(SELECT 1 FROM talent_before a LEFT JOIN (SELECT DISTINCT guid FROM expected) e ON a.guid=e.guid WHERE e.guid IS NULL) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Full character state or talent archive differs from prepared snapshot';
+ END IF;
+END//
+
+CREATE PROCEDURE check_before() SQL SECURITY INVOKER
+BEGIN
+ CALL check_archive();
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.character_talent s JOIN (SELECT DISTINCT guid FROM expected) e ON e.guid=s.guid)
+      <>(SELECT before_talent_rows FROM batch WHERE id=1)
+ OR (SELECT COUNT(*) FROM talent_before a JOIN `@SOURCE@`.character_talent s
+      ON s.guid=a.guid AND s.spell=a.spell AND s.talentGroup=a.talentGroup)
+      <>(SELECT before_talent_rows FROM batch WHERE id=1) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Affected character talent ownership changed after preparation';
+ END IF;
+END//
+
+CREATE PROCEDURE check_after() SQL SECURITY INVOKER
+BEGIN
+ CALL check_archive();
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.character_talent)<>@AFTER_COUNT@
+ OR EXISTS(SELECT 1 FROM `@SOURCE@`.character_talent s JOIN expected e
+     ON s.guid=e.guid AND s.spell=e.spell AND s.talentGroup=e.talentGroup)
+ OR (SELECT COUNT(*) FROM `@SOURCE@`.character_talent s JOIN (SELECT DISTINCT guid FROM expected) e ON e.guid=s.guid)
+      <>(SELECT before_talent_rows-@COUNT@ FROM batch WHERE id=1)
+ OR (SELECT COUNT(*) FROM talent_before a JOIN `@SOURCE@`.character_talent s
+      ON s.guid=a.guid AND s.spell=a.spell AND s.talentGroup=a.talentGroup
+      LEFT JOIN expected e ON e.guid=a.guid AND e.spell=a.spell AND e.talentGroup=a.talentGroup WHERE e.guid IS NULL)
+      <>(SELECT before_talent_rows-@COUNT@ FROM batch WHERE id=1)
+ OR EXISTS(SELECT 1 FROM `@SOURCE@`.character_talent s JOIN `@SOURCE@`.characters c ON c.guid=s.guid
+     LEFT JOIN valid_rank_spell r ON r.spell=s.spell WHERE r.spell IS NULL) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Applied talent set differs or remaining ownership changed';
+ END IF;
+END//
+
+CREATE PROCEDURE prepare_batch() SQL SECURITY INVOKER
+BEGIN
+ DECLARE current_state VARCHAR(16);
+ DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+ SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+ START TRANSACTION;
+ CALL guard_environment();
+ SELECT state INTO current_state FROM batch WHERE id=1 FOR UPDATE;
+ IF current_state='PREPARED' THEN
+  CALL check_original(); CALL check_before();
+ ELSEIF current_state='NEW' THEN
+  IF (SELECT COUNT(*) FROM character_before)+(SELECT COUNT(*) FROM talent_before)+(SELECT COUNT(*) FROM talent_removed)<>0 THEN
+   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='New archive unexpectedly contains source snapshots';
+  END IF;
+  CALL check_original();
+  INSERT INTO character_before SELECT c.* FROM `@SOURCE@`.characters c JOIN (SELECT DISTINCT guid FROM expected) e ON e.guid=c.guid;
+  INSERT INTO talent_before SELECT s.* FROM `@SOURCE@`.character_talent s JOIN (SELECT DISTINCT guid FROM expected) e ON e.guid=s.guid;
+  INSERT INTO talent_removed SELECT s.* FROM `@SOURCE@`.character_talent s JOIN expected e
+      ON s.guid=e.guid AND s.spell=e.spell AND s.talentGroup=e.talentGroup;
+  UPDATE batch SET before_talent_rows=(SELECT COUNT(*) FROM talent_before) WHERE id=1;
+  CALL check_before();
+  UPDATE batch SET state='PREPARED',prepared_at=UTC_TIMESTAMP() WHERE id=1;
+ ELSE
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Prepare requires NEW/PREPARED state';
+ END IF;
+ COMMIT;
+ SELECT 'PREPARED: source unchanged; inspect exact archived invalid rows and full retained talent sets' AS result;
+END//
+
+CREATE PROCEDURE apply_batch() SQL SECURITY INVOKER
+BEGIN
+ DECLARE current_state VARCHAR(16);
+ DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+ SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+ START TRANSACTION;
+ CALL guard_environment();
+ SELECT state INTO current_state FROM batch WHERE id=1 FOR UPDATE;
+ IF current_state='APPLIED' THEN
+  CALL check_after();
+ ELSEIF current_state='PREPARED' THEN
+  CALL check_original(); CALL check_before();
+  DELETE s FROM `@SOURCE@`.character_talent s JOIN expected e
+    ON s.guid=e.guid AND s.spell=e.spell AND s.talentGroup=e.talentGroup;
+  IF ROW_COUNT()<>@COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Deleted count differs from exact reviewed selection'; END IF;
+  CALL check_after();
+  UPDATE batch SET state='APPLIED',applied_at=UTC_TIMESTAMP() WHERE id=1;
+ ELSE
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Apply requires PREPARED/APPLIED state';
+ END IF;
+ COMMIT;
+ SELECT 'APPLIED: @COUNT@ exact non-rank talent rows removed; full originals retained; no replacement ranks granted' AS result;
+END//
+
+CREATE PROCEDURE restore_batch() SQL SECURITY INVOKER
+BEGIN
+ DECLARE current_state VARCHAR(16);
+ DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+ SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+ START TRANSACTION;
+ CALL guard_environment();
+ SELECT state INTO current_state FROM batch WHERE id=1 FOR UPDATE;
+ IF current_state='RESTORED' THEN
+  CALL check_original(); CALL check_before();
+ ELSEIF current_state='APPLIED' THEN
+  CALL check_after();
+  INSERT INTO `@SOURCE@`.character_talent(guid,spell,talentGroup) SELECT guid,spell,talentGroup FROM talent_removed;
+  IF ROW_COUNT()<>@COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Restored count differs from original archive'; END IF;
+  CALL check_original(); CALL check_before();
+  UPDATE batch SET state='RESTORED',restored_at=UTC_TIMESTAMP() WHERE id=1;
+ ELSE
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Restore requires APPLIED/RESTORED state';
+ END IF;
+ COMMIT;
+ SELECT 'RESTORED: @COUNT@ original invalid talent rows reinstated; archives retained' AS result;
+END//
+DELIMITER ;
+SELECT 'SETUP ONLY: new archive and verified catalog created; source unchanged' AS result;

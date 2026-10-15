@@ -1,0 +1,312 @@
+# Cleanup from the Linux shell
+
+`python3 console` provides the repeatable audit, plan, prepare, apply, status and
+restore workflow for a **stopped restored TrinityCore preparation copy**. Use
+Python 3.10 or later and MySQL 8 client tools against MySQL 8.4.x. It uses the
+standard library; no Python database package is required.
+
+The console supports three reviewed policies: remove verified non-rank talent
+records; archive an unavailable second group and queue a single character's
+free native talent reset; and recover existing item instances from reviewed
+zero-entry containers into mail. It never treats every audit finding as a
+removal instruction. Missing custom item templates, spell history, skill caps,
+other talent conflicts and migration compatibility blockers need separate
+review. World schemas, DBC assets and core source checkouts receive no writes.
+
+## Configure once
+
+Retain the original verified backup and an untouched baseline. Restore separate
+preparation auth, characters and matching world databases. Keep all cores and
+other writers stopped against them. Existing staging/production schemas are
+outside this workflow. Starting or deploying a service is not part of cleanup.
+
+Create one private working directory outside version control:
+
+```bash
+mkdir -m 700 /secure/preparation-cleanup
+cp config/cleanup.ini.example /secure/preparation-cleanup/cleanup.ini
+chmod 600 /secure/preparation-cleanup/cleanup.ini
+```
+
+Edit that INI file. Set `workspace.directory = .` to keep all generated sessions
+under that one directory. Fill in source schemas, MySQL endpoint/users/passwords,
+TC/AC DBC directories and core checkout paths. Relative paths resolve against
+the config file's directory, regardless of the shell's current directory.
+Passwords are literal INI values: `%` is not interpolation. An existing private
+MySQL `[client]` file can be selected with `defaults_file` in each role instead.
+Use a client file for passwords whose leading/trailing whitespace matters.
+No config value is evaluated as shell code.
+
+Set `preparation_copy = yes`, `writers_stopped = yes` and `backup_reference` to
+the retained verified backup identifier. These settings are operator assertions,
+not service detection or automatic backup verification. Leaving either assertion
+false blocks session initialization and cleanup writes.
+
+Select the config once in your shell:
+
+```bash
+export MIGRATOR_CLEANUP_CONFIG=/secure/preparation-cleanup/cleanup.ini
+python3 console --help
+```
+
+Or put a private `cleanup.ini` in the current directory, or use
+`python3 console --config /secure/path/cleanup.ini COMMAND`. Global `--config`
+precedes the command. The console can also be run through its absolute path.
+
+TC source and DBC paths are required. AC paths may be empty for standalone TC
+preparation; when configured, both core checkouts must match the v2 protected
+manifests. Actual checkout revisions may differ if their protected content
+matches. TC/AC DBC paths do not select the cleanup direction: this console
+currently implements **TC source preparation only**. It does not invent an AC
+source cleanup policy. No profile approval flag is changed.
+Session/batch records include actual Git revisions when available and hashes
+of the matched protected manifests. Matching content is compatibility evidence,
+not a substitution of configured revisions or native gameplay approval.
+
+## Database roles
+
+| Config section | Purpose and required access |
+|---|---|
+| `[mysql_audit]` | SELECT only on preparation auth, characters and world. Audit and inspection queries run read-only. |
+| `[mysql]` | Cleanup writer: SELECT on those schemas, plus the narrow source DML needed by the selected policy. |
+| `[mysql_admin]` | Setup/metadata administrator: direct global SELECT/TRIGGER for complete metadata visibility, CREATE/CREATE ROUTINE on new archive schemas, and GRANT OPTION for their archive permissions. |
+
+All roles inherit the same configured host/port/socket. A separately configured
+role has its own credentials; it does not inherit the writer password. If a
+role section is omitted, the console uses `[mysql]`; separate roles are
+recommended so reads have only SELECT permissions.
+
+The administrator grants SELECT/INSERT/UPDATE/DELETE/EXECUTE **only on the
+verified batch archive** to the authenticated writer. Source write grants are
+never added automatically. The source privileges are:
+
+| Policy | Apply | Exact restore |
+|---|---|---|
+| Invalid talent values | DELETE on character_talent | INSERT on character_talent |
+| Scoped pending talent reset | DELETE on character_talent and UPDATE(at_login) on characters | INSERT on character_talent and UPDATE(at_login) on characters |
+| Item recovery | DELETE on character_inventory; INSERT on mail and mail_items | INSERT on character_inventory; DELETE on mail and mail_items |
+
+Do not give source item_instance UPDATE/DELETE or auth/world writes for these
+policies. MySQL credentials are passed through temporary mode-0600 client files,
+not process arguments. The config/client files must be owned by the operator
+and mode 0600. The workspace must be operator-owned and mode 0700. Keep the
+setup administrator account available while its read-only DEFINER guard is used.
+
+## Start a session and audit
+
+After each database import, start a new session:
+
+```bash
+python3 console init --label rehearsal-01
+python3 console audit --scope all
+python3 console inspect-items
+```
+
+The console prints each audit's ID and report directory, streams its progress,
+and keeps stdout/stderr. `audit` exits **0** for a complete audit without findings,
+**1** for a complete audit with findings and **2** for errors/incomplete coverage.
+Other successful commands exit 0; failures exit 2, interruption exits 130.
+In scripts using `set -e`, handle the expected audit exit 1 explicitly:
+
+```bash
+audit_status=0
+python3 console audit --scope all || audit_status=$?
+if [ "$audit_status" -gt 1 ]; then exit "$audit_status"; fi
+```
+
+Read the audit's `summary.tsv`, `findings.tsv`, `coverage.tsv` and `audit.json`.
+The item inspection lists every contained reference for zero-entry containers,
+including missing characters/items. An inspection row is evidence, not proof
+that recovery is safe. Choose exact container IDs only after reviewing ownership
+and contents. Full audits can take minutes on large databases; a clean talent
+scope alone does not establish source or migration readiness.
+
+## Recover items without replacing them
+
+For example, after reviewing containers 100 and 200:
+
+```bash
+python3 console plan items --containers 100,200
+python3 console prepare
+python3 console status --batch BATCH_ID
+python3 console apply
+```
+
+Replace `BATCH_ID` with the printed ID. `prepare`, `apply` and `restore` default
+to the currently selected plan; pass `--batch ID` to address a particular batch.
+Inspect its manifest, selected rows, generated SQL and prepared status before
+apply. Setup and prepare leave source data unchanged. Setup creates only the
+new archive; prepare archives full original placements and item rows, including
+custom fields such as transmog/enchant, and creates the proposed mail rows there.
+
+The policy requires existing, offline recipients with existing auth accounts,
+matching character/container/item ownership, and zero-entry containers with
+exactly the reviewed contents. It blocks dangling item references, mixed owners,
+nested contents, unexpected container placements, duplicate mail/guild/auction
+roots, schema drift, triggers and foreign-key side effects. Unsupported source
+representations block the batch instead of guessing replacement items or bags.
+
+Apply atomically replaces those exact inventory references with mail attachments.
+Existing item GUIDs, counts, custom attributes and zero-entry container instances
+are retained. Missing item templates do not cause instance deletion. Each mail
+has at most 12 attachments; larger recipient groups split deterministically.
+Mail IDs are above both current mail IDs and dangling attachment mail IDs.
+Recovery mail has normal **30-day expiry**. Apply must follow preparation within
+24 hours; stale plans require a newly reviewed batch. Do not infer native mail
+collection acceptance from a committed SQL transaction.
+
+## Remove verified non-rank talent records
+
+Use the count from the completed audit's summary, not a historical example:
+
+```bash
+python3 console plan talents --expect-rows 42
+python3 console prepare
+python3 console status --batch BATCH_ID
+python3 console apply
+python3 console audit --scope talents
+```
+
+This uses the latest completed audit **in this session**. `--audit AUDIT_ID`
+selects a particular retained audit. All seven audit reports, producer/layout
+fingerprints and matching DBC hashes must verify. Only
+`TALENT_VALUE_IS_NOT_RANK_SPELL` keys are selected; every value is independently
+checked against the TC rank catalog. A selectable talent rank is never removed
+under this policy, even if a report was edited and re-sealed. Talent-entry IDs
+are not reinterpreted as guessed spell ranks. All affected character rows and
+all their current talents are archived, not just the deletion candidates.
+
+Preparation checks the exact invalid set and total talent count, then freezes
+current full affected state for review. An earlier audit is provenance, not a
+hash of every character column. Valid talents, ordinary/dependent spell ranks,
+skills, profession slots, glyphs and items receive no writes. Apply and restore
+reject later same-count changes to the affected talent sets or character state.
+
+## Queue one reviewed character's native reset
+
+For a character whose remaining reviewed conflict is an unavailable second
+build, select only that character, for example GUID 12345:
+
+```bash
+python3 console plan reset-talents --guid 12345
+python3 console prepare
+python3 console status --batch BATCH_ID
+python3 console apply
+python3 console audit --scope talents
+```
+
+The bounded policy requires an offline character with active group 0, configured
+group count 1, a nonempty active build and an exact unavailable group 1 of
+unambiguous class talent ranks present in Spell DBC. Other states are rejected.
+The plan records character/account/name/level/class/spec state and exact keys.
+It neither enables dual specialization nor relocates ranks between groups.
+
+Apply archives/removes the unavailable ownership rows and sets only
+`at_login | 4`, preserving other flags. The active ownership rows remain until
+the core unlearns their spells and dependencies during its free native reset.
+**APPLIED means reset pending next login**, not that points/spells have already
+been reset. Both reviewed cores consume this flag; the migrator preserves it.
+Realm configuration determines the resulting free points. Pending reset does
+not bypass any migration spell authorization/compatibility guard.
+
+## Reports, failures, retries and restoration
+
+Everything generated belongs under the configured directory:
+
+```text
+workspace/
+  current.json
+  operations/                         # init/session selection and early errors
+  sessions/<session-id>/
+    session.json                      # server UUID, schemas, backup, paths
+    latest-audit.json
+    active-batch.json
+    audits/<audit-id>/                 # native seven-report audit + checksums
+    inspections/<inspection-id>/      # contained-item evidence
+    batches/<batch-id>/                # manifest, selected keys, SQL, README, checksums
+    operations/<operation-id>/         # journal, result/status, errors and traces
+```
+
+Temporary credential files live in a private `.credentials/` subdirectory and
+are removed after use. Do not publish the workspace; it contains player data.
+Session/batch IDs are printed so scripts need not supply output paths repeatedly.
+
+Every operation records STARTED and COMPLETE or FAILED_OR_UNCERTAIN. Errors
+print a stable code, message, next-step hint and the private `error.json` path.
+The same operation directory retains a redacted traceback and applicable
+stdout/stderr, result.tsv and status.tsv. A workspace lock rejects concurrent
+console commands. Source-side transactional guards still protect against drift;
+the lock is not a substitute for keeping external writers stopped.
+Operation journals also record the tool/template hashes used by that command;
+plan operations retain their read-only character/item evidence on failure.
+
+| Error/result | Action |
+|---|---|
+| `PRIVATE_FILE_REQUIRED` / `PRIVATE_DIRECTORY_REQUIRED` | Fix owner/modes: config/client files 0600, workspace 0700. |
+| `MYSQL_FAILED` | Inspect the MySQL error and grants. Preserve evidence. Query status before retrying; a lost connection can occur after commit. |
+| `CORE_PROFILE_MISMATCH` / `DBC_DRIFT` | Restore reviewed metadata or establish compatibility and generate a new audit/batch. Never bypass the guard. |
+| `PACKAGE_CHANGED` | Generated files no longer match their checksums. Keep evidence and generate a new candidate. |
+| `PARTIAL_ARCHIVE` | Setup DDL was incomplete. Retain/inspect it; the console never drops or silently reuses it. Generate a new batch after resolving the cause. |
+| `RESET_STATE_UNSUPPORTED` / `ITEM_RECOVERY_BLOCKED` | Review the exact evidence; no broad deletion, guessed ownership or replacement rank/item is performed. |
+| `SESSION_ENDPOINT_CHANGED` | Check endpoint/version/schemas. After importing a fresh copy, initialize a new session. |
+| Audit exit 1 | Audit completed and found rows; review the report. This is not a client/database failure. |
+
+After an interrupted operation, use:
+
+```bash
+python3 console status --batch BATCH_ID
+python3 console apply --batch BATCH_ID
+```
+
+The archive state is authoritative. Matching APPLIED reruns verify without
+changing data or timestamps; incomplete transactions roll back. Setup DDL is
+separate and may remain partial. Existing archives are never overwritten.
+
+For exact reversal **before gameplay or further edits**:
+
+```bash
+python3 console restore --batch BATCH_ID
+```
+
+Restore in reverse application order. It verifies the complete prepared
+representations, restores exact originals and retains archives. Changed
+character state, item attributes, claimed/expired recovery mail or occupied
+original slots cause rejection. A repeat restore verifies the original result;
+apply-after-restore is refused. An older talent batch's checks can remain
+blocked until later talent/reset batches have been restored.
+
+List retained sessions or explicitly select an older session for inspection:
+
+```bash
+python3 console sessions
+python3 console sessions --use SESSION_ID
+```
+
+Selection requires the same configured server/schemas and does not make stale
+archives applicable to a newly imported database. Never edit current.json or
+archive metadata to force a replay.
+
+## Repeat after a fresh database import
+
+1. Preserve the earlier workspace, audits, archives and execution reports.
+2. Restore the verified untouched dump into stopped preparation schemas using
+   your database restore procedure. Keep the original baseline unchanged.
+3. Update the config's endpoint/schema names and `backup_reference` if needed;
+   verify the preparation-only assertions and role grants for those schemas.
+4. Run `python3 console init --label rehearsal-02`. A new session and fresh
+   archive names are created, even when server UUID, schemas and IDs are identical.
+5. Run a fresh full audit and item inspection. Review actual findings/counts;
+   generate **new** item/talent/reset plans as applicable. Do not import SQL
+   packages from the old session or reuse its expected row counts blindly.
+6. Prepare, inspect and apply each selected policy. Reaudit between categories
+   and run a final full audit. Preserve custom item definitions and review
+   remaining unsupported categories separately.
+7. Preserve the prepared database dump and this session's records. Start a
+   **new migration with fresh target/control schemas**; source edits invalidate
+   old migration checkpoints. Then perform native gameplay acceptance.
+
+`init` manages cleanup sessions; database dump restore remains an explicit
+operator operation. This console neither deploys services nor enables
+CleanCharacterDB. A clean audit, APPLIED batch or migrated database READY state
+is separate from native gameplay and release acceptance. The compatibility
+profile stays **UNREVIEWED** until all existing acceptance gates actually pass.

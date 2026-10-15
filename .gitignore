@@ -3,6 +3,9 @@
 /var/*
 !/var/.gitkeep
 /config/migration.env
+/cleanup.ini
+/config/cleanup.ini
+/cleanup-work/
 /.env
 /.env.*
 !/.env.example

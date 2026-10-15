@@ -1,0 +1,306 @@
+-- Generated exact-key recovery candidate. No source changes occur in setup; only the new archive
+-- schema and its procedures are created. Never use --force or interactive SOURCE.
+-- Native MySQL 8.4 only. All following action calls require an explicit stopped
+-- preparation-copy acknowledgement and the exact audited server UUID.
+CREATE DATABASE `@ARCHIVE@` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE `@ARCHIVE@`;
+CREATE TABLE batch (
+    id TINYINT PRIMARY KEY, batch_key VARCHAR(64) NOT NULL,
+    source_schema VARCHAR(64) NOT NULL, source_uuid VARCHAR(36) NOT NULL,
+    audit_sha256 CHAR(64) NOT NULL, expected_sha256 CHAR(64) NOT NULL,
+    state ENUM('NEW','PREPARED','APPLIED','RESTORED') NOT NULL,
+    prepared_at DATETIME NULL, applied_at DATETIME NULL, restored_at DATETIME NULL,
+    mail_base BIGINT UNSIGNED NULL, delivery BIGINT UNSIGNED NULL
+) ENGINE=InnoDB;
+INSERT INTO batch VALUES (1,'@BATCH@','@SOURCE@','@UUID@',
+ '@AUDIT@',
+ '@EXPECTED_HASH@','NEW',NULL,NULL,NULL,NULL,NULL);
+CREATE TABLE expected (
+ guid INT UNSIGNED NOT NULL, bag INT UNSIGNED NOT NULL,
+ slot TINYINT UNSIGNED NOT NULL, item INT UNSIGNED PRIMARY KEY,
+ itemEntry MEDIUMINT UNSIGNED NOT NULL, mail_ordinal INT UNSIGNED NOT NULL, UNIQUE KEY(guid,bag,slot)
+) ENGINE=InnoDB;
+@EXPECTED_INSERT@
+CREATE TABLE original_inventory LIKE `@SOURCE@`.character_inventory;
+CREATE TABLE item_snapshot LIKE `@SOURCE@`.item_instance;
+CREATE TABLE planned_mail LIKE `@SOURCE@`.mail;
+CREATE TABLE planned_mail_items LIKE `@SOURCE@`.mail_items;
+
+DELIMITER //
+CREATE PROCEDURE guard_environment() SQL SECURITY DEFINER
+BEGIN
+ DECLARE metadata_reader VARCHAR(512);
+ -- This parameterless helper only reads the named source/metadata tables.
+ -- Use the installer's complete metadata visibility rather than letting a
+ -- restricted writer silently overlook triggers or referencing foreign keys.
+ SET metadata_reader=CONCAT(QUOTE(SUBSTRING_INDEX(CURRENT_USER(),'@',1)),
+   '@',QUOTE(SUBSTRING_INDEX(CURRENT_USER(),'@',-1)));
+ IF (SELECT COUNT(DISTINCT PRIVILEGE_TYPE) FROM information_schema.USER_PRIVILEGES
+     WHERE GRANTEE=metadata_reader AND PRIVILEGE_TYPE IN ('SELECT','TRIGGER'))<>2 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Setup administrator needs direct global SELECT/TRIGGER metadata visibility';
+ END IF;
+ IF NOT (@recovery_ack <=> 'STOPPED_PREPARATION_COPY_ONLY') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit stopped preparation-copy acknowledgement is required';
+ END IF;
+ IF @@server_uuid <> '@UUID@' OR @@version NOT LIKE '8.4.%' THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Server UUID/version differs from this reviewed batch';
+ END IF;
+ IF (SELECT COUNT(*) FROM batch WHERE id=1 AND batch_key='@BATCH@'
+     AND source_schema='@SOURCE@' AND source_uuid='@UUID@'
+     AND audit_sha256='@AUDIT@'
+     AND expected_sha256='@EXPECTED_HASH@') <> 1 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Archive batch ownership/provenance mismatch';
+ END IF;
+ IF (SELECT COUNT(*) FROM information_schema.TABLES WHERE ENGINE='InnoDB' AND TABLE_TYPE='BASE TABLE'
+     AND ((TABLE_SCHEMA='@SOURCE@' AND TABLE_NAME IN
+       ('characters','character_inventory','item_instance','mail','mail_items','guild_bank_item','auctionhouse'))
+       OR (TABLE_SCHEMA='@AUTH@' AND TABLE_NAME='account')
+       OR (TABLE_SCHEMA='@ARCHIVE@' AND TABLE_NAME IN
+         ('batch','expected','original_inventory','item_snapshot','planned_mail','planned_mail_items')))) <> 14 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Missing table or non-InnoDB input/archive';
+ END IF;
+ IF (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='@SOURCE@' AND TABLE_NAME='character_inventory')<>@INVENTORY_COLUMNS@
+ OR (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='@SOURCE@' AND TABLE_NAME='item_instance')<>@ITEM_COLUMNS@
+ OR (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='@SOURCE@' AND TABLE_NAME='mail')<>@MAIL_COLUMNS@
+ OR (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='@SOURCE@' AND TABLE_NAME='mail_items')<>@MAIL_ITEM_COLUMNS@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source columns differ from supplied table definitions';
+ END IF;
+ IF FIND_IN_SET('STRICT_TRANS_TABLES',@@sql_mode)=0 AND FIND_IN_SET('STRICT_ALL_TABLES',@@sql_mode)=0 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Strict SQL mode required when creating/executing these procedures';
+ END IF;
+ IF (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='@ARCHIVE@'
+     AND TABLE_NAME IN ('original_inventory','item_snapshot','planned_mail','planned_mail_items'))<>@ARCHIVE_COLUMNS@
+ OR EXISTS(SELECT 1 FROM (
+     SELECT 'character_inventory' AS src,'original_inventory' AS dst
+     UNION ALL SELECT 'item_instance','item_snapshot'
+     UNION ALL SELECT 'mail','planned_mail'
+     UNION ALL SELECT 'mail_items','planned_mail_items') pairs
+   JOIN information_schema.COLUMNS s ON s.TABLE_SCHEMA='@SOURCE@' AND s.TABLE_NAME=pairs.src
+   LEFT JOIN information_schema.COLUMNS a ON a.TABLE_SCHEMA='@ARCHIVE@' AND a.TABLE_NAME=pairs.dst
+      AND a.ORDINAL_POSITION=s.ORDINAL_POSITION
+   WHERE a.COLUMN_NAME IS NULL OR NOT (BINARY s.COLUMN_NAME <=> BINARY a.COLUMN_NAME)
+      OR NOT (BINARY s.COLUMN_TYPE <=> BINARY a.COLUMN_TYPE)
+      OR NOT (s.IS_NULLABLE <=> a.IS_NULLABLE) OR NOT (BINARY s.COLUMN_DEFAULT <=> BINARY a.COLUMN_DEFAULT)
+      OR NOT (s.CHARACTER_SET_NAME <=> a.CHARACTER_SET_NAME) OR NOT (s.COLLATION_NAME <=> a.COLLATION_NAME)
+      OR NOT (s.EXTRA <=> a.EXTRA) OR NOT (s.GENERATION_EXPRESSION <=> a.GENERATION_EXPRESSION)) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source/archive schema drift detected';
+ END IF;
+ IF EXISTS(SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='@SOURCE@'
+   AND TABLE_NAME IN ('character_inventory','item_instance','mail','mail_items')
+   AND (COALESCE(GENERATION_EXPRESSION,'')<>'' OR EXTRA REGEXP '(^| )(VIRTUAL|STORED) GENERATED( |$)' OR EXTRA LIKE '%INVISIBLE%')) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Unsupported computed/invisible source columns';
+ END IF;
+ IF EXISTS(SELECT 1 FROM information_schema.TRIGGERS WHERE EVENT_OBJECT_SCHEMA='@SOURCE@') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source triggers need separate review';
+ END IF;
+ IF EXISTS(SELECT 1 FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_NAME IS NOT NULL AND
+   ((TABLE_SCHEMA='@SOURCE@' AND TABLE_NAME IN ('character_inventory','mail','mail_items')) OR
+    (REFERENCED_TABLE_SCHEMA='@SOURCE@' AND REFERENCED_TABLE_NAME IN ('character_inventory','mail','mail_items')))) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source foreign keys need separate review';
+ END IF;
+ SET SESSION group_concat_max_len=@CONCAT_LIMIT@;
+ IF (SELECT COUNT(*) FROM expected)<>@COUNT@ OR NOT ((SELECT SHA2(GROUP_CONCAT(
+   CONCAT_WS(':',guid,bag,slot,item,itemEntry,mail_ordinal) ORDER BY item SEPARATOR '|'),256) FROM expected) <=> '@EXPECTED_HASH@') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Reviewed inventory manifest changed';
+ END IF;
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.characters c
+    JOIN (SELECT DISTINCT guid FROM expected) e ON e.guid=c.guid
+    JOIN `@AUTH@`.account a ON a.id=c.account WHERE c.online=0)<>@RECIPIENTS@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Recipient missing, lacks account, or is flagged online';
+ END IF;
+END//
+
+CREATE PROCEDURE check_original() SQL SECURITY INVOKER
+BEGIN
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.character_inventory s JOIN expected e ON (BINARY s.`guid` <=> BINARY e.`guid`) AND (BINARY s.`bag` <=> BINARY e.`bag`) AND (BINARY s.`slot` <=> BINARY e.`slot`) AND (BINARY s.`item` <=> BINARY e.`item`))<>@COUNT@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Original inventory keys/values changed';
+ END IF;
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.character_inventory s
+     JOIN (SELECT DISTINCT bag FROM expected) e ON e.bag=s.bag)<>@COUNT@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Container contents differ from reviewed selection';
+ END IF;
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.item_instance s JOIN expected e
+     ON s.guid=e.item WHERE s.itemEntry=e.itemEntry AND s.owner_guid=e.guid)<>@COUNT@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Contained item missing, wrong entry, or unexpected owner';
+ END IF;
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.item_instance s
+   JOIN (SELECT DISTINCT guid,bag FROM expected) e ON s.guid=e.bag
+   WHERE s.itemEntry=0 AND s.owner_guid=e.guid)<>@CONTAINERS@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Container entry/ownership changed';
+ END IF;
+ IF EXISTS(SELECT 1 FROM `@SOURCE@`.character_inventory s JOIN expected e ON s.item=e.bag OR s.bag=e.item) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Unexpected container placement or nested item contents';
+ END IF;
+ IF EXISTS(SELECT 1 FROM `@SOURCE@`.mail_items s JOIN expected e ON s.item_guid IN(e.item,e.bag))
+ OR EXISTS(SELECT 1 FROM `@SOURCE@`.guild_bank_item s JOIN expected e ON s.item_guid IN(e.item,e.bag))
+ OR EXISTS(SELECT 1 FROM `@SOURCE@`.auctionhouse s JOIN expected e ON s.itemguid IN(e.item,e.bag)) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Item/container already has mail, guild or auction placement';
+ END IF;
+END//
+
+CREATE PROCEDURE check_archive() SQL SECURITY INVOKER
+BEGIN
+ IF (SELECT COUNT(*) FROM original_inventory)<>@COUNT@
+ OR (SELECT COUNT(*) FROM original_inventory s JOIN expected e ON (BINARY s.`guid` <=> BINARY e.`guid`) AND (BINARY s.`bag` <=> BINARY e.`bag`) AND (BINARY s.`slot` <=> BINARY e.`slot`) AND (BINARY s.`item` <=> BINARY e.`item`))<>@COUNT@
+ OR (SELECT COUNT(*) FROM item_snapshot)<>@SNAPSHOTS@
+ OR (SELECT COUNT(*) FROM item_snapshot a JOIN `@SOURCE@`.item_instance s ON s.guid=a.guid
+     WHERE @ITEM_EQUAL@)<>@SNAPSHOTS@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Full item snapshot or original inventory archive differs';
+ END IF;
+ IF (SELECT COUNT(*) FROM item_snapshot a JOIN expected e
+     ON a.guid=e.item WHERE a.itemEntry=e.itemEntry AND a.owner_guid=e.guid)<>@COUNT@
+ OR (SELECT COUNT(*) FROM item_snapshot a JOIN (SELECT DISTINCT guid,bag FROM expected) e
+     ON a.guid=e.bag WHERE a.itemEntry=0 AND a.owner_guid=e.guid)<>@CONTAINERS@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Snapshot identities disagree with manifest';
+ END IF;
+ IF (SELECT COUNT(*) FROM planned_mail)<>@MAILS@ OR (SELECT COUNT(*) FROM planned_mail_items)<>@COUNT@
+ OR (SELECT COUNT(*) FROM planned_mail p JOIN
+       (SELECT DISTINCT guid,mail_ordinal AS ordinal FROM expected) r
+       ON p.receiver=r.guid CROSS JOIN batch b
+       WHERE p.id=b.mail_base+r.ordinal AND p.messageType=0 AND p.stationery=61 AND p.mailTemplateId=0
+       AND p.sender=p.receiver AND BINARY p.subject=BINARY 'Recovered inventory items'
+       AND BINARY p.body=BINARY 'Please collect your recovered inventory items from the attachments.' AND p.has_items=1
+       AND p.expire_time=b.delivery+2592000 AND p.deliver_time=b.delivery
+       AND p.money=0 AND p.cod=0 AND p.checked=4)<>@MAILS@
+ OR (SELECT COUNT(*) FROM planned_mail_items p JOIN expected e ON e.item=p.item_guid
+       JOIN batch b ON b.id=1 JOIN planned_mail m ON m.id=p.mail_id AND m.id=b.mail_base+e.mail_ordinal AND m.receiver=e.guid WHERE p.receiver=e.guid)<>@COUNT@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Recovery mail plan differs from reviewed native representation';
+ END IF;
+ IF EXISTS(SELECT 1 FROM planned_mail_items GROUP BY mail_id HAVING COUNT(*)>12) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Native attachment limit exceeded';
+ END IF;
+END//
+
+CREATE PROCEDURE check_applied() SQL SECURITY INVOKER
+BEGIN
+ CALL check_archive();
+ IF EXISTS(SELECT 1 FROM `@SOURCE@`.character_inventory s JOIN expected e
+       ON s.item IN(e.item,e.bag) OR s.bag IN(e.item,e.bag))
+ OR EXISTS(SELECT 1 FROM `@SOURCE@`.guild_bank_item s JOIN expected e ON s.item_guid IN(e.item,e.bag))
+ OR EXISTS(SELECT 1 FROM `@SOURCE@`.auctionhouse s JOIN expected e ON s.itemguid IN(e.item,e.bag)) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Recovered item/container placement changed';
+ END IF;
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.mail s JOIN planned_mail p ON s.id=p.id WHERE @MAIL_EQUAL@)<>@MAILS@
+ OR (SELECT COUNT(*) FROM `@SOURCE@`.mail_items s JOIN planned_mail_items p ON
+     s.item_guid=p.item_guid AND s.mail_id=p.mail_id AND s.receiver=p.receiver)<>@COUNT@
+ OR (SELECT COUNT(*) FROM `@SOURCE@`.mail_items s JOIN planned_mail p ON p.id=s.mail_id)<>@COUNT@
+ OR (SELECT COUNT(*) FROM `@SOURCE@`.mail_items s JOIN expected e ON e.item=s.item_guid)<>@COUNT@
+ OR EXISTS(SELECT 1 FROM `@SOURCE@`.mail_items s JOIN expected e ON e.bag=s.item_guid) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Recovery mail changed, claimed, expired, or gained attachments';
+ END IF;
+END//
+
+CREATE PROCEDURE prepare_batch() SQL SECURITY INVOKER
+BEGIN
+ DECLARE current_state VARCHAR(16);
+ DECLARE next_base BIGINT UNSIGNED;
+ DECLARE delivery_time BIGINT UNSIGNED;
+ DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+ SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+ START TRANSACTION;
+ CALL guard_environment();
+ SELECT state INTO current_state FROM batch WHERE id=1 FOR UPDATE;
+ IF current_state='PREPARED' THEN
+  CALL check_original(); CALL check_archive();
+ ELSEIF current_state='NEW' THEN
+  IF (SELECT COUNT(*) FROM original_inventory)+(SELECT COUNT(*) FROM item_snapshot)
+      +(SELECT COUNT(*) FROM planned_mail)+(SELECT COUNT(*) FROM planned_mail_items)<>0 THEN
+   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Archive is not empty for new batch';
+  END IF;
+  CALL check_original();
+  INSERT INTO original_inventory SELECT s.* FROM `@SOURCE@`.character_inventory s JOIN expected e ON s.item=e.item;
+  INSERT INTO item_snapshot SELECT s.* FROM `@SOURCE@`.item_instance s JOIN
+    (SELECT item AS guid FROM expected UNION SELECT bag FROM expected) e ON e.guid=s.guid;
+  SELECT GREATEST((SELECT COALESCE(MAX(id),0) FROM `@SOURCE@`.mail),
+    (SELECT COALESCE(MAX(mail_id),0) FROM `@SOURCE@`.mail_items)) INTO next_base;
+  SET delivery_time=UNIX_TIMESTAMP();
+  IF next_base>4294967295-@MAILS@ OR delivery_time>4292375295 THEN
+   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Native unsigned mail ID/time range exhausted';
+  END IF;
+  UPDATE batch SET mail_base=next_base,delivery=delivery_time,prepared_at=UTC_TIMESTAMP() WHERE id=1;
+  INSERT INTO planned_mail(id,messageType,stationery,mailTemplateId,sender,receiver,subject,body,has_items,
+      expire_time,deliver_time,money,cod,checked)
+   SELECT next_base+mail_ordinal,0,61,0,guid,guid,'Recovered inventory items','Please collect your recovered inventory items from the attachments.',1,
+      delivery_time+2592000,delivery_time,0,0,4 FROM (SELECT DISTINCT guid,mail_ordinal FROM expected) recipients;
+  INSERT INTO planned_mail_items SELECT m.id,e.item,e.guid FROM expected e JOIN planned_mail m ON m.receiver=e.guid AND m.id=next_base+e.mail_ordinal;
+  CALL check_archive();
+  UPDATE batch SET state='PREPARED' WHERE id=1;
+ ELSE
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Prepare requires NEW/PREPARED state; archive retained';
+ END IF;
+ COMMIT;
+ SELECT 'PREPARED: source unchanged; inspect archive snapshots and mail plan' AS result;
+END//
+
+CREATE PROCEDURE apply_batch() SQL SECURITY INVOKER
+BEGIN
+ DECLARE current_state VARCHAR(16);
+ DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+ SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+ START TRANSACTION;
+ CALL guard_environment();
+ SELECT state INTO current_state FROM batch WHERE id=1 FOR UPDATE;
+ IF current_state='APPLIED' THEN
+  CALL check_applied();
+ ELSEIF current_state='PREPARED' THEN
+  CALL check_original(); CALL check_archive();
+  IF (SELECT delivery FROM batch WHERE id=1)>UNIX_TIMESTAMP()
+     OR (SELECT delivery FROM batch WHERE id=1)+86400<UNIX_TIMESTAMP() THEN
+   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Mail plan is future dated or older than 24 hours; review a new batch';
+  END IF;
+  IF EXISTS(SELECT 1 FROM `@SOURCE@`.mail s JOIN planned_mail p ON s.id=p.id)
+  OR EXISTS(SELECT 1 FROM `@SOURCE@`.mail_items s JOIN planned_mail p ON s.mail_id=p.id) THEN
+   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Planned mail ID already in use';
+  END IF;
+  INSERT INTO `@SOURCE@`.mail SELECT * FROM planned_mail;
+  IF ROW_COUNT()<>@MAILS@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Recovery mail count differs from plan'; END IF;
+  INSERT INTO `@SOURCE@`.mail_items SELECT * FROM planned_mail_items;
+  IF ROW_COUNT()<>@COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Attachment count differs from plan'; END IF;
+  DELETE s FROM `@SOURCE@`.character_inventory s JOIN original_inventory e ON (BINARY s.`guid` <=> BINARY e.`guid`) AND (BINARY s.`bag` <=> BINARY e.`bag`) AND (BINARY s.`slot` <=> BINARY e.`slot`) AND (BINARY s.`item` <=> BINARY e.`item`);
+  IF ROW_COUNT()<>@COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Original inventory count differs from plan'; END IF;
+  CALL check_applied();
+  UPDATE batch SET state='APPLIED',applied_at=UTC_TIMESTAMP() WHERE id=1;
+ ELSE
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Apply requires PREPARED/APPLIED state';
+ END IF;
+ COMMIT;
+ SELECT 'APPLIED: @MAILS@ mails, @COUNT@ attachments; original inventory references removed; item instances untouched' AS result;
+END//
+
+CREATE PROCEDURE restore_batch() SQL SECURITY INVOKER
+BEGIN
+ DECLARE current_state VARCHAR(16);
+ DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+ SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+ START TRANSACTION;
+ CALL guard_environment();
+ SELECT state INTO current_state FROM batch WHERE id=1 FOR UPDATE;
+ IF current_state='RESTORED' THEN
+  CALL check_original(); CALL check_archive();
+  IF EXISTS(SELECT 1 FROM `@SOURCE@`.mail s JOIN planned_mail p ON s.id=p.id)
+  OR EXISTS(SELECT 1 FROM `@SOURCE@`.mail_items s JOIN planned_mail p ON s.mail_id=p.id) THEN
+   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Restored batch mail IDs were reused';
+  END IF;
+ ELSEIF current_state='APPLIED' THEN
+  CALL check_applied();
+  IF EXISTS(SELECT 1 FROM `@SOURCE@`.character_inventory s JOIN original_inventory e
+    ON s.guid=e.guid AND s.bag=e.bag AND s.slot=e.slot) THEN
+   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Original inventory slot has been occupied';
+  END IF;
+  DELETE s FROM `@SOURCE@`.mail_items s JOIN planned_mail_items e
+      ON s.item_guid=e.item_guid AND s.mail_id=e.mail_id AND s.receiver=e.receiver;
+  IF ROW_COUNT()<>@COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Restore attachment count differs'; END IF;
+  DELETE s FROM `@SOURCE@`.mail s JOIN planned_mail e ON s.id=e.id;
+  IF ROW_COUNT()<>@MAILS@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Restore mail count differs'; END IF;
+  INSERT INTO `@SOURCE@`.character_inventory SELECT * FROM original_inventory;
+  IF ROW_COUNT()<>@COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Restore inventory count differs'; END IF;
+  CALL check_original(); CALL check_archive();
+  UPDATE batch SET state='RESTORED',restored_at=UTC_TIMESTAMP() WHERE id=1;
+ ELSE
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Restore requires APPLIED/RESTORED state';
+ END IF;
+ COMMIT;
+ SELECT 'RESTORED: original inventory references reinstated; recovery mails removed; archives retained' AS result;
+END//
+DELIMITER ;
+SELECT 'SETUP ONLY: new archive created; source untouched; batch state NEW' AS result;

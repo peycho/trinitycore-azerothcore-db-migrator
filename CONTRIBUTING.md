@@ -10,7 +10,9 @@ reproducible fixtures, and performance improvements.
    revisions the change targets.
 3. Never include production dumps, credentials, account data, character data,
    generated reports, or other private server information.
-4. Keep source and world schemas read-only in every test.
+4. Keep migration source and world schemas read-only in every test. Standalone
+   preparation-repair tests may change only their own disposable preparation
+   fixtures; keep their auth/world inputs and unrelated character data unchanged.
 
 ## Development setup
 

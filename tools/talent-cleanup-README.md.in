@@ -1,0 +1,129 @@
+# Exact invalid talent cleanup candidate
+
+**Not applied.** Policy: `tc-invalid-talent-rank-v1`. Migration approval remains
+**UNREVIEWED**. This package selects exactly **@COUNT@** audited
+`TALENT_VALUE_IS_NOT_RANK_SPELL` rows across **@GUID_COUNT@** characters.
+Keep these private files with the original audit, backup and execution reports.
+
+Source: `@SOURCE@`, server UUID `@UUID@`.
+New archive: `@ARCHIVE@`. Batch key: `@BATCH@`.
+
+Only the exact `(guid,spell,talentGroup)` keys in `selected-rows.tsv` can be
+removed. Each value was independently checked against the matching TC
+Talent.dbc rank spell catalog. A number matching a TalentEntry ID is never
+converted into a guessed rank. Valid rank spells remain, including those with
+separate class/group conflicts. Disabled/unowned spell history, ordinary and
+dependent spell ranks, character_spell, skills, glyphs and items are untouched.
+Orphan talent rows are a separate category and are not selected implicitly.
+
+## Review and prepare
+
+Use only the stopped restored preparation copy, never production or an existing
+migration target. Preserve the untouched baseline and verify your backup.
+Keep every core and other writer stopped. The acknowledgement below is an
+operator assertion, not automatic detection that all services are stopped.
+The UUID and audited schema must still match. Keep the exact audited DBC assets
+and toolkit frozen; a changed catalog requires a new audit/candidate.
+
+`00-setup.sql` creates only the new archive. Existing archive names are refused.
+Do not use --force or interactive SOURCE; use fresh batch clients. If setup
+fails, inspect the partial new archive instead of silently dropping/reusing it.
+DDL is separate from the transactional actions.
+
+Setup needs an administrator with CREATE/CREATE ROUTINE on the new archive and
+direct global SELECT/TRIGGER privileges for complete metadata visibility. A
+parameterless read-only metadata guard uses that administrator as definer;
+other procedures use invoker security. Keep the setup account available.
+Preparation needs SELECT on the two source tables and archive DML/EXECUTE.
+Apply additionally needs DELETE only on source character_talent; restore needs
+INSERT only on that table. No source character, spell, skill, item, auth or
+world writes are needed. The restricted writer needs no source TRIGGER grant.
+
+Replace the private option-file path with your preparation connection:
+
+```bash
+sha256sum --check SHA256SUMS
+mysql --defaults-extra-file=/secure/path/preparation-client.cnf --skip-force \
+  < 00-setup.sql
+mysql --defaults-extra-file=/secure/path/preparation-client.cnf --skip-force \
+  --init-command="SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'" \
+  < 01-prepare.sql
+mysql --defaults-extra-file=/secure/path/preparation-client.cnf --skip-force \
+  < 04-status.sql > prepared-status.private.tsv
+```
+
+Preparation writes only to the archive. In one SERIALIZABLE transaction it
+captures complete original character rows, all talent rows for the affected
+characters, and the exact @COUNT@ rows to remove. Inspect the status output,
+manifest and selected keys before deciding to apply. Full snapshots are in
+`character_before`, `talent_before` and `talent_removed` in the archive.
+
+The earlier audit digest establishes provenance, not a hash of every database
+column. Preparation rechecks the exact invalid keys, current invalid set and
+audited total talent count (@SOURCE_COUNT@), then snapshots current full affected
+state. Apply/restore reject later same-count changes to those talent sets or
+any affected character field. Changes to valid talents before preparation are
+not proven absent by the old audit; review the prepared current state.
+
+Native InnoDB tables, matching audited columns and native three-column talent
+representation are required. Schema/catalog/manifest drift, generated/invisible
+source columns, incomplete metadata visibility, source triggers, talent foreign
+keys, missing/online affected characters and unexpected counts are blockers.
+Do not widen predicates or change archive data to bypass a blocker.
+
+Ordinary expression defaults (`EXTRA=DEFAULT_GENERATED`), including timestamps
+with `DEFAULT CURRENT_TIMESTAMP`, are supported. Their stored values, including
+historical timestamps and NULLs, are copied explicitly into the archive.
+Computed virtual/stored columns and invisible columns remain unsupported.
+A failed prepare rolls back its snapshots and makes no source changes.
+
+## Apply after reviewing this batch
+
+```bash
+mysql --defaults-extra-file=/secure/path/preparation-client.cnf --skip-force \
+  --init-command="SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'" \
+  < 02-apply.sql
+mysql --defaults-extra-file=/secure/path/preparation-client.cnf --skip-force \
+  < 04-status.sql > applied-status.private.tsv
+```
+
+Apply removes only @COUNT@ exact archived rows, verifies retained talent
+ownership and full character state, and marks APPLIED in the same transaction.
+The resulting total talent count must be @AFTER_COUNT@. Errors/interruption
+roll back incomplete changes. Resume by calling apply again: matching APPLIED
+state is verified without deleting again or changing its timestamp. No ranks
+are added and no talent points, specs, skills or profession slots are reset.
+
+`04-status.sql` displays archived originals; their presence after apply is
+expected. APPLIED means the procedure's checks and commit succeeded, not native
+gameplay or production acceptance.
+
+## Exact restoration before further preparation or gameplay
+
+```bash
+mysql --defaults-extra-file=/secure/path/preparation-client.cnf --skip-force \
+  --init-command="SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'" \
+  < 03-restore.sql
+```
+
+Restore verifies the complete affected character/talent state and reinserts
+only the @COUNT@ original archived rows. Changes and RESTORED state commit
+together. Archives remain. A repeated restore verifies original state without
+changing it; apply after restore is refused. Restoration intentionally
+reinstates the original bad rows. Legitimate talent/spec/character changes,
+online flags, missing rows, schema/catalog changes or changed counts cause
+refusal; this is not a repair tool for data after gameplay.
+
+After an approved apply, rerun the read-only talent audit into a fresh directory
+and compare classifications. This reason should disappear for live characters;
+orphan and other reason codes remain separate. Repeat the full audit after all
+reviewed preparation batches. Never mass-delete disabled spells or reinterpret
+talent IDs to make other migration blockers disappear. Some blockers require
+migrator compatibility coverage rather than source cleanup.
+
+Use a fresh migration with new target/control schemas after source edits;
+never resume checkpoints captured before a cleanup. In isolated gameplay tests,
+check talent points and both specs, casts/trainers, professions, recipes and
+skills/caps, then save/relog and restart. Those acceptance gates remain
+**NOT TESTED** by generating or applying this SQL. Release approval stays
+**UNREVIEWED**.

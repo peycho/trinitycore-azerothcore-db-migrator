@@ -30,6 +30,8 @@ is historical and requires the corresponding older toolkit release.
 | --- | --- |
 | [Migration guide](runbooks/migration-guide.md) | Complete operator workflow; start here |
 | [Source inspection and preparation](runbooks/source-preparation.md) | Read-only legacy-data audit and reviewed cleanup workflow |
+| [Cleanup shell console](runbooks/cleanup-console.md) | One config, private sessions, talent/item plans, apply and exact restore |
+| [Invalid talent cleanup](runbooks/talent-cleanup.md) | Generate exact-row archive, apply and restore SQL from an audit |
 | [Migration behavior](runbooks/migration-behavior.md) | Data policies and semantic transforms |
 | [Spell reconstruction](runbooks/spell-reconstruction.md) | Omitted ranks, specialization safety and gameplay checks |
 | [v2 review record](runbooks/profile-v2-review.md) | Reviewed changes, limitations, acceptance evidence |

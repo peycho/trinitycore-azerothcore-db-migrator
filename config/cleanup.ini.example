@@ -1,0 +1,51 @@
+# Copy to cleanup.ini (ignored by Git), chmod 600 cleanup.ini, edit once.
+# All relative paths are resolved against this file's directory. No shell code
+# or interpolation is evaluated. Passwords containing % are literal.
+[workspace]
+directory = ./cleanup-work
+
+[source]
+# Only TC source preparation is supported. AC paths below are compatibility inputs.
+core = tc
+characters = tc_characters_prep
+auth = tc_auth_prep
+world = tc_world_snapshot
+
+[paths]
+tc_dbc = /secure/assets/tc-dbc
+ac_dbc = /secure/assets/ac-dbc
+tc_source = /srv/src/TrinityCore
+ac_source = /srv/src/azerothcore-wotlk
+
+[mysql]
+host = 127.0.0.1
+port = 3306
+socket =
+user = cleanup_writer
+password = REPLACE_ME
+# Alternatively set defaults_file to an existing private MySQL [client] file;
+# then user/password in this section are not used. Endpoint above still wins.
+defaults_file =
+connect_timeout = 10
+ssl_mode = PREFERRED
+
+# Use a SELECT-only audit role. These roles inherit the endpoint, not passwords.
+[mysql_audit]
+user = source_auditor
+password = REPLACE_ME
+defaults_file =
+
+# Required for archive setup and complete trigger/foreign-key visibility.
+# It needs direct global SELECT/TRIGGER plus CREATE/CREATE ROUTINE/GRANT OPTION
+# for the new archive. The tool grants archive-only DML/EXECUTE to mysql's
+# authenticated writer account; source write privileges must be granted separately.
+[mysql_admin]
+user = preparation_admin
+password = REPLACE_ME
+defaults_file =
+
+[safety]
+# Assertions for this stopped restored preparation copy, never production.
+preparation_copy = no
+writers_stopped = no
+backup_reference =

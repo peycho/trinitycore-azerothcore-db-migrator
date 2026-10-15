@@ -20,6 +20,9 @@ fi
 source "$ROOT/tests/test-support.sh"
 python3 "$ROOT/tests/spell-metadata-tests.py"
 python3 "$ROOT/tests/source-audit-mysql-tests.py"
+python3 "$ROOT/tests/talent-cleanup-mysql-tests.py"
+python3 "$ROOT/tests/character-talent-reset-mysql-tests.py"
+python3 "$ROOT/tests/cleanup-console-mysql-tests.py"
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT
 prepare_test_toolkit "$TEST_ROOT/toolkit"

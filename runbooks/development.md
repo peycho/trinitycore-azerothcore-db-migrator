@@ -44,6 +44,12 @@ It also runs synthetic WDBC semantic regressions for spell-rank reconstruction.
 It runs source-health audit unit tests for exhaustive talent findings, legitimate
 omitted ranks, disabled talent history, custom spell IDs, skill/spec conflicts,
 missing schema coverage and read-only connection guards.
+It also runs offline talent-cleanup planner regressions for sealed evidence,
+matching DBCs, exact invalid keys, protected selectable ranks, deterministic
+packages, private reports and unsupported schema/producer rejection.
+The cleanup console's fast tests cover literal/private configuration, credential
+files without inline passwords, redacted error journals, package integrity,
+workspace locks and identifier/path boundaries.
 These include rank-derived prerequisites (Dire Bear Form/Bear Form/Challenging
 Roar), native script aliases and paired mutation guards, reviewed encounter
 handlers, and spell/aura enum and effect-copy corrections.
@@ -127,6 +133,57 @@ test against the dedicated disposable endpoint with:
 MIGRATOR_DISPOSABLE_MYSQL=1 REHEARSAL_MYSQL_PORT=33317 \
 python3 tests/source-audit-mysql-tests.py
 ```
+
+The rehearsal entrypoint additionally runs standalone talent preparation tests.
+These are explicitly owned writable preparation fixtures, separate from the
+migrator's read-only source fixtures. They generate an audit and SQL package,
+then exercise archive-only preparation, exact non-rank removal, source/catalog
+and same-count ownership drift, incomplete metadata visibility, least-privilege
+grants, interrupted transactions, apply/restore reruns and exact restoration.
+The timestamp regression demonstrates the old `GENERATED` substring guard's
+false positive on `DEFAULT_GENERATED`, then prepares, applies and restores with
+historical and NULL timestamp values preserved. Matching-audit fixtures with
+virtual generated, stored generated and invisible columns still fail before
+snapshots or source writes.
+All unrelated character/auth/world data is checked for preservation. Run only
+these tests on the dedicated disposable server with:
+
+```bash
+MIGRATOR_DISPOSABLE_MYSQL=1 REHEARSAL_MYSQL_PORT=33317 \
+python3 tests/talent-cleanup-mysql-tests.py
+```
+
+They do not certify native talent points or gameplay and do not apply generated
+operator packages to preparation, staging or production databases.
+
+Single-character pending-reset policy tests use their own disposable fixtures:
+
+```bash
+MIGRATOR_DISPOSABLE_MYSQL=1 REHEARSAL_MYSQL_PORT=33317 \
+python3 tests/character-talent-reset-mysql-tests.py
+```
+
+These check exact unavailable-group removal, full snapshots with timestamp and
+custom fields, identity/spec guards, preservation of other login flags and
+related data, denied-write and interrupted transaction rollback, reruns and
+exact restoration. They exercise `tools/single-character-talent-reset.sql.in`;
+native next-login point refunds and spell unlearning remain gameplay checks.
+
+The shell console has an end-to-end disposable rehearsal:
+
+```bash
+MIGRATOR_DISPOSABLE_MYSQL=1 REHEARSAL_MYSQL_PORT=33317 \
+python3 tests/cleanup-console-mysql-tests.py
+```
+
+It uses restricted audit/writer roles and the real CLI for full audits,
+non-rank removal, pending reset, recovery mail split at 12 attachments,
+custom-field preservation, failure/interruption rollback, status/reruns,
+restoration, partial setup and edited-package rejection. It dumps and reimports
+its owned fixture databases with old APPLIED archives retained, starts a new
+session and repeats cleanup. It checks stale-session rejection and exact
+preservation of unrelated/auth/world data. These preparation tests write only
+their own disposable fixtures and do not establish native gameplay acceptance.
 
 Focused semantic tests without MySQL:
 
