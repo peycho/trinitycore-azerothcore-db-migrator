@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -139,8 +140,31 @@ class Settings:
         self.ini = configparser.ConfigParser(interpolation=None)
         try:
             self.ini.read_string(self.file.read_text())
-        except configparser.Error:
-            fail('CONFIG_SYNTAX','Invalid INI configuration; values were omitted to protect credentials','Use config/cleanup.ini.example as the format.')
+        except configparser.Error as error:
+            # Parser exception strings include raw input, which may contain passwords.
+            line=getattr(error,'lineno',None)
+            location=f' at line {line}' if isinstance(line,int) else ''
+            section=getattr(error,'section',None)
+            option=getattr(error,'option',None)
+            safe_sections={'workspace','source','paths','safety','mysql','mysql_audit','mysql_admin'}
+            safe_options={'socket','host','port','user','password','defaults_file'}
+            if isinstance(error,configparser.DuplicateSectionError):
+                label=f' [{section}]' if section in safe_sections else ''
+                message='Duplicate INI section'+label+location
+                hint='Edit the existing section instead of appending a second copy.'
+            elif isinstance(error,configparser.DuplicateOptionError):
+                label=f' {option}' if option in safe_options else ''
+                group=f' in [{section}]' if section in safe_sections else ''
+                message='Duplicate INI setting'+label+group+location
+                hint='Keep one entry for each setting in a section; remove the obsolete entry.'
+            else:
+                if not location:
+                    lines=[number for number,_ in getattr(error,'errors',[]) if isinstance(number,int)]
+                    if lines:
+                        location=' at line(s) '+', '.join(map(str,lines))
+                message='Invalid INI configuration'+location+'; values were omitted to protect credentials'
+                hint='Use config/cleanup.ini.example as the format.'
+            fail('CONFIG_SYNTAX',message,hint)
         allowed = {'workspace','source','paths','safety','mysql','mysql_audit','mysql_admin'}
         if set(self.ini.sections())-allowed:
             fail('CONFIG_UNKNOWN_SECTION', 'Unknown configuration section: '+','.join(sorted(set(self.ini.sections())-allowed)))
@@ -171,6 +195,9 @@ class Settings:
                 raise ValueError()
         except ValueError:
             fail('CONFIG_PORT','MySQL port must be between 1 and 65535')
+        if self.connection['socket'] and self.connection['host'] not in ('localhost','127.0.0.1','::1'):
+            fail('CONFIG_SOCKET_HOST','A Unix socket requires a local MySQL host',
+                 'Use [mysql] host=localhost with the socket path, or clear socket to use TCP to the configured host.')
 
     def get(self, section, key, default='', required=False):
         value = self.ini.get(section,key,fallback=default)
@@ -249,11 +276,14 @@ class Settings:
         try:
             with os.fdopen(fd,'w') as stream:
                 stream.write(content)
-            args=['--defaults-file='+filename,'--host='+self.connection['host'],
-                '--port='+str(int(self.connection['port'])),'--protocol=TCP',
+            args=['--defaults-file='+filename,
                 '--connect-timeout='+self.get('mysql','connect_timeout','10')]
             if self.connection['socket']:
-                args+=['--socket='+self.connection['socket'],'--protocol=SOCKET']
+                # libmysql rejects SOCKET with a numeric host as error 2047.
+                args+=['--host=localhost','--socket='+self.connection['socket'],'--protocol=SOCKET']
+            else:
+                args+=['--host='+self.connection['host'],
+                       '--port='+str(int(self.connection['port'])),'--protocol=TCP']
             mode=self.get('mysql','ssl_mode')
             if mode:
                 args+=['--ssl-mode='+mode]
@@ -286,6 +316,15 @@ class Settings:
         if len(row)!=2 or not row[1].startswith('8.4.'):
             fail('MYSQL_VERSION','Cleanup requires MySQL 8.4.x')
         return {'uuid':str(uuid.UUID(row[0])),'version':row[1],'schemas':self.schemas,'connection':self.connection}
+
+    def validate_schemas(self):
+        names=','.join("'"+name+"'" for name in self.schemas.values())
+        visible=set(self.sql('SELECT SCHEMA_NAME FROM information_schema.SCHEMATA '
+                             f'WHERE SCHEMA_NAME IN ({names});').splitlines())
+        missing=sorted(set(self.schemas.values())-visible)
+        if missing:
+            fail('CONFIG_SCHEMA_UNAVAILABLE','Configured schemas are missing or inaccessible: '+', '.join(missing),
+                 'Check [source] spelling and the audit account SELECT grants. After changing schemas, run init for a new session.')
 
 
 class Workspace:
@@ -337,8 +376,13 @@ class Workspace:
         session=self.current()
         actual=self.settings.identity(role)
         if actual!=session['identity']:
-            fail('SESSION_ENDPOINT_CHANGED','Server UUID/version, schemas or connection differs from this session',
-                 'Use the original configuration. After a fresh import, run init to create a new session, even on the same server.')
+            expected=session['identity']
+            changed=[key for key in ('uuid','version') if actual.get(key)!=expected.get(key)]
+            for group,keys in (('schemas',('characters','auth','world')),('connection',('host','port','socket'))):
+                changed.extend(group+'.'+key for key in keys
+                               if actual.get(group,{}).get(key)!=expected.get(group,{}).get(key))
+            fail('SESSION_ENDPOINT_CHANGED','Session identity changed: '+', '.join(changed or ['identity fields']),
+                 'Restore the original settings, or run console init followed by a fresh audit and plan after an intentional connection change or database import. A connection-only change does not require a database reimport.')
         return session
 
     def batch(self, batch_id):
@@ -361,6 +405,7 @@ def command_init(settings, work, args):
     settings.safety()
     settings.check_paths()
     identity=settings.identity()
+    settings.validate_schemas()
     private_dir(work.root/'sessions')
     session_id=token('session')
     work.session=work.root/'sessions'/session_id
@@ -376,7 +421,52 @@ def command_init(settings, work, args):
     print('SESSION '+session_id+'\nWorkspace: '+str(work.session))
 
 
+def check_audit_result(settings, work, output, returncode, stderr):
+    """Classify the child result before treating its progress stream as errors."""
+    report=output/'audit.json'
+    status=None
+    invalid_report=False
+    if report.exists():
+        try:
+            status=json.loads(report.read_text())
+            if not isinstance(status,dict):
+                invalid_report=True
+                status=None
+        except (OSError,ValueError):
+            invalid_report=True
+    details={'child_exit_code':returncode,'reports':str(output),'audit_status':status.get('status') if status else None,
+             'limitations':status.get('limitations') if status else None,
+             'audit_error':settings.redact(str(status.get('error',''))) if status else None}
+    write_json(work.operation/'audit-result.json',details)
+    hint='Inspect '+str(report)+' and '+str(work.operation/'audit.stderr.txt')+'. No cleanup was performed.'
+    if returncode<0:
+        try:
+            name=signal.Signals(-returncode).name
+        except ValueError:
+            name='signal '+str(-returncode)
+        fail('AUDIT_PROCESS_TERMINATED',f'Audit child terminated by {name}; its report is not accepted.',hint)
+    if invalid_report:
+        fail('AUDIT_REPORT_INVALID','Audit child produced an unreadable or malformed audit.json',hint)
+    if status is not None:
+        limitations=status.get('limitations')
+        if isinstance(limitations,list) and limitations:
+            description='; '.join(settings.redact(str(value)) for value in limitations[:8])
+            fail('AUDIT_COVERAGE_INCOMPLETE',f'Audit finished with {len(limitations)} coverage limitation(s): '+description,
+                 'Inspect '+str(report)+' and coverage.tsv. Correct missing inputs/grants; initialize a new session if schema names change. No cleanup was performed.')
+        if status.get('status')!='COMPLETE' or limitations!=[]:
+            message=status.get('error') or 'Audit status is '+str(status.get('status'))
+            fail('AUDIT_INCOMPLETE',settings.redact(str(message)),hint)
+        if returncode in (0,1):
+            return status
+    diagnostic=[line for line in stderr.splitlines() if line and not line.startswith(('Auditing ','Audited '))]
+    message=f'Audit child exited with status {returncode}'+(' without audit.json' if status is None else ' despite its report status')
+    if diagnostic:
+        message+=': '+'\n'.join(diagnostic[-8:])[-2048:]
+    fail('AUDIT_INCOMPLETE',settings.redact(message),hint)
+
+
 def command_audit(settings, work, args):
+    settings.validate_schemas()
     audit_id=token(args.scope)
     output=work.session/'audits'/audit_id
     with settings.client('audit') as connection:
@@ -404,11 +494,7 @@ def command_audit(settings, work, args):
             stdout=settings.redact(captured.read())
     (work.operation/'audit.stdout.txt').write_text(stdout)
     (work.operation/'audit.stderr.txt').write_text(''.join(errors))
-    if returncode not in (0,1) or not (output/'audit.json').exists():
-        fail('AUDIT_INCOMPLETE',''.join(errors).strip(),'Inspect this operation and the incomplete audit; no cleanup was performed.')
-    status=json.loads((output/'audit.json').read_text())
-    if status.get('status')!='COMPLETE' or status.get('limitations')!=[]:
-        fail('AUDIT_INCOMPLETE','Audit has incomplete coverage; inspect audit.json and coverage.tsv')
+    check_audit_result(settings,work,output,returncode,''.join(errors))
     write_json(work.session/'latest-audit.json',{'audit':audit_id})
     print('AUDIT '+audit_id+'\n'+(output/'summary.tsv').read_text().rstrip()+'\nReports: '+str(output))
     return returncode

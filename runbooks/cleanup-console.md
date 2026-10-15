@@ -76,6 +76,17 @@ role has its own credentials; it does not inherit the writer password. If a
 role section is omitted, the console uses `[mysql]`; separate roles are
 recommended so reads have only SELECT permissions.
 
+For local socket authentication, edit the existing `[mysql] socket` entry to
+the server's Unix socket path and use `host = localhost`. Socket mode accepts
+`localhost`, `127.0.0.1` or `::1` in the config, passes `--host=localhost` and a
+single `--protocol=SOCKET` to MySQL, and omits the TCP port. Remote hosts with a
+socket path are rejected before connecting. The console uses TCP when that entry is empty;
+setting `host = localhost` alone does not select a socket. A root account using
+`auth_socket` requires the matching Linux user and a socket connection. Keep
+each section and each setting within a section unique: replace `socket =`
+instead of adding a second `socket` entry. Connection changes require a new
+console session, audit and plan; they do not require a database reimport.
+
 The administrator grants SELECT/INSERT/UPDATE/DELETE/EXECUTE **only on the
 verified batch archive** to the authenticated writer. Source write grants are
 never added automatically. The source privileges are:
@@ -242,13 +253,16 @@ plan operations retain their read-only character/item evidence on failure.
 
 | Error/result | Action |
 |---|---|
+| `CONFIG_SYNTAX` | Correct the reported INI line. For duplicate sections/settings, edit the existing entry and remove the duplicate. Values are never printed. No database connection is made. |
+| `CONFIG_SOCKET_HOST` | Use a local host for Unix socket mode, or clear `socket` to select TCP. |
+| MySQL error 2047 in an older toolkit | Set `[mysql] host = localhost` when using a socket, or update the console. Older code combined a numeric host with socket protocol. After a connection setting changes, initialize a new session and regenerate its audit/plan; no reimport is needed. |
 | `PRIVATE_FILE_REQUIRED` / `PRIVATE_DIRECTORY_REQUIRED` | Fix owner/modes: config/client files 0600, workspace 0700. |
 | `MYSQL_FAILED` | Inspect the MySQL error and grants. Preserve evidence. Query status before retrying; a lost connection can occur after commit. |
 | `CORE_PROFILE_MISMATCH` / `DBC_DRIFT` | Restore reviewed metadata or establish compatibility and generate a new audit/batch. Never bypass the guard. |
 | `PACKAGE_CHANGED` | Generated files no longer match their checksums. Keep evidence and generate a new candidate. |
 | `PARTIAL_ARCHIVE` | Setup DDL was incomplete. Retain/inspect it; the console never drops or silently reuses it. Generate a new batch after resolving the cause. |
 | `RESET_STATE_UNSUPPORTED` / `ITEM_RECOVERY_BLOCKED` | Review the exact evidence; no broad deletion, guessed ownership or replacement rank/item is performed. |
-| `SESSION_ENDPOINT_CHANGED` | Check endpoint/version/schemas. After importing a fresh copy, initialize a new session. |
+| `SESSION_ENDPOINT_CHANGED` | Check the named identity fields. After intentionally changing connection settings or importing a fresh copy, run `init`, then a fresh audit and plan. A connection-only change does not require a database reimport. |
 | Audit exit 1 | Audit completed and found rows; review the report. This is not a client/database failure. |
 
 After an interrupted operation, use:

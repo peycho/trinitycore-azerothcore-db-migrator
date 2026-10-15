@@ -20,6 +20,9 @@ ac_source = /srv/src/azerothcore-wotlk
 [mysql]
 host = 127.0.0.1
 port = 3306
+# Edit this single entry to use a Unix socket; do not append a second socket key.
+# Use host=localhost for a socket. Socket mode accepts local hosts only and
+# passes --host=localhost to MySQL; port applies only to TCP.
 socket =
 user = cleanup_writer
 password = REPLACE_ME

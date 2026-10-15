@@ -50,6 +50,11 @@ packages, private reports and unsupported schema/producer rejection.
 The cleanup console's fast tests cover literal/private configuration, credential
 files without inline passwords, redacted error journals, package integrity,
 workspace locks and identifier/path boundaries.
+Socket regressions check every role's transport arguments, unchanged TCP
+settings, rejection of remote-host/socket combinations, and a real MySQL client
+against a nonexistent test socket. The last check requires no server and
+distinguishes a socket connection attempt (error 2002) from protocol error 2047;
+it is skipped if the client is unavailable.
 These include rank-derived prerequisites (Dire Bear Form/Bear Form/Challenging
 Roar), native script aliases and paired mutation guards, reviewed encounter
 handlers, and spell/aura enum and effect-copy corrections.
@@ -184,6 +189,11 @@ its owned fixture databases with old APPLIED archives retained, starts a new
 session and repeats cleanup. It checks stale-session rejection and exact
 preservation of unrelated/auth/world data. These preparation tests write only
 their own disposable fixtures and do not establish native gameplay acceptance.
+To run the same console workflow through a dedicated server's Unix socket,
+also set `REHEARSAL_MYSQL_SOCKET` to its accessible socket path. The harness
+still requires its disposable TCP port and verifies that the socket server UUID
+matches that endpoint before creating fixtures. All console roles then use the
+socket; fixture setup and checks continue using the dedicated TCP endpoint.
 
 Focused semantic tests without MySQL:
 

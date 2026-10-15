@@ -73,6 +73,82 @@ backup_reference=verified-backup-01
         self.assertNotIn('SECRET-HIDDEN',errors.getvalue())
         self.assertIn('CONFIG_SYNTAX',errors.getvalue())
 
+    def test_duplicate_socket_reports_setting_section_and_line_without_connecting(self):
+        self.config.write_text('[mysql]\nsocket=/var/run/mysqld/mysqld.sock\nsocket=\n')
+        errors=io.StringIO()
+        with patch.object(console.subprocess,'run') as run,redirect_stderr(errors):
+            self.assertEqual(console.main(['--config',str(self.config),'prepare']),2)
+        run.assert_not_called()
+        report=json.loads(errors.getvalue().removeprefix('ERROR '))
+        self.assertEqual(report['code'],'CONFIG_SYNTAX')
+        self.assertEqual(report['message'],'Duplicate INI setting socket in [mysql] at line 3')
+        self.assertIn('Keep one entry',report['hint'])
+
+    def test_duplicate_section_is_identified_without_values(self):
+        self.config.write_text('[mysql_admin]\npassword=SECRET-HIDDEN\n[mysql_admin]\n')
+        with self.assertRaises(console.CleanupError) as raised:
+            self.settings()
+        self.assertEqual(str(raised.exception),'Duplicate INI section [mysql_admin] at line 3')
+        self.assertNotIn('SECRET-HIDDEN',str(raised.exception)+raised.exception.hint)
+
+    def test_ini_syntax_errors_never_echo_unrecognized_names_or_input(self):
+        cases=(
+            ('[SECRET-HIDDEN]\n[SECRET-HIDDEN]\n','Duplicate INI section at line 2'),
+            ('[mysql]\nSECRET-HIDDEN=one\nSECRET-HIDDEN=two\n','Duplicate INI setting in [mysql] at line 3'),
+            ('[mysql]\nSECRET-HIDDEN\n','at line(s) 2'),
+            ('SECRET-HIDDEN\n','at line 1'),
+        )
+        for text,expected in cases:
+            with self.subTest(text=text):
+                self.config.write_text(text)
+                with self.assertRaises(console.CleanupError) as raised:
+                    self.settings()
+                self.assertEqual(raised.exception.code,'CONFIG_SYNTAX')
+                self.assertIn(expected,str(raised.exception))
+                self.assertNotIn('SECRET-HIDDEN',str(raised.exception)+raised.exception.hint)
+
+    def test_single_socket_entry_selects_socket_for_all_roles(self):
+        with self.config.open('a') as stream:
+            stream.write('[mysql_admin]\nuser=root\npassword=\n')
+        self.config.write_text(self.config.read_text().replace('[mysql]\n','[mysql]\nsocket=/var/run/mysqld/mysqld.sock\n'))
+        settings=self.settings()
+        console.private_dir(settings.workspace)
+        for role in ('write','audit','admin'):
+            with self.subTest(role=role),settings.client(role) as args:
+                self.assertIn('--socket=/var/run/mysqld/mysqld.sock',args)
+                self.assertIn('--host=localhost',args)
+                self.assertEqual([arg for arg in args if arg.startswith('--protocol=')],['--protocol=SOCKET'])
+                self.assertFalse(any(arg.startswith('--port=') for arg in args))
+
+    def test_tcp_arguments_retain_host_and_port(self):
+        settings=self.settings()
+        console.private_dir(settings.workspace)
+        with settings.client('write') as args:
+            self.assertIn('--host=127.0.0.1',args)
+            self.assertIn('--port=3306',args)
+            self.assertEqual([arg for arg in args if arg.startswith('--protocol=')],['--protocol=TCP'])
+            self.assertFalse(any(arg.startswith('--socket=') for arg in args))
+
+    def test_socket_with_remote_host_is_rejected_before_connecting(self):
+        self.config.write_text(self.config.read_text().replace('[mysql]\n',
+            '[mysql]\nhost=database.example.invalid\nsocket=/tmp/local.sock\n'))
+        with self.assertRaises(console.CleanupError) as raised:
+            self.settings()
+        self.assertEqual(raised.exception.code,'CONFIG_SOCKET_HOST')
+
+    @unittest.skipUnless(console.shutil.which('mysql'),'MySQL client is not installed')
+    def test_real_client_uses_missing_local_socket_instead_of_error_2047(self):
+        # This path cannot be an operator socket; no server is needed or contacted.
+        sock=self.root/'absent.sock'
+        self.config.write_text(self.config.read_text().replace('[mysql]\n',f'[mysql]\nsocket={sock}\n'))
+        settings=self.settings()
+        console.private_dir(settings.workspace)
+        with settings.client('write') as args:
+            result=subprocess.run(['mysql',*args,'--execute=SELECT 1;'],capture_output=True,text=True,timeout=5)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('ERROR 2002',result.stderr)
+        self.assertNotIn('ERROR 2047',result.stderr)
+
     def test_credentials_are_private_temporary_files_and_not_arguments(self):
         settings=self.settings()
         console.private_dir(settings.workspace)
@@ -159,6 +235,30 @@ backup_reference=verified-backup-01
             with self.assertRaisesRegex(console.CleanupError,'workspace lock'):
                 with second.locked():
                     pass
+
+    def test_connection_change_reports_fields_and_keeps_session_guard(self):
+        settings=self.settings()
+        work=console.Workspace(settings)
+        expected={'uuid':'test-uuid','version':'8.4.10','schemas':settings.schemas,
+                  'connection':dict(settings.connection)}
+        actual={**expected,'connection':{**expected['connection'],'host':'localhost','socket':'/tmp/test.sock'}}
+        session={'identity':expected}
+        with patch.object(work,'current',return_value=session),patch.object(settings,'identity',return_value=actual):
+            with self.assertRaises(console.CleanupError) as raised:
+                work.check_identity()
+        self.assertEqual(raised.exception.code,'SESSION_ENDPOINT_CHANGED')
+        self.assertEqual(str(raised.exception),'Session identity changed: connection.host, connection.socket')
+        self.assertIn('console init',raised.exception.hint)
+        self.assertIn('does not require a database reimport',raised.exception.hint)
+        self.assertEqual(session['identity']['connection']['socket'],'')
+
+    def test_matching_session_identity_is_accepted(self):
+        settings=self.settings()
+        work=console.Workspace(settings)
+        session={'identity':{'uuid':'test-uuid','version':'8.4.10','schemas':settings.schemas,
+                            'connection':settings.connection}}
+        with patch.object(work,'current',return_value=session),patch.object(settings,'identity',return_value=session['identity']):
+            self.assertIs(work.check_identity(),session)
 
     def test_missing_session_retains_an_early_error_report(self):
         with redirect_stderr(io.StringIO()):

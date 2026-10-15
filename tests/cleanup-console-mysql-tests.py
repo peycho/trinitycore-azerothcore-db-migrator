@@ -28,6 +28,16 @@ def main():
         return result.stdout.strip()
     version=sql('SELECT @@version;')
     assert version.startswith('8.4.'),version
+    socket_path=os.environ.get('REHEARSAL_MYSQL_SOCKET','')
+    if socket_path:
+        assert Path(socket_path).is_socket(),'Expected the dedicated disposable server socket'
+        socket_args=([f'--defaults-extra-file={defaults}'] if defaults else ['--no-defaults'])+[
+            '--host=localhost','--protocol=SOCKET','--socket='+socket_path,'--user=root',
+            '--batch','--skip-column-names','--execute=SELECT @@server_uuid;']
+        socket_server=subprocess.run(['mysql',*socket_args],text=True,capture_output=True)
+        assert socket_server.returncode==0,socket_server.stderr
+        assert socket_server.stdout.strip()==sql('SELECT @@server_uuid;'),'Socket does not belong to the dedicated TCP test server'
+        print('Testing console roles through the verified disposable Unix socket',flush=True)
     prefix='console_'+uuid.uuid4().hex[:10]
     source,auth,world=[prefix+s for s in ('_chars','_auth','_world')]
     writer,reader=prefix+'_w',prefix+'_r'
@@ -112,6 +122,7 @@ ac_source={ac}
 [mysql]
 host=127.0.0.1
 port={port}
+socket={socket_path}
 user={writer}
 password={writer_password}
 [mysql_audit]
