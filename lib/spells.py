@@ -26,6 +26,13 @@ class Unsupported(ValueError):
         self.reason = reason
 
 
+class MetadataQueryError(RuntimeError):
+    """Database access failed before spell compatibility could be established."""
+    def __init__(self, label, detail):
+        super().__init__(f'{label}: {detail}')
+        self.label, self.detail = label, detail
+
+
 def reject(reason, detail):
     raise Unsupported(reason, detail)
 
@@ -64,7 +71,7 @@ class Database:
                     yield line.decode().rstrip('\n').split('\t')
                 error = process.stderr.read().decode()
                 if process.wait():
-                    reject('SPELL_METADATA_QUERY_FAILED', f'{label}: {error.strip()}')
+                    raise MetadataQueryError(label, error.strip())
             finally:
                 if process.poll() is None:
                     process.terminate()
@@ -86,8 +93,15 @@ class Database:
             reject('INCOMPATIBLE_DBC_OVERLAY', f'{schema}.{table}: ordered columns differ from pinned AC reader')
         # Names come exclusively from the protected profile layout.
         selected = ','.join('`' + name + '`' for name in columns)
-        return list(self.rows(f'{schema}.{table}',
-            f'SELECT {selected} FROM `{schema}`.`{table}` ORDER BY {selected};'))
+        label = f'{schema}.{table}'
+        # Metadata is already materialized for relationship checks. Sort it
+        # here rather than asking MySQL to filesort every column, including
+        # the wide localized text fields in spell_dbc. Fingerprint the full
+        # canonical rows so physical order and database collation do not affect
+        # checkpoints, while same-count changes (including text) still do.
+        rows = sorted(self.rows(label, f'SELECT {selected} FROM `{schema}`.`{table}`;'))
+        self.fingerprints[label] = digest(canonical(rows))
+        return rows
 
 
 def read_dbc(path, fmt):
@@ -708,6 +722,13 @@ if __name__ == '__main__':
     options = parser.parse_args()
     try:
         sys.exit(main(options))
+    except MetadataQueryError as error:
+        detail = error.detail.replace('\t', ' ').replace('\n', ' ')
+        (Path(options.output) / 'spell-metadata-errors.tsv').write_text(
+            'input\treason_code\tdetail\n'
+            f'{error.label}\tSPELL_METADATA_QUERY_FAILED\t{detail}\n')
+        print(f'Spell metadata read failed: {error}', file=sys.stderr)
+        sys.exit(2)
     except (Unsupported, ValueError, OSError, struct.error) as error:
         print(f'Spell reconstruction failed: {error}', file=sys.stderr)
         sys.exit(1)

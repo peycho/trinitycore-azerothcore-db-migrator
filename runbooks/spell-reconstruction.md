@@ -54,6 +54,20 @@ are applied using the pinned layouts. Rank/talent chains, spell requirements,
 learned-spell effects, skill effects, race/class eligibility, relevant core
 corrections and spell scripts are audited before target assembly.
 
+World metadata rows are read without a server-side row sort, ordered in Python,
+and hashed in full, including localized text and duplicate rows. This avoids
+sorting every column of wide DBC overlay tables inside MySQL's sort buffer.
+Character input remains streamed in GUID order. No global or session sort-buffer
+increase is required by the world metadata reader.
+
+If a database query fails (for example, access denial, a disconnect or MySQL
+error 1038), conversion stops with `spell-metadata-errors.tsv`. This is a read
+failure, not evidence of incompatible character spells. No expected snapshot or
+spell rejection is committed from that attempt. Resolve the reported database
+error before retrying with unchanged inputs and toolkit. Installing a reader
+fix changes toolkit identity and requires a fresh toolkit copy, target/control
+schemas and run ID; do not replace code underneath an existing run.
+
 ## Reconstruction and blocking policy
 
 | Representation | Policy |
@@ -102,6 +116,8 @@ Private reports include:
 - `spell-fingerprints.tsv`: metadata and source-input SHA-256 evidence.
 - `spell-expected.tsv`: preflight reconstruction and original flags/proofs.
 - `spell-state-blockers.tsv`: incompatible character keys, reason codes and details.
+- `spell-metadata-errors.tsv`: failed query input, reason code and database error;
+  no spell compatibility conclusion was possible.
 - `spell-reconstruction.tsv`: committed rows, masks, derived/runtime dispositions
   and source-anchor paths; regenerated from control data. Provenance names the
   rank root, talent owner IDs/masks, prerequisites and mask policy, alongside

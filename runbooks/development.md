@@ -96,6 +96,20 @@ failure/interruption before and after commit. The trainer harness compiles the
 protected AC trainer-state function with mocked getters and checks migrated
 direct/wrapped spell rows in both specs; this is not a worldserver gameplay test.
 
+The rehearsal entrypoint first runs a focused wide-metadata regression against
+the same disposable server. It creates its own temporary schema and SELECT-only
+account, reproduces error 1038 with the old all-column sort at a 32 KiB session
+sort buffer, and checks that the current reader succeeds, retains deterministic
+fingerprints and detects same-count text changes. Run only that regression with:
+
+```bash
+MIGRATOR_DISPOSABLE_MYSQL=1 REHEARSAL_MYSQL_PORT=33317 \
+python3 tests/spell-metadata-tests.py
+```
+
+It accepts the same core/profile and administrator option-file overrides as
+the rehearsal harness and removes only its own schema/account.
+
 Focused semantic tests without MySQL:
 
 ```bash

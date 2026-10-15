@@ -4,18 +4,26 @@
 # Only the Python SELECT reader touches source/world data. Expected rows are
 # immutable control data; actual provenance commits with each target chunk.
 prepare_spell_snapshot() {
-    local mode=${1:-verify} temporary input_hash expected_hash existing
+    local mode=${1:-verify} temporary input_hash expected_hash existing reader_status=0
     require_command python3
     mkdir -p "$REPORTS_DIR/$RUN_ID"
     temporary=$(mktemp -d)
-    if ! python3 "$MIGRATION_ROOT/lib/spells.py" \
+    python3 "$MIGRATION_ROOT/lib/spells.py" \
         --profile "$COMPATIBILITY_PROFILE_DIR/spell-metadata.json" \
         --output "$temporary" --source-characters "$SOURCE_CHARACTERS_SCHEMA" \
         --source-world "$SOURCE_WORLD_SCHEMA" --target-world "$TARGET_WORLD_SCHEMA" \
         --tc-dbc "$TRINITYCORE_DBC_DIR" --ac-dbc "$AZEROTHCORE_DBC_DIR" \
         --control "$CONTROL_SCHEMA" --run-id "$RUN_ID" --direction "$MIGRATION_DIRECTION" \
-        --mysql "${MYSQL_ARGS[@]}"; then
+        --mysql "${MYSQL_ARGS[@]}" || reader_status=$?
+    if (( reader_status != 0 )); then
         mkdir -p "$REPORTS_DIR/$RUN_ID"
+        if (( reader_status == 2 )); then
+            cp "$temporary/spell-metadata-errors.tsv" "$REPORTS_DIR/$RUN_ID/"
+            rm -rf "$temporary"
+            mysql_query -e "UPDATE \`$CONTROL_SCHEMA\`.migration_run SET status='FAILED'
+                WHERE run_id='$(sql_escape "$RUN_ID")';"
+            die "Spell metadata read failed; see spell-metadata-errors.tsv; compatibility could not be established"
+        fi
         if [[ -f $temporary/spell-state-blockers.tsv ]]; then
             cp "$temporary/spell-state-blockers.tsv" "$REPORTS_DIR/$RUN_ID/"
             local guid spell reason detail

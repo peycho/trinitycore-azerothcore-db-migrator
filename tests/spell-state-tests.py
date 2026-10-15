@@ -3,15 +3,17 @@
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
 import struct
+import subprocess
 import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'lib'))
-from spells import Metadata, Unsupported, read_dbc, reconstruct
+from spells import Database, Metadata, Unsupported, read_dbc, reconstruct
 spec = importlib.util.spec_from_file_location('fixtures',ROOT/'tests/spell-fixtures.py')
 fixtures = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixtures)
@@ -28,6 +30,77 @@ class World:
         return sorted(self.tables.get(table,[]),key=lambda row:int(row[0]))
     def rows(self,*args):
         return []
+
+
+class MetadataReaderTests(unittest.TestCase):
+    def test_canonical_world_rows_ignore_fetch_order_but_detect_full_content_drift(self):
+        class Reader(Database):
+            def __init__(self):
+                super().__init__([])
+                self.data = [['2', 'beta\u0431'], ['1', 'alpha'], ['1', 'alpha']]
+            def rows(self, label, query):
+                if label.endswith('.present'):
+                    return iter([['1']])
+                if label.endswith('.layout'):
+                    return iter([['ID'], ['Description']])
+                self.assert_query = query
+                return iter(self.data)
+        reader = Reader()
+        expected = reader.table('world', 'spell_dbc', ['ID', 'Description'])
+        original = reader.fingerprints['world.spell_dbc']
+        self.assertNotIn('ORDER BY', reader.assert_query)
+        reader.data.reverse()
+        self.assertEqual(reader.table('world', 'spell_dbc', ['ID', 'Description']), expected)
+        self.assertEqual(reader.fingerprints['world.spell_dbc'], original)
+        reader.data[0][1] += 'changed'
+        reader.table('world', 'spell_dbc', ['ID', 'Description'])
+        self.assertNotEqual(reader.fingerprints['world.spell_dbc'], original)
+
+    def test_query_failure_is_reported_as_read_error_without_character_rejection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            client = root / 'mysql'
+            client.write_text("#!/bin/sh\nprintf '%s\\n' 'ERROR 1038 (HY001): Out of sort memory' >&2\nexit 1\n")
+            client.chmod(0o755)
+            env = os.environ | {'PATH': str(root) + ':' + os.environ['PATH']}
+            profile = ROOT/'compatibility/tc335-acwotlk-v2/spell-metadata.json'
+            result = subprocess.run([sys.executable, str(ROOT/'lib/spells.py'),
+                '--profile', str(profile), '--output', str(root), '--source-characters', 'chars',
+                '--control', 'control', '--run-id', 'fixture', '--direction', 'tc-to-ac', '--mysql'],
+                env=env, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn('Spell metadata read failed', result.stderr)
+            self.assertIn('SPELL_METADATA_QUERY_FAILED', (root/'spell-metadata-errors.tsv').read_text())
+            self.assertEqual(len((root/'spell-state-blockers.tsv').read_text().splitlines()), 1)
+            self.assertEqual((root/'spell-expected.sql').read_text(), '')
+            wrapper = subprocess.run(['bash', '-c', r'''
+set -Eeuo pipefail
+source "$1/lib/spells.sh"
+MIGRATION_ROOT=$1
+COMPATIBILITY_PROFILE_DIR=$1/compatibility/tc335-acwotlk-v2
+REPORTS_DIR=$2/reports
+RUN_ID=fixture
+SOURCE_CHARACTERS_SCHEMA=chars
+SOURCE_WORLD_SCHEMA=tc_world
+TARGET_WORLD_SCHEMA=ac_world
+TRINITYCORE_DBC_DIR=unused
+AZEROTHCORE_DBC_DIR=unused
+CONTROL_SCHEMA=control
+MIGRATION_DIRECTION=tc-to-ac
+MYSQL_ARGS=()
+require_command() { :; }
+sql_escape() { printf '%s' "$1"; }
+mysql_query() { printf '%s\n' "$*" >> "$REPORTS_DIR/queries"; }
+die() { printf '%s\n' "$*" >&2; exit 1; }
+prepare_spell_snapshot capture
+''', 'fixture', str(ROOT), str(root)], env=env, text=True, capture_output=True)
+            self.assertNotEqual(wrapper.returncode, 0)
+            self.assertIn('compatibility could not be established', wrapper.stderr)
+            self.assertNotIn('Spell state is incompatible', wrapper.stderr)
+            self.assertTrue((root/'reports/fixture/spell-metadata-errors.tsv').exists())
+            queries = (root/'reports/queries').read_text()
+            self.assertNotIn('migration_reject', queries)
+            self.assertNotIn('spell_expected', queries)
 
 
 class SpellTests(unittest.TestCase):
