@@ -25,6 +25,7 @@ source "$ROOT/tests/test-support.sh"
 
 shellcheck "$ROOT"/bin/*.sh "$ROOT"/lib/*.sh "$ROOT"/tests/*.sh
 python3 "$ROOT/tests/spell-state-tests.py"
+python3 "$ROOT/tests/source-audit-tests.py"
 
 for mapping in "$ROOT"/mappings/{tc-to-ac,ac-to-tc}/{auth,characters}.csv; do
     awk -F, 'NF != 10 { print FILENAME ":" FNR ": expected 10 CSV fields, found " NF; bad=1 }

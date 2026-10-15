@@ -41,6 +41,9 @@ The default paths are sibling `../TrinityCore` and `../azerothcore-wotlk`.
 scripts, registry inventories, profile reproducibility/drift, retired and
 unreviewed rejection, complete schema dumps, and the disposable-port guard.
 It also runs synthetic WDBC semantic regressions for spell-rank reconstruction.
+It runs source-health audit unit tests for exhaustive talent findings, legitimate
+omitted ranks, disabled talent history, custom spell IDs, skill/spec conflicts,
+missing schema coverage and read-only connection guards.
 These include rank-derived prerequisites (Dire Bear Form/Bear Form/Challenging
 Roar), native script aliases and paired mutation guards, reviewed encounter
 handlers, and spell/aura enum and effect-copy corrections.
@@ -112,6 +115,18 @@ python3 tests/spell-metadata-tests.py
 
 It accepts the same core/profile and administrator option-file overrides as
 the rehearsal harness and removes only its own schema/account.
+
+The rehearsal entrypoint also runs the standalone source-audit integration
+tests. They create dirty native TC fixtures under random database names and
+a SELECT-only account, then verify multiple invalid rows per character,
+custom spell definitions, incomplete coverage, private output, consistent reads
+during a concurrent fixture edit, and source/world checksums. Run that focused
+test against the dedicated disposable endpoint with:
+
+```bash
+MIGRATOR_DISPOSABLE_MYSQL=1 REHEARSAL_MYSQL_PORT=33317 \
+python3 tests/source-audit-mysql-tests.py
+```
 
 Focused semantic tests without MySQL:
 

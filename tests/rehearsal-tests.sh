@@ -19,6 +19,7 @@ fi
 # shellcheck source=tests/test-support.sh
 source "$ROOT/tests/test-support.sh"
 python3 "$ROOT/tests/spell-metadata-tests.py"
+python3 "$ROOT/tests/source-audit-mysql-tests.py"
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT
 prepare_test_toolkit "$TEST_ROOT/toolkit"

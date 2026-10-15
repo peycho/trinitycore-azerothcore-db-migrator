@@ -9,7 +9,7 @@ prepare_test_toolkit() {
         return 1
     }
     mkdir -p "$destination"
-    cp -R "$ROOT"/{bin,lib,sql,mappings,compatibility,config,tests} "$destination/"
+    cp -R "$ROOT"/{bin,lib,sql,mappings,compatibility,config,tests,tools} "$destination/"
     chmod -R u+rwX "$destination"
     local profile="$destination/compatibility/$COMPATIBILITY_PROFILE/profile.env"
     [[ -f $profile ]] || return 1

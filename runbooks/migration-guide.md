@@ -312,6 +312,12 @@ toolkit release.
 
 ## 7. Run preflight and inspect the source audit
 
+For old or repeatedly migrated sources, first follow
+[Source inspection and preparation](source-preparation.md). Its standalone
+read-only audit collects multiple findings per character without creating a
+migration run. Any reviewed preparation changes belong in a separate restored
+copy and must precede a fresh migration run.
+
 ```bash
 "$MIGRATOR" --config "$MIGRATION_CONFIG" preflight
 ```

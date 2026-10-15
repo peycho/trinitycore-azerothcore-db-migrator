@@ -29,6 +29,7 @@ is historical and requires the corresponding older toolkit release.
 | Document | Purpose |
 | --- | --- |
 | [Migration guide](runbooks/migration-guide.md) | Complete operator workflow; start here |
+| [Source inspection and preparation](runbooks/source-preparation.md) | Read-only legacy-data audit and reviewed cleanup workflow |
 | [Migration behavior](runbooks/migration-behavior.md) | Data policies and semantic transforms |
 | [Spell reconstruction](runbooks/spell-reconstruction.md) | Omitted ranks, specialization safety and gameplay checks |
 | [v2 review record](runbooks/profile-v2-review.md) | Reviewed changes, limitations, acceptance evidence |
