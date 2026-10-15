@@ -53,7 +53,7 @@ def toolkit_hashes():
     names=('console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
-           'tools/container-recovery.sql.in')
+           'tools/container-recovery.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in')
     return {name:sha(ROOT/name) for name in names}
 
 
@@ -564,9 +564,16 @@ def command_action(settings, work, args):
     settings.sql(f"GRANT SELECT,INSERT,UPDATE,DELETE,EXECUTE ON `{archive}`.* TO {principal[0]}@{principal[1]};",'admin')
     action={'prepare':'01-prepare.sql','apply':'02-apply.sql','restore':'03-restore.sql'}[args.command]
     ack=manifest.get('ack_variable','talent_cleanup_ack')
-    if ack not in ('talent_cleanup_ack','recovery_ack'):
+    if ack not in ('talent_cleanup_ack','recovery_ack','skill_cleanup_ack'):
         fail('INVALID_POLICY','Unknown cleanup acknowledgement variable')
-    result=settings.sql(f"SET @{ack}='STOPPED_PREPARATION_COPY_ONLY';\n"+scripts[action],'write',headers=True)
+    try:
+        result=settings.sql(f"SET @{ack}='STOPPED_PREPARATION_COPY_ONLY';\n"+scripts[action],'write',headers=True)
+    except CleanupError as error:
+        if manifest.get('policy')=='tc-skill-clamp-stored-cap-v1' and 'UPDATE command denied' in str(error):
+            error.hint=('The skill policy needs the writer column privilege. An administrator can run: '
+                f"GRANT UPDATE (`value`) ON `{settings.schemas['characters']}`.`character_skills` TO {principal[0]}@{principal[1]}; "
+                'Then retry this batch. Source privileges were not added automatically.')
+        raise
     (work.operation/'result.tsv').write_text(result)
     status=settings.sql(contents['04-status.sql'].decode(),'write',headers=True)
     (work.operation/'status.tsv').write_text(status)
@@ -610,6 +617,9 @@ def parser():
     talents=types.add_parser('talents',help='Only verified TALENT_VALUE_IS_NOT_RANK_SPELL rows')
     talents.add_argument('--audit',help='Audit ID in this session; defaults to latest completed audit')
     talents.add_argument('--expect-rows',type=int,required=True)
+    skills=types.add_parser('skills',help='Clamp exact audited over-cap values to their existing positive stored maximum')
+    skills.add_argument('--audit',help='Full audit ID in this session; defaults to latest completed audit')
+    skills.add_argument('--expect-rows',type=int,required=True)
     reset=types.add_parser('reset-talents',help='One character: archive unavailable group 1 and queue free native reset')
     reset.add_argument('--guid',type=int,required=True)
     items=types.add_parser('items',help='Recover exact contents of selected zero-entry containers to native mail')

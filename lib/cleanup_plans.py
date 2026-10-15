@@ -88,6 +88,7 @@ def readme(manifest):
     details={
         'tc-invalid-talent-rank-v1':'Removes only verified non-rank talent records. No replacement rank or talent points are guessed.',
         'tc-single-character-native-talent-reset-v1':'Archives/removes the reviewed unavailable group and sets only at_login bit 4. APPLIED means FREE NATIVE RESET PENDING NEXT LOGIN. Active ownership stays until the core unlearns its spells and dependencies. Other login flags are preserved.',
+        'tc-skill-clamp-stored-cap-v1':'Reduces only the exact audited over-cap skill values to their existing positive stored maximum. Caps, skill ownership, profession slots, spells, recipes and character state remain unchanged. No GM status or replacement cap is inferred. Full original skill rows are retained for exact restoration.',
         'tc-zero-container-recovery-v1':'Moves only the exact inventory references into native recovery mail, with at most 12 attachments per mail and normal 30-day expiry. Item instances, custom attributes and zero-entry containers remain unchanged. Collect the items during isolated gameplay acceptance before expiry.'}[policy]
     return f'''# Reviewed cleanup candidate
 
@@ -335,4 +336,7 @@ def plan_items(settings,work,args,output):
 
 
 def plan(settings,work,args,output):
+    if args.kind=='skills':
+        from cleanup_skills import plan_skills
+        return plan_skills(settings,work,args,output)
     {'talents':plan_talents,'reset-talents':plan_reset,'items':plan_items}[args.kind](settings,work,args,output)

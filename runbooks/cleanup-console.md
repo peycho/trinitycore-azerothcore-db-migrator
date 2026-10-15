@@ -5,10 +5,11 @@ restore workflow for a **stopped restored TrinityCore preparation copy**. Use
 Python 3.10 or later and MySQL 8 client tools against MySQL 8.4.x. It uses the
 standard library; no Python database package is required.
 
-The console supports three reviewed policies: remove verified non-rank talent
+The console supports four reviewed policies: remove verified non-rank talent
 records; archive an unavailable second group and queue a single character's
-free native talent reset; and recover existing item instances from reviewed
-zero-entry containers into mail. It never treats every audit finding as a
+free native talent reset; recover existing item instances from reviewed
+zero-entry containers into mail; and explicitly clamp reviewed over-cap skill
+values to their existing stored caps. It never treats every audit finding as a
 removal instruction. Missing custom item templates, spell history, skill caps,
 other talent conflicts and migration compatibility blockers need separate
 review. World schemas, DBC assets and core source checkouts receive no writes.
@@ -96,6 +97,7 @@ never added automatically. The source privileges are:
 | Invalid talent values | DELETE on character_talent | INSERT on character_talent |
 | Scoped pending talent reset | DELETE on character_talent and UPDATE(at_login) on characters | INSERT on character_talent and UPDATE(at_login) on characters |
 | Item recovery | DELETE on character_inventory; INSERT on mail and mail_items | INSERT on character_inventory; DELETE on mail and mail_items |
+| Reviewed skill clamp | UPDATE(value) on character_skills | UPDATE(value) on character_skills |
 
 Do not give source item_instance UPDATE/DELETE or auth/world writes for these
 policies. MySQL credentials are passed through temporary mode-0600 client files,
@@ -220,6 +222,57 @@ been reset. Both reviewed cores consume this flag; the migrator preserves it.
 Realm configuration determines the resulting free points. Pending reset does
 not bypass any migration spell authorization/compatibility guard.
 
+## Clamp explicitly reviewed over-cap skills
+
+Use this only after deciding that the existing stored caps are the limits to
+retain. A finding compares stored `value` with stored `max`; it does not prove
+that the cap agrees with the character's level, learned profession/riding tier
+or custom server settings. Both reviewed loaders recalculate eligible
+level-based caps. Review those facts first; this policy does not infer GM
+status, invent a higher cap or learn a missing tier.
+
+For an explicitly approved reduction, use the actual full-audit count:
+
+```bash
+python3 console plan skills --expect-rows 42
+python3 console prepare
+python3 console status --batch BATCH_ID
+python3 console apply
+python3 console audit --scope all
+```
+
+The latest audit must be complete with scope `all`; `--audit AUDIT_ID` can
+select a retained full audit from this session. Planning verifies all seven
+report checksums, producer/layout and DBC fingerprints, exact keys and numeric
+evidence against the live invalid set. It selects only existing, offline
+characters and known skills with `0 < max < value`, with at most 10,000 rows.
+Orphan skill rows are excluded. Missing/zero caps, unknown skills, changed
+inputs, computed/invisible columns, automatic `ON UPDATE` columns, source
+triggers and relevant foreign keys block the operation.
+
+`selected-rows.tsv` and prepared status show GUID, skill, original value,
+unchanged maximum and planned value. Preparation snapshots full affected
+character rows and **all** their skills, including custom fields and retained
+in-range skills. Apply sets only each selected `value = max`; no skill row,
+cap, spell, recipe, talent, profession slot or character field is changed.
+For example, an approved `450/300` profession becomes `300/300`, and an approved
+`150/75` riding row becomes `75/75`. It does not unlock the higher tier.
+
+The writer needs only `UPDATE(value)` in addition to SELECT for this policy.
+The console does not grant source privileges automatically. A denied UPDATE
+reports an administrator GRANT statement for the actual authenticated writer;
+no account host has to be guessed. Grant it on the preparation schema only,
+then retry the same prepared batch. No new session or audit is needed merely
+because that grant was added.
+
+Apply, its archive state and timestamps commit together; incomplete operations
+roll back. Matching reruns verify the current result. Full affected character
+and skill comparisons reject same-count edits before apply/restore. Use
+`python3 console restore --batch BATCH_ID` for the exact original values before
+gameplay or other edits; restore intentionally reinstates the audit findings.
+This explicit preparation policy is separate from spell reconstruction, which
+continues to preserve skill values/caps and profession ownership.
+
 ## Reports, failures, retries and restoration
 
 Everything generated belongs under the configured directory:
@@ -262,6 +315,8 @@ plan operations retain their read-only character/item evidence on failure.
 | `PACKAGE_CHANGED` | Generated files no longer match their checksums. Keep evidence and generate a new candidate. |
 | `PARTIAL_ARCHIVE` | Setup DDL was incomplete. Retain/inspect it; the console never drops or silently reuses it. Generate a new batch after resolving the cause. |
 | `RESET_STATE_UNSUPPORTED` / `ITEM_RECOVERY_BLOCKED` | Review the exact evidence; no broad deletion, guessed ownership or replacement rank/item is performed. |
+| `SKILL_SELECTION_MISMATCH` / `SKILL_INPUT_DRIFT` | Compare exact skill keys, values, caps and the expected count. Changed source state needs a fresh full audit and plan. |
+| `SKILL_CLAMP_UNSUPPORTED` / `SKILL_CHARACTER_UNAVAILABLE` | Review missing/zero caps, unknown skills or online/missing characters. No cap or skill ownership is guessed. |
 | `SESSION_ENDPOINT_CHANGED` | Check the named identity fields. After intentionally changing connection settings or importing a fresh copy, run `init`, then a fresh audit and plan. A connection-only change does not require a database reimport. |
 | Audit exit 1 | Audit completed and found rows; review the report. This is not a client/database failure. |
 

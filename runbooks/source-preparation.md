@@ -124,7 +124,7 @@ representation, serialized-data and native-gameplay gates.
 | Disabled unowned talent spell | Historical state requiring a representation decision. Do not activate it in AC or bulk-delete it as corruption. |
 | Highest-rank-only spellbook or superseded inactive ordinary rank | Normal TC persistence can explain it. Retain it for the migration's semantic reconstruction. |
 | Unknown spell or skill | Verify the matching world/DBC/custom data first. Custom definitions or snapshot mismatches may explain it. |
-| Skill value exceeds cap or profession/riding mismatch | Review native skill state and configuration. Do not raise caps, reduce values, change profession slots or remove recipes automatically. |
+| Skill value exceeds cap or profession/riding mismatch | Review native skill state and configuration. Preserve by default. An explicitly approved [skill clamp](cleanup-console.md#clamp-explicitly-reviewed-over-cap-skills) reduces only audited values to existing positive caps, with full originals and exact restore; it never chooses higher caps, changes profession slots or removes recipes. |
 | Missing parent or duplicated item placement | Establish the exact valid owner and all inventory/mail/guild/auction roots. Do not delete an item simply because its recorded character owner is absent. |
 | Missing item template | Preserve item instances by default, including custom items absent from client DBCs or the supplied world templates. Report for review; template absence alone does not authorize removal. |
 | Missing quest template | Review matching source-world data, retained custom definitions and historical content. Do not erase quest history in bulk. |

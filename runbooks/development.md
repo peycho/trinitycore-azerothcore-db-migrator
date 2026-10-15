@@ -55,6 +55,9 @@ settings, rejection of remote-host/socket combinations, and a real MySQL client
 against a nonexistent test socket. The last check requires no server and
 distinguishes a socket connection attempt (error 2002) from protocol error 2047;
 it is skipped if the client is unavailable.
+Offline skill-policy tests verify sealed full-audit evidence, source/producer
+identity, matching DBCs, exact expected counts, duplicate keys, unknown skills,
+zero/equal caps, numeric types, report tampering, live drift and offline state.
 These include rank-derived prerequisites (Dire Bear Form/Bear Form/Challenging
 Roar), native script aliases and paired mutation guards, reviewed encounter
 handlers, and spell/aura enum and effect-copy corrections.
@@ -194,6 +197,13 @@ also set `REHEARSAL_MYSQL_SOCKET` to its accessible socket path. The harness
 still requires its disposable TCP port and verifies that the socket server UUID
 matches that endpoint before creating fixtures. All console roles then use the
 socket; fixture setup and checks continue using the dedicated TCP endpoint.
+The skill fixture adds weapon/defense, profession and riding over-cap values,
+an in-range profession and an orphan row. It verifies source-read-only prepare,
+column-only UPDATE grants, denied-write diagnostics, value/cap/custom/character
+drift, injected late failure, connection interruption, exact clamps, semantic
+reaudit, reruns and full restore. Skills/caps outside the exact selection,
+custom fields, orphan skills, talents, spells, recipes and auth/world data are
+preserved. These checks do not establish gameplay acceptance.
 
 Focused semantic tests without MySQL:
 

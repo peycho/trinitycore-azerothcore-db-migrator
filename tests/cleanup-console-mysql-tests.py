@@ -63,6 +63,8 @@ def main():
                 ADD legacy_note TEXT;
               ALTER TABLE `{source}`.item_instance ADD transmog INT UNSIGNED DEFAULT 0,
                 ADD enchant INT UNSIGNED DEFAULT 0;
+              ALTER TABLE `{source}`.character_skills ADD legacy_note TEXT,
+                ADD recorded_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP;
               CREATE TABLE `{auth}`.account(id INT PRIMARY KEY,username VARCHAR(20));
               INSERT INTO `{auth}`.account VALUES(1,'FIXTURE');
               CREATE TABLE `{world}`.spell_dbc(Id INT PRIMARY KEY);
@@ -76,7 +78,11 @@ def main():
               INSERT INTO `{source}`.character_talent VALUES
                 (1,12282,1),(1,12300,1),(1,12296,1),(1,12664,0),(2,130,0),(2,142,0),(2,12296,0);
               INSERT INTO `{source}`.character_spell VALUES(1,6603,1,0),(1,12296,1,1),(2,48942,1,0);
-              INSERT INTO `{source}`.character_skills VALUES(1,43,400,400),(2,171,450,450);
+              INSERT INTO `{source}`.character_skills(guid,skill,value,max,legacy_note,recorded_at) VALUES
+                (1,43,528,400,'Keep Skill Ω','2009-01-02 03:04:05'),
+                (1,164,450,300,'Artisan blacksmith',NULL),(1,186,450,300,'Artisan miner',NULL),
+                (2,171,450,450,'Valid profession',NULL),(2,95,532,400,'Defense',NULL),
+                (2,762,150,75,'Apprentice rider',NULL),(999,164,450,300,'Orphan unchanged',NULL);
               INSERT INTO `{source}`.character_glyphs(guid,talentGroup,glyph1) VALUES(1,0,123),(1,1,456);
               INSERT INTO `{source}`.item_instance(guid,itemEntry,owner_guid,enchantments,transmog,enchant)
                 VALUES(100,0,1,'Container',123,456),(200,0,2,'Container two',789,987);
@@ -104,6 +110,15 @@ def main():
             assets=importlib.util.module_from_spec(spec)
             spec.loader.exec_module(assets)
             profile=json.loads((ROOT/'compatibility/tc335-acwotlk-v2/spell-metadata.json').read_text())
+            original_stores=assets.stores
+            def skill_stores(profile):
+                data=original_stores(profile)
+                for skill,category in ((43,6),(95,6),(164,11),(186,11)):
+                    row=[0]*len(profile['stores']['SkillLine']['columns'])
+                    row[0],row[1]=skill,category
+                    data['SkillLine'][skill]=row
+                return data
+            assets.stores=skill_stores
             assets.write_assets(work,profile)
             config=work/'cleanup.ini'
             admin=(f'defaults_file={defaults}' if defaults else 'user=root\npassword=')
@@ -163,6 +178,80 @@ backup_reference=synthetic-fixture-baseline
             run('audit','--scope','all',code=1)
             assert checksum()==baseline
             passed('private configured session; real read-only full audit; finding exit 1; source/auth/world unchanged')
+            run('plan','skills','--expect-rows','4',code=2)
+            run('plan','skills','--expect-rows','5')
+            skill_archive=manifest()['archive_schema']
+            assert manifest()['selected_rows']==5 and manifest()['affected_characters']==2
+            run('prepare')
+            run('prepare')
+            assert checksum()==baseline
+            # Archive setup must not silently grant source UPDATE permissions.
+            denied=run('apply',code=2)
+            assert 'GRANT UPDATE (`value`)' in denied.stderr
+            assert checksum()==baseline
+            assert sql(f"SELECT state FROM `{skill_archive}`.batch")=='PREPARED'
+            sql(f"GRANT UPDATE(value) ON `{source}`.character_skills TO '{writer}'@'%';")
+            for column,changed,original in (('value','529','528'),('max','399','400'),
+                                            ('legacy_note',"'Edited'","'Keep Skill Ω'")):
+                sql(f'UPDATE `{source}`.character_skills SET `{column}`={changed} WHERE guid=1 AND skill=43;')
+                drift=checksum()
+                run('apply',code=2)
+                assert checksum()==drift
+                sql(f'UPDATE `{source}`.character_skills SET `{column}`={original} WHERE guid=1 AND skill=43;')
+            sql(f'UPDATE `{source}`.characters SET level=79 WHERE guid=1;')
+            run('apply',code=2)
+            sql(f'UPDATE `{source}`.characters SET level=80 WHERE guid=1;')
+            assert checksum()==baseline
+            passed('skill prepare is source-read-only; restricted value-only grants; exact selection and value/cap/custom/character drift guards')
+            sql(f"CREATE TRIGGER `{skill_archive}`.late_failure BEFORE UPDATE ON `{skill_archive}`.batch FOR EACH ROW BEGIN "
+                "IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Injected skill failure'; END IF; END;")
+            run('apply',code=2)
+            assert checksum()==baseline
+            assert sql(f"SELECT state FROM `{skill_archive}`.batch")=='PREPARED'
+            sql(f'DROP TRIGGER `{skill_archive}`.late_failure;')
+            sql(f"CREATE TRIGGER `{skill_archive}`.pause BEFORE UPDATE ON `{skill_archive}`.batch FOR EACH ROW BEGIN "
+                "IF NEW.state='APPLIED' THEN DO SLEEP(30); END IF; END;")
+            worker=subprocess.Popen(command+['apply'],cwd=work,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            deadline=time.monotonic()+20
+            connection=''
+            while time.monotonic()<deadline:
+                if worker.poll() is not None:
+                    raise AssertionError(worker.communicate())
+                connection=sql(f"SELECT ID FROM information_schema.PROCESSLIST WHERE DB='{skill_archive}' AND STATE='User sleep'")
+                if connection:
+                    break
+                time.sleep(.1)
+            assert connection,'Skill interruption boundary not reached'
+            sql('KILL CONNECTION '+connection)
+            _,errors=worker.communicate(timeout=10)
+            assert worker.returncode==2,errors
+            assert checksum()==baseline
+            sql(f'DROP TRIGGER `{skill_archive}`.pause;')
+            run('apply')
+            applied_time=sql(f'SELECT applied_at FROM `{skill_archive}`.batch')
+            applied_skills=checksum()
+            run('apply')
+            assert checksum()==applied_skills and sql(f'SELECT applied_at FROM `{skill_archive}`.batch')==applied_time
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_skills s JOIN `{source}`.characters c ON c.guid=s.guid WHERE s.value>s.max')=='0'
+            assert sql(f'SELECT value,max FROM `{source}`.character_skills WHERE guid=1 AND skill=164')=='300\t300'
+            assert sql(f'SELECT value,max FROM `{source}`.character_skills WHERE guid=2 AND skill=762')=='75\t75'
+            assert sql(f'SELECT value,max FROM `{source}`.character_skills WHERE guid=999')=='450\t300'
+            unaffected=[t for t in tables if t!=f'`{source}`.`character_skills`']
+            assert checksum(unaffected)=='\n'.join(line for line in baseline.splitlines() if not line.startswith(source+'.character_skills\t'))
+            run('audit','--scope','all',code=1)
+            latest=json.loads((session()/'latest-audit.json').read_text())['audit']
+            assert 'SKILL_VALUE_EXCEEDS_CAP' not in (session()/'audits'/latest/'summary.tsv').read_text()
+            sql(f"UPDATE `{source}`.character_skills SET legacy_note='Changed after apply' WHERE guid=1 AND skill=43;")
+            drift=checksum()
+            run('restore',code=2)
+            assert checksum()==drift
+            sql(f"UPDATE `{source}`.character_skills SET legacy_note='Keep Skill Ω' WHERE guid=1 AND skill=43;")
+            run('restore')
+            run('restore')
+            run('apply',code=2)
+            assert checksum()==baseline
+            passed('skill late-error and interruption rollback; exact clamps; unchanged caps/spells/recipes/orphans/custom fields; reruns, clean skill audit and exact restore')
+            run('audit','--scope','all',code=1)
             run('plan','talents','--expect-rows','2')
             talent_batch=batch().name
             talent_archive=manifest()['archive_schema']
