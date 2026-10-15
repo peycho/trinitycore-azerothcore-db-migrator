@@ -4,6 +4,27 @@ Operator migrations use the [migration guide](migration-guide.md). These checks
 are for toolkit development and synthetic fixtures; they do not replace a
 production-sized rehearsal or native gameplay acceptance.
 
+## CI coverage
+
+The `CI` workflow runs `tests/static-checks.sh` on every push and pull request.
+It includes the spell semantic regressions and does not start MySQL.
+
+The full database suite runs separately through the `MySQL rehearsal` workflow
+(`.github/workflows/rehearsal.yml`). In GitHub Actions, select that workflow,
+choose **Run workflow**, and select the branch to validate. GitHub requires
+the workflow file on the default branch before manual dispatch is available.
+It runs static checks first, then the complete disposable MySQL 8.4 rehearsal,
+with a 60-minute job limit. Rehearsals can take more than 15 minutes because
+they repeat migrations, interrupt real transactions and verify resume/rerun
+behavior. They no longer delay routine push/PR checks.
+
+A passing routine CI run does not establish database integration coverage.
+Before merging migration logic, mapping, compatibility-profile or database-test
+changes, run the full rehearsal on the final branch revision, either through
+that workflow or locally using the instructions below, and record the result.
+Documentation-only and other changes without migration behavior do not require
+the full database suite.
+
 ## Static checks
 
 Install ShellCheck, Python 3 and the tools listed in the migration guide, and make both
