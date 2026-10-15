@@ -1,0 +1,240 @@
+-- Explicit stopped-preparation policy: reduce audited values to stored caps.
+-- No cap, ownership, recipe, spell or profession-slot changes. New archive only.
+CREATE DATABASE `@ARCHIVE@` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE `@ARCHIVE@`;
+CREATE TABLE batch (
+ id TINYINT PRIMARY KEY, batch_key CHAR(64) NOT NULL,
+ source_schema VARCHAR(64) NOT NULL, source_uuid CHAR(36) NOT NULL,
+ audit_sha256 CHAR(64) NOT NULL, expected_sha256 CHAR(64) NOT NULL,
+ state ENUM('NEW','PREPARED','APPLIED','RESTORED') NOT NULL,
+ prepared_at DATETIME NULL, applied_at DATETIME NULL, restored_at DATETIME NULL,
+ selected_rows INT UNSIGNED NOT NULL, affected_characters INT UNSIGNED NOT NULL
+) ENGINE=InnoDB;
+INSERT INTO batch VALUES(1,'@BATCH@','@SOURCE@','@UUID@','@AUDIT@','@EXPECTED_HASH@',
+ 'NEW',NULL,NULL,NULL,@COUNT@,@GUID_COUNT@);
+CREATE TABLE expected (
+ guid INT UNSIGNED NOT NULL, skill SMALLINT UNSIGNED NOT NULL,
+ old_value SMALLINT UNSIGNED NOT NULL, cap SMALLINT UNSIGNED NOT NULL,
+ PRIMARY KEY(guid,skill)
+) ENGINE=InnoDB;
+CREATE TABLE reviewed_columns (
+ table_name VARCHAR(64) NOT NULL, column_name VARCHAR(64) NOT NULL,
+ column_type VARCHAR(512) NOT NULL, nullable VARCHAR(3) NOT NULL, column_key VARCHAR(3) NOT NULL,
+ extra VARCHAR(512) NOT NULL, generation_expression TEXT NOT NULL,
+ ordinal_position INT NOT NULL, PRIMARY KEY(table_name,column_name)
+) ENGINE=InnoDB;
+@EXPECTED_INSERT@
+@COLUMN_INSERT@
+CREATE TABLE character_before LIKE `@SOURCE@`.characters;
+CREATE TABLE skill_before LIKE `@SOURCE@`.character_skills;
+CREATE TABLE skill_after LIKE `@SOURCE@`.character_skills;
+
+DELIMITER //
+CREATE PROCEDURE guard_environment() SQL SECURITY DEFINER
+BEGIN
+ DECLARE metadata_reader VARCHAR(512);
+ SET metadata_reader=CONCAT(QUOTE(SUBSTRING_INDEX(CURRENT_USER(),'@',1)),
+   '@',QUOTE(SUBSTRING_INDEX(CURRENT_USER(),'@',-1)));
+ IF (SELECT COUNT(DISTINCT PRIVILEGE_TYPE) FROM information_schema.USER_PRIVILEGES
+     WHERE GRANTEE=metadata_reader AND PRIVILEGE_TYPE IN ('SELECT','TRIGGER'))<>2 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Setup administrator needs direct global SELECT/TRIGGER metadata visibility';
+ END IF;
+ IF NOT (@skill_cleanup_ack <=> 'STOPPED_PREPARATION_COPY_ONLY') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit stopped preparation-copy acknowledgement required';
+ END IF;
+ IF @@server_uuid<>'@UUID@' OR @@version NOT LIKE '8.4.%' THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Server UUID/version differs from audited source';
+ END IF;
+ IF (SELECT COUNT(*) FROM batch WHERE id=1 AND batch_key='@BATCH@'
+     AND source_schema='@SOURCE@' AND source_uuid='@UUID@' AND audit_sha256='@AUDIT@'
+     AND expected_sha256='@EXPECTED_HASH@' AND selected_rows=@COUNT@
+     AND affected_characters=@GUID_COUNT@)<>1 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Archive ownership/provenance differs';
+ END IF;
+ IF FIND_IN_SET('STRICT_TRANS_TABLES',@@sql_mode)=0 AND FIND_IN_SET('STRICT_ALL_TABLES',@@sql_mode)=0 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Strict SQL mode required';
+ END IF;
+ IF (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_TYPE='BASE TABLE' AND ENGINE='InnoDB'
+    AND ((TABLE_SCHEMA='@SOURCE@' AND TABLE_NAME IN ('characters','character_skills'))
+      OR (TABLE_SCHEMA='@ARCHIVE@' AND TABLE_NAME IN ('batch','expected','reviewed_columns',
+          'character_before','skill_before','skill_after'))))<>8 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Missing table or non-InnoDB source/archive';
+ END IF;
+ SET SESSION group_concat_max_len=@CONCAT_LIMIT@;
+ IF (SELECT COUNT(*) FROM expected)<>@COUNT@
+ OR EXISTS(SELECT 1 FROM expected WHERE cap=0 OR old_value<=cap)
+ OR NOT ((SELECT SHA2(GROUP_CONCAT(CONCAT_WS(':',guid,skill,old_value,cap)
+       ORDER BY guid,skill SEPARATOR '|'),256) FROM expected)<=>'@EXPECTED_HASH@') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Exact reviewed skill selection changed or would remove/increase a skill';
+ END IF;
+ IF (SELECT COUNT(*) FROM reviewed_columns)<>@COLUMN_COUNT@
+ OR NOT ((SELECT SHA2(GROUP_CONCAT(CONCAT_WS(':',table_name,column_name,column_type,nullable,
+       column_key,extra,generation_expression,ordinal_position)
+       ORDER BY BINARY table_name,ordinal_position SEPARATOR '|'),256) FROM reviewed_columns)<=>'@COLUMN_HASH@') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Reviewed skill column metadata changed';
+ END IF;
+ IF (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='@SOURCE@'
+       AND TABLE_NAME IN ('characters','character_skills'))<>@COLUMN_COUNT@
+ OR EXISTS(SELECT 1 FROM reviewed_columns r LEFT JOIN information_schema.COLUMNS s
+       ON s.TABLE_SCHEMA='@SOURCE@' AND s.TABLE_NAME=r.table_name AND s.COLUMN_NAME=r.column_name
+       WHERE s.COLUMN_NAME IS NULL OR BINARY s.COLUMN_TYPE<>BINARY r.column_type
+         OR s.IS_NULLABLE<>r.nullable OR s.COLUMN_KEY<>r.column_key
+         OR BINARY s.EXTRA<>BINARY r.extra OR s.ORDINAL_POSITION<>r.ordinal_position
+         OR COALESCE(s.GENERATION_EXPRESSION,'')<>'' OR s.EXTRA LIKE '%INVISIBLE%'
+         OR LOWER(s.EXTRA) LIKE '%on update%') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source schema differs from reviewed metadata or has unsupported computed/automatic fields';
+ END IF;
+ IF (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='@ARCHIVE@'
+       AND TABLE_NAME IN ('character_before','skill_before','skill_after'))<>@ARCHIVE_COLUMNS@
+ OR EXISTS(SELECT 1 FROM (
+       SELECT 'characters' AS src,'character_before' AS dst
+       UNION ALL SELECT 'character_skills','skill_before'
+       UNION ALL SELECT 'character_skills','skill_after') p
+       JOIN information_schema.COLUMNS s ON s.TABLE_SCHEMA='@SOURCE@' AND s.TABLE_NAME=p.src
+       LEFT JOIN information_schema.COLUMNS a ON a.TABLE_SCHEMA='@ARCHIVE@' AND a.TABLE_NAME=p.dst
+          AND a.ORDINAL_POSITION=s.ORDINAL_POSITION
+       WHERE a.COLUMN_NAME IS NULL OR NOT (BINARY s.COLUMN_NAME<=>BINARY a.COLUMN_NAME)
+         OR NOT (BINARY s.COLUMN_TYPE<=>BINARY a.COLUMN_TYPE) OR NOT (s.IS_NULLABLE<=>a.IS_NULLABLE)
+         OR NOT (BINARY s.COLUMN_DEFAULT<=>BINARY a.COLUMN_DEFAULT)
+         OR NOT (s.CHARACTER_SET_NAME<=>a.CHARACTER_SET_NAME) OR NOT (s.COLLATION_NAME<=>a.COLLATION_NAME)
+         OR NOT (s.EXTRA<=>a.EXTRA) OR NOT (s.GENERATION_EXPRESSION<=>a.GENERATION_EXPRESSION)) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source/archive schema drift detected';
+ END IF;
+ IF EXISTS(SELECT 1 FROM information_schema.TRIGGERS WHERE EVENT_OBJECT_SCHEMA='@SOURCE@') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source triggers require separate review';
+ END IF;
+ IF EXISTS(SELECT 1 FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_NAME IS NOT NULL
+      AND ((TABLE_SCHEMA='@SOURCE@' AND TABLE_NAME='character_skills')
+        OR (REFERENCED_TABLE_SCHEMA='@SOURCE@' AND REFERENCED_TABLE_NAME='character_skills'))) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Skill foreign keys require separate review';
+ END IF;
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.characters c JOIN (SELECT DISTINCT guid FROM expected) e ON e.guid=c.guid
+       WHERE c.online=0)<>@GUID_COUNT@
+ OR (SELECT COUNT(*) FROM `@SOURCE@`.character_skills)<>@SOURCE_COUNT@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Affected character missing/online or source skill row count changed';
+ END IF;
+END//
+
+CREATE PROCEDURE check_original() SQL SECURITY INVOKER
+BEGIN
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.character_skills s JOIN expected e
+       ON s.guid=e.guid AND s.skill=e.skill WHERE s.value=e.old_value AND s.max=e.cap)<>@COUNT@
+ OR (SELECT COUNT(*) FROM `@SOURCE@`.character_skills s JOIN `@SOURCE@`.characters c ON c.guid=s.guid
+       WHERE s.value>s.max)<>@COUNT@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Audited skill keys, values, caps or invalid set changed';
+ END IF;
+END//
+
+CREATE PROCEDURE check_archive() SQL SECURITY INVOKER
+BEGIN
+ IF (SELECT COUNT(*) FROM character_before)<>@GUID_COUNT@
+ OR (SELECT COUNT(*) FROM character_before a JOIN `@SOURCE@`.characters s ON s.guid=a.guid
+       WHERE @CHAR_EQUAL@)<>@GUID_COUNT@
+ OR (SELECT COUNT(*) FROM character_before a JOIN (SELECT DISTINCT guid FROM expected) e ON e.guid=a.guid)<>@GUID_COUNT@
+ OR (SELECT COUNT(*) FROM skill_before)<>@BEFORE_COUNT@
+ OR (SELECT COUNT(*) FROM skill_after)<>@BEFORE_COUNT@
+ OR EXISTS(SELECT 1 FROM skill_before a LEFT JOIN (SELECT DISTINCT guid FROM expected) e ON e.guid=a.guid WHERE e.guid IS NULL)
+ OR (SELECT COUNT(*) FROM skill_before a JOIN expected e ON e.guid=a.guid AND e.skill=a.skill
+       WHERE a.value=e.old_value AND a.max=e.cap)<>@COUNT@
+ OR (SELECT COUNT(*) FROM skill_before b JOIN skill_after a ON a.guid=b.guid AND a.skill=b.skill
+       LEFT JOIN expected e ON e.guid=b.guid AND e.skill=b.skill WHERE @SKILL_AFTER_EQUAL@)<>@BEFORE_COUNT@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Full original/expected skill archive or character state differs';
+ END IF;
+END//
+
+CREATE PROCEDURE check_before() SQL SECURITY INVOKER
+BEGIN
+ CALL check_archive();
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.character_skills s JOIN (SELECT DISTINCT guid FROM expected) e ON e.guid=s.guid)<>@BEFORE_COUNT@
+ OR (SELECT COUNT(*) FROM skill_before a JOIN `@SOURCE@`.character_skills s ON s.guid=a.guid AND s.skill=a.skill
+       WHERE @SKILL_EQUAL@)<>@BEFORE_COUNT@ THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Affected skill rows changed after preparation';
+ END IF;
+END//
+
+CREATE PROCEDURE check_after() SQL SECURITY INVOKER
+BEGIN
+ CALL check_archive();
+ IF (SELECT COUNT(*) FROM `@SOURCE@`.character_skills s JOIN (SELECT DISTINCT guid FROM expected) e ON e.guid=s.guid)<>@BEFORE_COUNT@
+ OR (SELECT COUNT(*) FROM skill_after a JOIN `@SOURCE@`.character_skills s ON s.guid=a.guid AND s.skill=a.skill
+       WHERE @SKILL_EQUAL@)<>@BEFORE_COUNT@
+ OR EXISTS(SELECT 1 FROM `@SOURCE@`.character_skills s JOIN `@SOURCE@`.characters c ON c.guid=s.guid WHERE s.value>s.max) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Applied skill values or retained rows differ';
+ END IF;
+END//
+
+CREATE PROCEDURE prepare_batch() SQL SECURITY INVOKER
+BEGIN
+ DECLARE current_state VARCHAR(16);
+ DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+ SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+ START TRANSACTION;
+ CALL guard_environment();
+ SELECT state INTO current_state FROM batch WHERE id=1 FOR UPDATE;
+ IF current_state='PREPARED' THEN
+  CALL check_original(); CALL check_before();
+ ELSEIF current_state='NEW' THEN
+  IF (SELECT COUNT(*) FROM character_before)+(SELECT COUNT(*) FROM skill_before)+(SELECT COUNT(*) FROM skill_after)<>0 THEN
+   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='New archive unexpectedly contains snapshots';
+  END IF;
+  CALL check_original();
+  INSERT INTO character_before SELECT c.* FROM `@SOURCE@`.characters c JOIN (SELECT DISTINCT guid FROM expected) e ON e.guid=c.guid;
+  INSERT INTO skill_before SELECT s.* FROM `@SOURCE@`.character_skills s JOIN (SELECT DISTINCT guid FROM expected) e ON e.guid=s.guid;
+  INSERT INTO skill_after SELECT * FROM skill_before;
+  UPDATE skill_after a JOIN expected e ON e.guid=a.guid AND e.skill=a.skill SET a.value=e.cap;
+  CALL check_before();
+  UPDATE batch SET state='PREPARED',prepared_at=UTC_TIMESTAMP() WHERE id=1;
+ ELSE
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Prepare requires NEW/PREPARED state';
+ END IF;
+ COMMIT;
+ SELECT 'PREPARED: source unchanged; inspect original values, unchanged caps and planned reductions' AS result;
+END//
+
+CREATE PROCEDURE apply_batch() SQL SECURITY INVOKER
+BEGIN
+ DECLARE current_state VARCHAR(16);
+ DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+ SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+ START TRANSACTION;
+ CALL guard_environment();
+ SELECT state INTO current_state FROM batch WHERE id=1 FOR UPDATE;
+ IF current_state='APPLIED' THEN
+  CALL check_after();
+ ELSEIF current_state='PREPARED' THEN
+  CALL check_original(); CALL check_before();
+  UPDATE `@SOURCE@`.character_skills s JOIN expected e ON e.guid=s.guid AND e.skill=s.skill SET s.value=e.cap;
+  IF ROW_COUNT()<>@COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Updated skill count differs from exact selection'; END IF;
+  CALL check_after();
+  UPDATE batch SET state='APPLIED',applied_at=UTC_TIMESTAMP() WHERE id=1;
+ ELSE
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Apply requires PREPARED/APPLIED state';
+ END IF;
+ COMMIT;
+ SELECT 'APPLIED: @COUNT@ exact skill values clamped to existing caps; full originals retained' AS result;
+END//
+
+CREATE PROCEDURE restore_batch() SQL SECURITY INVOKER
+BEGIN
+ DECLARE current_state VARCHAR(16);
+ DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+ SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+ START TRANSACTION;
+ CALL guard_environment();
+ SELECT state INTO current_state FROM batch WHERE id=1 FOR UPDATE;
+ IF current_state='RESTORED' THEN
+  CALL check_original(); CALL check_before();
+ ELSEIF current_state='APPLIED' THEN
+  CALL check_after();
+  UPDATE `@SOURCE@`.character_skills s JOIN expected e ON e.guid=s.guid AND e.skill=s.skill SET s.value=e.old_value;
+  IF ROW_COUNT()<>@COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Restored skill count differs from exact selection'; END IF;
+  CALL check_original(); CALL check_before();
+  UPDATE batch SET state='RESTORED',restored_at=UTC_TIMESTAMP() WHERE id=1;
+ ELSE
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Restore requires APPLIED/RESTORED state';
+ END IF;
+ COMMIT;
+ SELECT 'RESTORED: original over-cap values reinstated exactly; archive retained' AS result;
+END//
+DELIMITER ;
+SELECT 'SETUP ONLY: new skill archive created; source unchanged' AS result;

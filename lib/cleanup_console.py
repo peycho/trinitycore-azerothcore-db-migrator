@@ -54,7 +54,18 @@ def toolkit_hashes():
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in')
-    return {name:sha(ROOT/name) for name in names}
+    hashes={}
+    for name in names:
+        path=ROOT/name
+        hint=f'Install all files from the same cleanup toolkit release into {ROOT}; keep cleanup.ini and the existing workspace. No database reimport or new session is needed for this file repair.'
+        if not path.is_file():
+            fail('TOOLKIT_INCOMPLETE','Required toolkit file is missing: '+name,hint)
+        try:
+            hashes[name]=sha(path)
+        except OSError:
+            fail('TOOLKIT_FILE_UNREADABLE','Cannot read required toolkit file: '+name,
+                 'Check this file owner and read permissions. '+hint)
+    return hashes
 
 
 def identifier(value):
@@ -363,8 +374,12 @@ class Workspace:
         private_dir(base)
         self.operation=base/token(command)
         private_dir(self.operation)
-        write_json(self.operation/'operation.json',{'command':command,'state':'STARTED','started_utc':now(),
-                   'toolkit_sha256':toolkit_hashes()})
+        # Persist the journal before checking toolkit completeness, so a missing
+        # runtime/template still produces a usable error report and final state.
+        entry={'command':command,'state':'STARTED','started_utc':now()}
+        write_json(self.operation/'operation.json',entry)
+        entry['toolkit_sha256']=toolkit_hashes()
+        write_json(self.operation/'operation.json',entry)
 
     def finish(self, state, **details):
         if self.operation:

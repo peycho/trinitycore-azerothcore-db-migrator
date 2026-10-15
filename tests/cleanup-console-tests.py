@@ -266,6 +266,39 @@ backup_reference=verified-backup-01
         report=next((self.root/'work/operations').glob('*/error.json'))
         self.assertEqual(json.loads(report.read_text())['code'],'SESSION_REQUIRED')
 
+    def test_missing_toolkit_template_has_precise_persisted_error_before_mysql(self):
+        original=Path.is_file
+        missing=console.ROOT/'tools/skill-cleanup.sql.in'
+        errors=io.StringIO()
+        with patch.object(Path,'is_file',lambda path:False if path==missing else original(path)), \
+                patch.object(console.subprocess,'run') as run,redirect_stderr(errors):
+            self.assertEqual(console.main(['--config',str(self.config),'init']),2)
+        run.assert_not_called()
+        report=json.loads(errors.getvalue().removeprefix('ERROR '))
+        self.assertEqual(report['code'],'TOOLKIT_INCOMPLETE')
+        self.assertIn('tools/skill-cleanup.sql.in',report['message'])
+        self.assertNotIn('report_error',report)
+        saved=Path(report['report'])
+        self.assertEqual(json.loads(saved.read_text())['code'],'TOOLKIT_INCOMPLETE')
+        self.assertEqual(json.loads(saved.with_name('operation.json').read_text())['state'],'FAILED_OR_UNCERTAIN')
+        self.assertNotIn(self.secret,errors.getvalue()+saved.with_name('traceback.txt').read_text())
+
+    def test_unreadable_toolkit_template_reports_file_without_raw_error_details(self):
+        original=console.sha
+        unreadable=console.ROOT/'tools/skill-cleanup.sql.in'
+        def read(path):
+            if path==unreadable:
+                raise PermissionError('Do not echo arbitrary error context '+self.secret)
+            return original(path)
+        errors=io.StringIO()
+        with patch.object(console,'sha',side_effect=read),redirect_stderr(errors):
+            self.assertEqual(console.main(['--config',str(self.config),'init']),2)
+        report=json.loads(errors.getvalue().removeprefix('ERROR '))
+        self.assertEqual(report['code'],'TOOLKIT_FILE_UNREADABLE')
+        self.assertNotIn('report_error',report)
+        self.assertIn('tools/skill-cleanup.sql.in',report['message'])
+        self.assertNotIn(self.secret,errors.getvalue()+Path(report['report']).with_name('traceback.txt').read_text())
+
     def test_sealed_packages_reject_changes_extra_files_and_symlinks(self):
         package=self.root/'batch'
         package.mkdir()

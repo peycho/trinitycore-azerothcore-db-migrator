@@ -306,6 +306,7 @@ plan operations retain their read-only character/item evidence on failure.
 
 | Error/result | Action |
 |---|---|
+| `TOOLKIT_INCOMPLETE` / `TOOLKIT_FILE_UNREADABLE` | Install the named missing file from the same release or fix its read permissions in the toolkit path shown. Keep the config/workspace. No new session, audit or database import is required for a file-only repair; the command stopped before any database query. Git-based delivery must include new SQL templates as well as Python files. |
 | `CONFIG_SYNTAX` | Correct the reported INI line. For duplicate sections/settings, edit the existing entry and remove the duplicate. Values are never printed. No database connection is made. |
 | `CONFIG_SOCKET_HOST` | Use a local host for Unix socket mode, or clear `socket` to select TCP. |
 | MySQL error 2047 in an older toolkit | Set `[mysql] host = localhost` when using a socket, or update the console. Older code combined a numeric host with socket protocol. After a connection setting changes, initialize a new session and regenerate its audit/plan; no reimport is needed. |
