@@ -81,11 +81,11 @@ load_configuration() {
         validate_identifier "$SOURCE_WORLD_SCHEMA" SOURCE_WORLD_SCHEMA
     fi
     [[ -z $TARGET_WORLD_SCHEMA ]] || validate_identifier "$TARGET_WORLD_SCHEMA" TARGET_WORLD_SCHEMA
-    local writable readonly
-    for writable in "$TARGET_AUTH_SCHEMA" "$TARGET_CHARACTERS_SCHEMA" "$CONTROL_SCHEMA"; do
-        for readonly in "$SOURCE_AUTH_SCHEMA" "$SOURCE_CHARACTERS_SCHEMA" "$SOURCE_WORLD_SCHEMA" "$TARGET_WORLD_SCHEMA"; do
-            [[ -z $readonly || $writable != "$readonly" ]] ||
-                die "Writable schema $writable overlaps a source/world schema"
+    local writable_schema read_only_schema
+    for writable_schema in "$TARGET_AUTH_SCHEMA" "$TARGET_CHARACTERS_SCHEMA" "$CONTROL_SCHEMA"; do
+        for read_only_schema in "$SOURCE_AUTH_SCHEMA" "$SOURCE_CHARACTERS_SCHEMA" "$SOURCE_WORLD_SCHEMA" "$TARGET_WORLD_SCHEMA"; do
+            [[ -z $read_only_schema || $writable_schema != "$read_only_schema" ]] ||
+                die "Writable schema $writable_schema overlaps a source/world schema"
         done
     done
     [[ $CONTROL_SCHEMA != "$TARGET_AUTH_SCHEMA" && $CONTROL_SCHEMA != "$TARGET_CHARACTERS_SCHEMA" ]] ||
