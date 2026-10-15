@@ -17,13 +17,16 @@ from spells import Database, Metadata, Unsupported, read_dbc, reconstruct
 spec = importlib.util.spec_from_file_location('fixtures',ROOT/'tests/spell-fixtures.py')
 fixtures = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixtures)
+spec = importlib.util.spec_from_file_location('spell_profile',ROOT/'bin/generate-spell-metadata-profile.py')
+spell_profile = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(spell_profile)
 
 
 class World:
     def __init__(self):
         self.tables = {
             'spell_ranks': [[str(chain[0]),str(spell),str(rank)] for chain in fixtures.CHAINS for rank,spell in enumerate(chain,1)],
-            'spell_required': [['25899','20911']],
+            'spell_required': [['25899','20911'], ['5209','5487']],
             'spell_learn_spell': [['900011','900012','1']],
         }
     def table(self,world,table,columns):
@@ -33,6 +36,33 @@ class World:
 
 
 class MetadataReaderTests(unittest.TestCase):
+    def test_registered_aliases_inherit_mutation_policy(self):
+        policies = spell_profile.script_policies('''
+class spell_safe : public SpellScript { void Hit() { SetHitDamage(1); } };
+class spell_mutating : public AuraScript { void Apply() { player->LearnSpell(123); } };
+RegisterSpellScriptWithArgs(spell_safe, "spell_safe_alias", 1);
+RegisterSpellScriptWithArgs(spell_mutating, "spell_unsafe_alias", 1);
+RegisterSpellScriptWithArgs(spell_unknown, "spell_unknown_alias", 1);
+RegisterSpellAndAuraScriptPairWithArgs(spell_safe, spell_mutating, "spell_unsafe_pair", 1);
+''')
+        self.assertEqual(policies['spell_safe_alias'], 'NO_SPELLBOOK_MUTATION')
+        self.assertEqual(policies['spell_unsafe_alias'], 'UNSUPPORTED_SPELLBOOK_MUTATION')
+        self.assertEqual(policies['spell_unsafe_pair'], 'UNSUPPORTED_SPELLBOOK_MUTATION')
+        self.assertNotIn('spell_unknown_alias', policies)
+
+    def test_blocker_summary_is_sorted_and_omits_character_identifiers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory)/'blockers.tsv'
+            report.write_text('guid\tspell\treason_code\tdetail\n'
+                '47\t*\tINVALID_TALENT_OWNERSHIP\t130\n'
+                '229\t*\tUNAUTHORIZED_TALENT_SPELL\t5209\n'
+                '57\t*\tINVALID_TALENT_OWNERSHIP\t442\n')
+            result = subprocess.run(['bash', '-c', 'source "$1/lib/spells.sh"; summarize_spell_blockers "$2"',
+                'fixture', str(ROOT), str(report)], text=True, capture_output=True, check=True)
+            self.assertIn('INVALID_TALENT_OWNERSHIP\t2\nUNAUTHORIZED_TALENT_SPELL\t1\n', result.stderr)
+            self.assertNotIn('130', result.stderr)
+            self.assertNotIn('229', result.stderr)
+
     def test_canonical_world_rows_ignore_fetch_order_but_detect_full_content_drift(self):
         class Reader(Database):
             def __init__(self):
@@ -183,6 +213,53 @@ class SpellTests(unittest.TestCase):
         result = self.convert({25899:(1,1)},{20911:2})
         self.assertEqual(result[25899]['mask'],2)
         self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({25899:(1,0)}))
+
+    def test_ordinary_prerequisite_can_be_a_reconstructed_lower_rank(self):
+        result = self.convert({5209:(1,0),9634:(1,0)}, cls=11)
+        self.assertEqual(set(result), {5209,5487,9634})
+        self.assertTrue(result[5487]['derived'])
+        self.assertEqual(result[5487]['proofs'], [[9634,[9634,5487],'LOWER_RANK']])
+        self.assertTrue(all(row['mask']==3 for row in result.values()))
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({5209:(1,0)},cls=11))
+        self.fails('UNREPRESENTABLE_DISABLED_SPELL',lambda:self.convert({5209:(1,0),9634:(1,1)},cls=11))
+        ac = copy.deepcopy(self.ac)
+        ac.position[9634] = (9634,0)
+        self.fails('INCOMPATIBLE_SPELL_CHAIN',lambda:self.convert({5209:(1,0),9634:(1,0)},cls=11,ac=ac))
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({12296:(1,0)},cls=1))
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:reconstruct((1,1,0,1),{12296:(1,1)}, {}, {},
+                   self.tc,self.ac,'tc-to-ac'))
+        self.fails('INVALID_TALENT_OWNERSHIP',lambda:self.convert({12296:(1,0)},{130:1},cls=1))
+
+    def test_reviewed_encounter_script_and_unknown_script_boundary(self):
+        tc,ac = copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+        name = 'spell_murmur_sonic_boom_effect'
+        path = 'src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp'
+        for metadata in (tc,ac):
+            self.assertEqual(metadata.script_policy[name], 'NO_SPELLBOOK_MUTATION')
+            self.assertIn(path, self.profile['inputs'][metadata.core])
+            self.assertNotIn('spell_murmur_thundering_storm', metadata.script_policy)
+            metadata.scripts[38795].add(name)
+        self.assertEqual(set(self.convert({38795:(1,0)},tc=tc,ac=ac)), {38795})
+        ac.scripts[38795].add('spell_unreviewed_encounter')
+        self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:self.convert({38795:(1,0)},tc=tc,ac=ac))
+
+    def test_native_aliases_and_enum_field_copy_corrections(self):
+        for metadata in [self.tc,self.ac]:
+            self.assertEqual(metadata.script_policy['spell_pal_judgement_of_justice'], 'NO_SPELLBOOK_MUTATION')
+        self.assertEqual(self.ac.spells[34074][71:74], [6,6,6])
+        self.assertEqual(self.ac.spells[34074][97], 4)
+        self.assertEqual(self.ac.spells[51470][72], 6)
+        self.assertEqual(self.ac.spells[51470][96], 107)
+        self.assertEqual(self.ac.spells[51470][111], 12)
+        self.assertEqual(self.ac.spells[54349][72], self.ac.spells[54349][71])
+        self.assertEqual(self.ac.spells[54349][96], self.ac.spells[54349][95])
+        self.assertEqual(self.ac.spells[54349][87], self.ac.spells[54349][86])
+        self.assertEqual(set(self.convert({34074:(1,0)},cls=3)), {34074})
+        self.assertEqual(self.convert({}, {51470:1},cls=7)[51470]['disposition'], 'TALENT')
+        self.assertEqual(self.convert({}, {54349:2},cls=9)[54349]['disposition'], 'TALENT')
+        tc = copy.deepcopy(self.tc)
+        tc.correction_guards[34074].append('visibility')
+        self.fails('UNSUPPORTED_CORE_CORRECTION',lambda:self.convert({34074:(1,0)},cls=3,tc=tc))
 
     def test_profession_riding_preserve_existing_caps(self):
         skills = {171:(320,450),762:(300,300)}

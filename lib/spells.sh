@@ -3,6 +3,13 @@
 
 # Only the Python SELECT reader touches source/world data. Expected rows are
 # immutable control data; actual provenance commits with each target chunk.
+summarize_spell_blockers() {
+    local report=$1
+    printf 'Spell reconstruction blockers (reason_code, affected characters):\n' >&2
+    awk -F '\t' 'NR>1 { counts[$3]++ } END { for (reason in counts) print reason "\t" counts[reason] }' \
+        "$report" | LC_ALL=C sort >&2
+}
+
 prepare_spell_snapshot() {
     local mode=${1:-verify} temporary input_hash expected_hash existing reader_status=0
     require_command python3
@@ -26,6 +33,7 @@ prepare_spell_snapshot() {
         fi
         if [[ -f $temporary/spell-state-blockers.tsv ]]; then
             cp "$temporary/spell-state-blockers.tsv" "$REPORTS_DIR/$RUN_ID/"
+            summarize_spell_blockers "$temporary/spell-state-blockers.tsv"
             local guid spell reason detail
             while IFS=$'\t' read -r guid spell reason detail; do
                 [[ $guid == guid ]] && continue
@@ -40,7 +48,7 @@ prepare_spell_snapshot() {
         rm -rf "$temporary"
         mysql_query -e "UPDATE \`$CONTROL_SCHEMA\`.migration_run SET status='FAILED'
             WHERE run_id='$(sql_escape "$RUN_ID")';"
-        die "Spell state is incompatible; see spell-state-blockers.tsv; resolve and start a new run"
+        die "Spell state is incompatible; see $REPORTS_DIR/$RUN_ID/spell-state-blockers.tsv; resolve and start a new run"
     fi
     IFS=$'\t' read -r input_hash expected_hash < "$temporary/spell-digests.tsv"
     existing=$(mysql_query -e "SELECT CONCAT(input_hash,':',expected_hash)

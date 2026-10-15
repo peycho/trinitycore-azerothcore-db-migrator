@@ -18,8 +18,9 @@ CHAINS = [
     [2259,3101,3464,11611,28596,51304],
     [33388,33391,34090,34091],
     [900001,900002,900003],
+    [5487,9634],
 ]
-CLASS_SKILLS = {skill:(400,400) for skill in [183,267,594,613,78,355,593]}
+CLASS_SKILLS = {skill:(400,400) for skill in [183,267,594,613,78,355,593,134]}
 
 
 def stores(profile):
@@ -33,7 +34,8 @@ def stores(profile):
         for spell in chain:
             row = record('Spell', spell)
             row[71] = 10
-    for spell in [6603,12282,12663,12664,12300,12301,20911,25899,900000,900010,900011,900012]:
+    for spell in [6603,12282,12663,12664,12300,12301,12296,5209,38795,53407,34074,
+                  51466,51470,54347,54348,54349,20911,25899,900000,900010,900011,900012]:
         row = record('Spell', spell)
         row[71] = 3
     # Match the stock class skill associations and relevant effect/family
@@ -44,6 +46,7 @@ def stores(profile):
         (3,5,613,6,[6,0,0]),(4,5,78,6,[6,0,0]),(5,9,355,5,[6,3,0]),
         (6,9,593,5,[2,0,0]),(7,2,594,10,[3,0,0]),(8,5,78,6,[6,6,6]),
         (9,9,593,5,[64,2,0]),
+        (13,11,134,7,[6,0,0]),
     ]:
         line = data['SkillLine'].get(skill) or record('SkillLine',skill)
         line[1] = 7
@@ -56,10 +59,14 @@ def stores(profile):
             ability[1],ability[2],ability[4] = skill,spell,1<<(cls-1)
             if spell == CHAINS[index][0] and index in (1,6):
                 ability[9] = 2
+    for spell in CHAINS[13]:
+        data['Spell'][spell][95] = 36  # shapeshift aura: ranks supersede
     for ident, cls, ranks, spellbook in [
         (1,1,[12282,12663,12664],0),(2,1,[12300,12301],0),
         (3,2,[20473],1),(4,5,[34914],1),(5,9,[17877],1),(6,2,[20911],1),
         (7,5,[900000],0),
+        (137,1,[12296],0),
+        (2049,7,[51466,51470],0),(1882,9,[54347,54348,54349],0),
     ]:
         tab = record('TalentTab', ident)
         tab[20] = 1 << (cls-1)
@@ -70,6 +77,13 @@ def stores(profile):
             if not spellbook:
                 data['Spell'][spell][4] |= 0x40
                 data['Spell'][spell][71] = 6
+    data['Spell'][53407][71] = 77
+    data['Spell'][34074][71:74] = [6,6,0]
+    data['Spell'][34074][95:98] = [21,79,0]
+    for spell in [51466,51470]:
+        data['Spell'][spell][71],data['Spell'][spell][95] = 65,57
+    for spell in [54347,54348,54349]:
+        data['Spell'][spell][95],data['Spell'][spell][86] = 4,1
     # A ranked additional talent spell is persistent, a hidden unranked
     # dependent is runtime temporary; neither is granted in an unowned spec.
     data['Spell'][900000][71] = 36
@@ -118,7 +132,9 @@ def seed_worlds(sql, tc, ac, tc_world, ac_world, profile):
             'CREATE TABLE spell_custom_attr ('+('entry' if world==tc_world else 'spell_id')+' INT,attributes INT UNSIGNED);',world)
         values = ','.join(f'({chain[0]},{spell},{rank})' for chain in CHAINS for rank,spell in enumerate(chain,1))
         sql('INSERT INTO spell_ranks VALUES '+values,world)
-        sql('INSERT INTO spell_required VALUES (25899,20911)',world)
+        sql('INSERT INTO spell_required VALUES (25899,20911),(5209,5487)',world)
+        sql("INSERT INTO spell_script_names VALUES (38795,'spell_murmur_sonic_boom_effect'),"
+            "(53407,'spell_pal_judgement_of_justice')",world)
         sql('INSERT INTO spell_custom_attr VALUES (6603,0)',world)
     sql('CREATE TABLE spell_learn_spell (entry INT,SpellID INT,Active TINYINT);'
         'INSERT INTO spell_learn_spell VALUES (900011,900012,1)',tc_world)

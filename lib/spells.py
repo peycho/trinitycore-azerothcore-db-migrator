@@ -199,8 +199,9 @@ class Metadata:
                 if spell in self.spells:
                     record = self.spells[spell]
                     for field, op, value in rule['changes']:
-                        record[field] = {'=': lambda: value, '|=': lambda: record[field] | value,
-                                         '&=': lambda: record[field] & value}[op]() & 0xffffffff
+                        operand = record[value['field']] if isinstance(value, dict) else value
+                        record[field] = {'=': lambda: operand, '|=': lambda: record[field] | operand,
+                                         '&=': lambda: record[field] & operand}[op]() & 0xffffffff
         # Reviewed global correction in both pinned cores.
         for record in self.spells.values():
             if record[134] == 2158:
@@ -430,10 +431,20 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
                 else:
                     # A prerequisite may be a trained spell, but it may not
                     # manufacture authorization for a talent-based ability.
-                    required_mask &= 3 if prerequisite in stored else 0
+                    # TC may persist only a higher rank of this prerequisite.
+                    # Count its verified known prefix, not just stored rows.
+                    required_mask &= 3 if prerequisite in known_rank_prefix else 0
             mask = (mask or 3) & required_mask
         talent_based = root in tc.talents or root in ac.additional or spell in ac.additional or bool(authorization.get(root, 0))
         return mask if talent_based or dependencies else 3
+
+    known_rank_prefix = set(stored)
+    for anchor in stored:
+        if anchor not in tc.talents:
+            # Do not use a source-only relationship to authorize anything.
+            # Direct talent rank lists never establish lower talent ownership.
+            compatible(anchor)
+            known_rank_prefix.update(tc.predecessors(anchor))
 
     result = {}
     temporary_spells = set()

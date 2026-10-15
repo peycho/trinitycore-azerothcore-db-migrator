@@ -22,6 +22,20 @@ STORES = {
     'SkillTiers': ('skilltiers_dbc', 'SkillTiersfmt'),
 }
 
+# Reviewed encounter script needed by an explicitly stored player spell.
+# Both cores' Sonic Boom Effect handlers only adjust hit damage. Keep the
+# complete files in semantic manifests; unknown encounter scripts still block.
+REVIEWED_ENCOUNTER_SCRIPTS = {
+    'src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp': {'spell_murmur_sonic_boom_effect'},
+}
+CORRECTION_DEFINITIONS = (
+    'src/server/shared/SharedDefines.h',
+    'src/server/game/Spells/SpellDefines.h',
+    'src/server/game/Spells/Auras/SpellAuraDefines.h',
+)
+EFFECT_FIELDS = {'Effect': 71, 'TriggerSpell': 116, 'MiscValue': 110,
+                 'BasePoints': 80, 'DieSides': 74, 'TargetA': 86, 'ApplyAuraName': 95}
+
 
 def integer(expression, constants):
     """Only integer expressions; never execute text from a C++ source tree."""
@@ -52,6 +66,41 @@ def strip_comments(source):
     return re.sub(r'/\*.*?\*/|//[^\n]*', '', source, flags=re.S)
 
 
+def script_policies(content, reviewed=None):
+    """Follow native named registrations without weakening mutation guards."""
+    classes, scripts = {}, {}
+    def store(name, policy):
+        if scripts.get(name) != 'UNSUPPORTED_SPELLBOOK_MUTATION':
+            scripts[name] = policy
+    for match in re.finditer(r'\b(?:class|struct)\s+(spell_\w+)\b[^;{]*\{', content):
+        if reviewed is not None and match[1] not in reviewed:
+            continue
+        start, end, depth = match.end(), match.end(), 1
+        while depth and end < len(content):
+            depth += (content[end] == '{') - (content[end] == '}')
+            end += 1
+        body = content[start:end - 1]
+        mutation = bool(re.search(r'\b(?:LearnSpell|learnSpell|RemoveSpell|removeSpell|AddSpell|addSpell)\s*\(', body))
+        policy = 'UNSUPPORTED_SPELLBOOK_MUTATION' if mutation else 'NO_SPELLBOOK_MUTATION'
+        if classes.get(match[1]) != 'UNSUPPORTED_SPELLBOOK_MUTATION':
+            classes[match[1]] = policy
+        for name in {match[1]} | set(re.findall(r'"(spell_\w+)"', body)):
+            store(name, policy)
+    for implementation, alias in re.findall(
+            r'\bRegister(?:Spell|Aura)ScriptWithArgs\(\s*(spell_\w+)\s*,\s*"(spell_\w+)"', content):
+        if implementation in classes:
+            store(alias, classes[implementation])
+    for first, second, alias in re.findall(
+            r'\bRegisterSpellAndAuraScriptPair(?:WithArgs)?\(\s*(spell_\w+)\s*,\s*(spell_\w+)'
+            r'(?:\s*,\s*"(spell_\w+)")?', content):
+        if first in classes and second in classes:
+            policy = ('UNSUPPORTED_SPELLBOOK_MUTATION' if any(
+                classes[name] == 'UNSUPPORTED_SPELLBOOK_MUTATION' for name in (first, second))
+                else 'NO_SPELLBOOK_MUTATION')
+            store(alias or first, policy)
+    return scripts
+
+
 def generate(tc, ac):
     result = {'version': 1, 'stores': {}, 'corrections': {}, 'scripts': {}, 'inputs': {}}
     for name, (table, fmt_name) in STORES.items():
@@ -70,14 +119,16 @@ def generate(tc, ac):
         ('tc', tc, 'src/server/game/Spells/SpellMgr.cpp'),
         ('ac', ac, 'src/server/game/Spells/SpellInfoCorrections.cpp'),
     ]:
-        inputs = ['src/server/shared/DataStores/DBCfmt.h', 'src/server/shared/SharedDefines.h', relative]
+        registration = ('src/server/game/Scripting/ScriptMgr.h' if core == 'tc' else
+                        'src/server/game/Scripting/ScriptDefines/SpellScriptLoader.h')
+        inputs = ['src/server/shared/DataStores/DBCfmt.h', *CORRECTION_DEFINITIONS, relative, registration]
         if core == 'ac':
             inputs.extend(f'data/sql/base/db_world/{table}.sql' for table,_ in STORES.values())
         raw = (repo / relative).read_text()
         source = strip_comments(raw)
         guards, operations = [], []
         constants = {}
-        defines = strip_comments((repo / 'src/server/shared/SharedDefines.h').read_text())
+        defines = '\n'.join(strip_comments((repo / name).read_text()) for name in CORRECTION_DEFINITIONS)
         for name, expression in re.findall(r'\b([A-Z][A-Z0-9_]+)\s*=\s*([^,\n}]+)', defines):
             try:
                 constants[name] = integer(expression.strip(), constants)
@@ -103,9 +154,7 @@ def generate(tc, ac):
                         index = int(assignment[1] or assignment[2])
                         field, op, value = assignment[3], assignment[4], assignment[5]
                         tag = f'{index}:{field}'
-                        raw_field = {'Effect': 71, 'TriggerSpell': 116, 'MiscValue': 110,
-                                     'BasePoints': 80, 'DieSides': 74, 'TargetA': 86,
-                                     'ApplyAuraName': 95}[field] + index
+                        raw_field = EFFECT_FIELDS[field] + index
                         value = re.sub(r'^SpellImplicitTargetInfo\((.*)\)$', r'\1', value)
                     else:
                         field, op, value = assignment[1], assignment[2], assignment[3]
@@ -116,7 +165,12 @@ def generate(tc, ac):
                         # Conditional/cross-effect corrections need a separate review.
                         if re.search(r'\b(if|for|switch)\b', body):
                             raise ValueError('Conditional correction')
-                        changes.append([raw_field, op, integer(value.strip(), constants)])
+                        copied = re.fullmatch(
+                            r'spellInfo->(?:_GetEffect\(EFFECT_([012])\)|Effects\[EFFECT_([012])\])\.'
+                            r'(Effect|TriggerSpell|MiscValue|BasePoints|DieSides|TargetA|ApplyAuraName)', value.strip())
+                        operand = ({'field': EFFECT_FIELDS[copied[3]] + int(copied[1] or copied[2])}
+                                   if copied else integer(value.strip(), constants))
+                        changes.append([raw_field, op, operand])
                     except (ValueError, KeyError, SyntaxError):
                         fields.append(tag)
             for flags in re.finditer(r'spellInfo->SpellFamilyFlags\s*=\s*flag96\(([^)]+)\);', body):
@@ -138,21 +192,15 @@ def generate(tc, ac):
             'guards': guards, 'operations': operations,
         }
         scripts = {}
-        for path in sorted((repo / 'src/server/scripts/Spells').rglob('*.cpp')):
+        script_paths = set((repo / 'src/server/scripts/Spells').rglob('*.cpp'))
+        script_paths.update(repo / name for name in REVIEWED_ENCOUNTER_SCRIPTS)
+        for path in sorted(script_paths):
             inputs.append(str(path.relative_to(repo)))
             content = strip_comments(path.read_text())
-            for match in re.finditer(r'\b(?:class|struct)\s+(spell_\w+)\b[^;{]*\{', content):
-                start, end, depth = match.end(), match.end(), 1
-                while depth and end < len(content):
-                    depth += (content[end] == '{') - (content[end] == '}')
-                    end += 1
-                body = content[start:end - 1]
-                names = {match[1]} | set(re.findall(r'"(spell_\w+)"', body))
-                mutation = bool(re.search(r'\b(?:LearnSpell|learnSpell|RemoveSpell|removeSpell|AddSpell|addSpell)\s*\(', body))
-                for name in names:
-                    policy = 'UNSUPPORTED_SPELLBOOK_MUTATION' if mutation else 'NO_SPELLBOOK_MUTATION'
-                    if scripts.get(name) != 'UNSUPPORTED_SPELLBOOK_MUTATION':
-                        scripts[name] = policy
+            reviewed = REVIEWED_ENCOUNTER_SCRIPTS.get(str(path.relative_to(repo)))
+            for name, policy in script_policies(content, reviewed).items():
+                if scripts.get(name) != 'UNSUPPORTED_SPELLBOOK_MUTATION':
+                    scripts[name] = policy
         result['scripts'][core] = scripts
         result['inputs'][core] = {path: hashlib.sha256((repo/path).read_bytes()).hexdigest()
                                   for path in sorted(set(inputs))}

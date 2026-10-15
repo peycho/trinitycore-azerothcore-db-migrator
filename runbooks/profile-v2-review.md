@@ -110,3 +110,50 @@ Local amendment validation passed on 2026-10-14:
 Native trainer/casting/spec/persistence and profession gameplay checks are
 **NOT TESTED** for this amendment. Two production-sized isolated rehearsals
 also remain pending. These local checks do not change approval status.
+
+## Preflight blocker review amendment, 2026-10-15
+
+Ordinary spell prerequisites now recognize verified predecessor ranks that TC
+restores from a stored higher rank. The stock druid example is Challenging Roar
+`5209`, which requires Bear Form `5487`, while TC can persist only Dire Bear Form
+`9634`. This does not authorize absent talents, unknown prerequisites or higher
+ranks above the stored anchor.
+
+The native `spell_murmur_sonic_boom_effect` script was reviewed in
+`src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp` for both
+cores. It only adjusts hit damage and has no spellbook mutation or learned-spell
+dependency. TC uses maximum health and AC current health for the damage amount;
+the migration preserves the stored spell ID, not identical combat calculations.
+The complete file is now protected in each semantic manifest and metadata input
+hash; only this named encounter handler is added to the reviewed script policy.
+The AC file is byte-identical at the pinned revision, staging `f089543d…` and
+the configured checkout; TC's file matches its pin. Existing pins and
+`PROFILE_APPROVAL=UNREVIEWED` remain unchanged.
+
+The profile reader also follows named `RegisterSpellScriptWithArgs` aliases
+and paired spell/aura registrations, preserving rejection if either handler
+mutates the spellbook. This fixes the stock paladin Judgement aliases. Spell
+and aura enum definitions are now protected inputs for correction evaluation;
+deterministic effect-field copies are interpreted without executing C++.
+The sampled Elemental Oath `51470`, Aspect of the Viper `34074` and Improved
+Demonic Tactics `54349` corrections can therefore be applied instead of
+blocked as unknown expressions. Conditional and unsupported expressions keep
+their guards. The newly protected headers, including AC's registration loader,
+match the pinned, staging and configured revisions byte for byte.
+
+Native invalid talent selections and disabled unowned talent rows remain
+separate blockers. No archive override, guessed rank mapping, talent deletion
+or staging repair is introduced. Console diagnostics show grouped blocker
+counts and the report path. Installing this amendment requires a fresh toolkit
+copy and run identity with new target/control schemas.
+
+Local validation for this amendment passed on 2026-10-15: static analysis,
+profile reproducibility/drift checks, 18 focused unit regressions and the full
+disposable MySQL 8.4.10 bidirectional rehearsal, including rollback, interruption,
+resume, completed reruns, trainer consumer checks and source/world immutability.
+The historical algorithm failed the real-DBC druid prerequisite regression;
+the amended reader passed that case plus the reviewed script, Judgement and
+three correction examples using read-only supplied DBCs with declared synthetic
+skills. These checks do not certify the reported staging character records.
+Native gameplay checks remain **NOT TESTED** and production-sized acceptance
+for the amended toolkit identity is still pending.

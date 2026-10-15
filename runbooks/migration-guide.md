@@ -334,6 +334,11 @@ Inspect `spell-state-blockers.tsv`, `spell-fingerprints.tsv` and
 `spell-expected.tsv` as well. Unsafe spell states block before assembly;
 verified predecessor derivations can increase persistent row counts.
 Do not resolve a missing-rank problem by granting trainer spells or deleting talents.
+Spell failures print a full report path and counts by reason. The report records
+the first blocker per character; inspect representative rows using the
+[blocker review instructions](spell-reconstruction.md#checkpoints-evidence-and-validation)
+before another preflight attempt. Unreviewed script/correction behavior is not
+automatically corrupt source data.
 
 If preflight fails, use the [problem table](#problems-and-evidence) below.
 For source changes, fix only an explicitly reviewed staging preparation copy

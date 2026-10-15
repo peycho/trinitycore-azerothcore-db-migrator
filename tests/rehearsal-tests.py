@@ -356,6 +356,12 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
                         f'AND spell IN ({",".join(map(str,ids))})'))
     assert old_known < len(ids), 'Regression must fail under stored-row-only conversion'
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=114',13)
+    equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=115 AND spell IN (5209,5487,9634) AND specMask=3',3)
+    equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=38795',3)
+    equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=110 AND spell=53407',3)
+    equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=116 AND spell=34074',3)
+    equal(f"SELECT disposition FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=117 AND spell=51470",'TALENT')
+    equal(f"SELECT disposition FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=112 AND spell=54349",'TALENT')
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=110 AND spell=25899',2)
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=111 AND spell=900010',0)
     equal(f"SELECT disposition FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=111 AND spell=900010",'RUNTIME')

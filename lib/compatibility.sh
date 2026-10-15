@@ -86,6 +86,8 @@ write_trinitycore_semantic_manifest() {
         src/server/game/Spells/SpellMgr.h \
         src/server/game/Spells/SpellInfo.cpp \
         src/server/game/Spells/SpellInfo.h \
+        src/server/game/Spells/SpellDefines.h \
+        src/server/game/Spells/Auras/SpellAuraDefines.h \
         src/server/game/DataStores/DBCStores.cpp \
         src/server/shared/DataStores \
         src/common/DataStores \
@@ -97,6 +99,7 @@ write_trinitycore_semantic_manifest() {
         src/server/game/Scripting/ScriptMgr.cpp \
         src/server/game/Scripting/ScriptMgr.h \
         src/server/scripts/Spells \
+        src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp \
         src/server/game/Entities/Item/ItemDefines.h \
         src/server/game/Loot/Loot.h \
         "${FORMAT2_GAME_INPUTS[@]}"
@@ -129,6 +132,8 @@ write_azerothcore_semantic_manifest() {
         src/server/game/Spells/SpellMgr.h \
         src/server/game/Spells/SpellInfo.cpp \
         src/server/game/Spells/SpellInfo.h \
+        src/server/game/Spells/SpellDefines.h \
+        src/server/game/Spells/Auras/SpellAuraDefines.h \
         src/server/game/Spells/SpellInfoCorrections.cpp \
         src/server/game/DataStores/DBCStores.cpp \
         src/server/shared/DataStores \
@@ -140,7 +145,9 @@ write_azerothcore_semantic_manifest() {
         src/server/game/Spells/SpellEffects.cpp \
         src/server/game/Scripting/ScriptMgr.cpp \
         src/server/game/Scripting/ScriptMgr.h \
+        src/server/game/Scripting/ScriptDefines/SpellScriptLoader.h \
         src/server/scripts/Spells \
+        src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp \
         src/server/game/World/World.cpp \
         data/sql/base/db_world/spell_dbc.sql \
         data/sql/base/db_world/talent_dbc.sql \

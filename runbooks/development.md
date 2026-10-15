@@ -41,6 +41,9 @@ The default paths are sibling `../TrinityCore` and `../azerothcore-wotlk`.
 scripts, registry inventories, profile reproducibility/drift, retired and
 unreviewed rejection, complete schema dumps, and the disposable-port guard.
 It also runs synthetic WDBC semantic regressions for spell-rank reconstruction.
+These include rank-derived prerequisites (Dire Bear Form/Bear Form/Challenging
+Roar), native script aliases and paired mutation guards, reviewed encounter
+handlers, and spell/aura enum and effect-copy corrections.
 Inventories use `LC_ALL=C`. Candidate approval exists only in disposable
 toolkit copies under `/tmp`; the checkout's approval is unchanged.
 

@@ -34,6 +34,9 @@ meaning, and native reader behavior; update mappings, blockers, transforms,
 validation, and fixtures as required. The generated `spell-metadata.json`
 contains WDBC layouts, additive/override reader rules, integer core corrections,
 conservative unsupported-correction guards and native spell-script dispositions.
+Correction operands can also copy a reviewed effect field. Protected spell/aura
+enum definitions resolve constant operands. Script policy follows native named
+registrations and pairs, and protects each explicitly reviewed encounter source.
 Review these alongside the expanded spell/DBC/trainer readers. Record the full
 revisions and evidence.
 Never replace an existing approved profile's manifests.

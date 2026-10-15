@@ -28,59 +28,12 @@
         },
         {
           "fields": [
-            "1:ApplyAuraName",
-            "1:MiscValue"
-          ],
-          "ids": [
-            51466,
-            51470
-          ]
-        },
-        {
-          "fields": [
-            "1:ApplyAuraName",
             "visibility"
           ],
           "ids": [
             51735,
             51734,
             51726
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            41013
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            64949
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            34231,
-            60792,
-            64956
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            28851,
-            28853,
-            32403
           ]
         },
         {
@@ -109,53 +62,6 @@
         },
         {
           "fields": [
-            "0:ApplyAuraName",
-            "1:ApplyAuraName"
-          ],
-          "ids": [
-            62758,
-            62762
-          ]
-        },
-        {
-          "fields": [
-            "1:ApplyAuraName"
-          ],
-          "ids": [
-            53480
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            49220,
-            49633,
-            49635,
-            49636,
-            49638
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            70650
-          ]
-        },
-        {
-          "fields": [
-            "1:MiscValue"
-          ],
-          "ids": [
-            51560,
-            51561
-          ]
-        },
-        {
-          "fields": [
             "2:TargetA"
           ],
           "ids": [
@@ -171,32 +77,6 @@
         },
         {
           "fields": [
-            "0:MiscValue",
-            "1:ApplyAuraName",
-            "1:Effect",
-            "1:MiscValue",
-            "1:TargetA"
-          ],
-          "ids": [
-            54347,
-            54348,
-            54349
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            22987
-          ]
-        },
-        {
-          "fields": [
-            "1:ApplyAuraName",
-            "2:BasePoints",
-            "2:DieSides",
-            "2:Effect",
             "2:TargetA"
           ],
           "ids": [
@@ -205,31 +85,6 @@
         },
         {
           "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            63058
-          ]
-        },
-        {
-          "fields": [
-            "2:ApplyAuraName"
-          ],
-          "ids": [
-            34074
-          ]
-        },
-        {
-          "fields": [
-            "1:ApplyAuraName"
-          ],
-          "ids": [
-            60509
-          ]
-        },
-        {
-          "fields": [
-            "2:ApplyAuraName",
             "2:MiscValue"
           ],
           "ids": [
@@ -259,14 +114,6 @@
           ],
           "ids": [
             57143
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            62566
           ]
         },
         {
@@ -373,152 +220,10 @@
         },
         {
           "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            67530
-          ]
-        },
-        {
-          "fields": [
-            "1:ApplyAuraName",
-            "2:ApplyAuraName"
-          ],
-          "ids": [
-            66287
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            66063
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            65920,
-            65922,
-            65923
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            69131
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            69263
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            9095
-          ]
-        },
-        {
-          "fields": [
             "0:BasePoints"
           ],
           "ids": [
             52190
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            26740
-          ]
-        },
-        {
-          "fields": [
-            "0:BasePoints"
-          ],
-          "ids": [
-            72623
-          ]
-        },
-        {
-          "fields": [
-            "1:ApplyAuraName"
-          ],
-          "ids": [
-            42299
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            29519
-          ]
-        },
-        {
-          "fields": [
-            "1:ApplyAuraName"
-          ],
-          "ids": [
-            58284
-          ]
-        },
-        {
-          "fields": [
-            "1:ApplyAuraName"
-          ],
-          "ids": [
-            24322,
-            24323
-          ]
-        },
-        {
-          "fields": [
-            "1:ApplyAuraName"
-          ],
-          "ids": [
-            61992
-          ]
-        },
-        {
-          "fields": [
-            "1:ApplyAuraName"
-          ],
-          "ids": [
-            33800
-          ]
-        },
-        {
-          "fields": [
-            "1:ApplyAuraName"
-          ],
-          "ids": [
-            20335,
-            20336,
-            20337
-          ]
-        },
-        {
-          "fields": [
-            "2:ApplyAuraName"
-          ],
-          "ids": [
-            30298
           ]
         }
       ],
@@ -622,6 +327,16 @@
               72,
               "=",
               6
+            ],
+            [
+              96,
+              "=",
+              107
+            ],
+            [
+              111,
+              "=",
+              12
             ]
           ],
           "ids": [
@@ -639,6 +354,32 @@
           ],
           "ids": [
             47569
+          ]
+        },
+        {
+          "changes": [
+            [
+              96,
+              "=",
+              87
+            ]
+          ],
+          "ids": [
+            51735,
+            51734,
+            51726
+          ]
+        },
+        {
+          "changes": [
+            [
+              95,
+              "=",
+              4
+            ]
+          ],
+          "ids": [
+            41013
           ]
         },
         {
@@ -681,6 +422,46 @@
           ],
           "ids": [
             70893
+          ]
+        },
+        {
+          "changes": [
+            [
+              95,
+              "=",
+              107
+            ]
+          ],
+          "ids": [
+            64949
+          ]
+        },
+        {
+          "changes": [
+            [
+              95,
+              "=",
+              107
+            ]
+          ],
+          "ids": [
+            34231,
+            60792,
+            64956
+          ]
+        },
+        {
+          "changes": [
+            [
+              95,
+              "=",
+              107
+            ]
+          ],
+          "ids": [
+            28851,
+            28853,
+            32403
           ]
         },
         {
@@ -747,9 +528,19 @@
               6
             ],
             [
+              95,
+              "=",
+              4
+            ],
+            [
               72,
               "=",
               6
+            ],
+            [
+              96,
+              "=",
+              4
             ]
           ],
           "ids": [
@@ -775,6 +566,11 @@
               72,
               "=",
               6
+            ],
+            [
+              96,
+              "=",
+              81
             ],
             [
               87,
@@ -913,6 +709,11 @@
               6
             ],
             [
+              95,
+              "=",
+              4
+            ],
+            [
               86,
               "=",
               1
@@ -1002,6 +803,31 @@
         {
           "changes": [
             [
+              95,
+              "=",
+              108
+            ]
+          ],
+          "ids": [
+            70650
+          ]
+        },
+        {
+          "changes": [
+            [
+              111,
+              "=",
+              0
+            ]
+          ],
+          "ids": [
+            51560,
+            51561
+          ]
+        },
+        {
+          "changes": [
+            [
               4,
               "|=",
               64
@@ -1023,6 +849,58 @@
             18754,
             18755,
             18756
+          ]
+        },
+        {
+          "changes": [
+            [
+              72,
+              "=",
+              {
+                "field": 71
+              }
+            ],
+            [
+              96,
+              "=",
+              {
+                "field": 95
+              }
+            ],
+            [
+              87,
+              "=",
+              {
+                "field": 86
+              }
+            ],
+            [
+              110,
+              "=",
+              3
+            ],
+            [
+              111,
+              "=",
+              12
+            ]
+          ],
+          "ids": [
+            54347,
+            54348,
+            54349
+          ]
+        },
+        {
+          "changes": [
+            [
+              95,
+              "=",
+              6
+            ]
+          ],
+          "ids": [
+            22987
           ]
         },
         {
@@ -1201,9 +1079,35 @@
         {
           "changes": [
             [
+              96,
+              "=",
+              132
+            ],
+            [
+              73,
+              "=",
+              {
+                "field": 71
+              }
+            ],
+            [
               71,
               "=",
               0
+            ],
+            [
+              76,
+              "=",
+              {
+                "field": 74
+              }
+            ],
+            [
+              82,
+              "=",
+              {
+                "field": 80
+              }
             ]
           ],
           "ids": [
@@ -1247,6 +1151,18 @@
         {
           "changes": [
             [
+              95,
+              "=",
+              187
+            ]
+          ],
+          "ids": [
+            63058
+          ]
+        },
+        {
+          "changes": [
+            [
               208,
               "=",
               0
@@ -1284,6 +1200,11 @@
               88,
               "=",
               1
+            ],
+            [
+              97,
+              "=",
+              4
             ]
           ],
           "ids": [
@@ -1301,6 +1222,11 @@
               81,
               "=",
               150
+            ],
+            [
+              96,
+              "=",
+              8
             ]
           ],
           "ids": [
@@ -1416,6 +1342,11 @@
               73,
               "=",
               6
+            ],
+            [
+              97,
+              "=",
+              69
             ],
             [
               88,
@@ -1834,6 +1765,18 @@
         {
           "changes": [
             [
+              95,
+              "=",
+              23
+            ]
+          ],
+          "ids": [
+            62566
+          ]
+        },
+        {
+          "changes": [
+            [
               72,
               "=",
               0
@@ -1966,6 +1909,18 @@
         {
           "changes": [
             [
+              95,
+              "=",
+              42
+            ]
+          ],
+          "ids": [
+            67530
+          ]
+        },
+        {
+          "changes": [
+            [
               71,
               "=",
               3
@@ -2054,6 +2009,11 @@
               6
             ],
             [
+              96,
+              "=",
+              11
+            ],
+            [
               87,
               "=",
               38
@@ -2062,6 +2022,11 @@
               73,
               "=",
               6
+            ],
+            [
+              97,
+              "=",
+              12
             ],
             [
               88,
@@ -2090,6 +2055,11 @@
         },
         {
           "changes": [
+            [
+              95,
+              "=",
+              42
+            ],
             [
               116,
               "=",
@@ -2383,6 +2353,20 @@
         {
           "changes": [
             [
+              95,
+              "=",
+              226
+            ]
+          ],
+          "ids": [
+            65920,
+            65922,
+            65923
+          ]
+        },
+        {
+          "changes": [
+            [
               86,
               "=",
               25
@@ -2412,6 +2396,11 @@
         },
         {
           "changes": [
+            [
+              95,
+              "=",
+              23
+            ],
             [
               116,
               "=",
@@ -2541,6 +2530,18 @@
           "ids": [
             69029,
             70850
+          ]
+        },
+        {
+          "changes": [
+            [
+              95,
+              "=",
+              12
+            ]
+          ],
+          "ids": [
+            69263
           ]
         },
         {
@@ -3062,6 +3063,18 @@
         {
           "changes": [
             [
+              95,
+              "=",
+              4
+            ]
+          ],
+          "ids": [
+            9095
+          ]
+        },
+        {
+          "changes": [
+            [
               80,
               "=",
               50860
@@ -3176,6 +3189,18 @@
         {
           "changes": [
             [
+              95,
+              "=",
+              6
+            ]
+          ],
+          "ids": [
+            26740
+          ]
+        },
+        {
+          "changes": [
+            [
               116,
               "=",
               22588
@@ -3227,6 +3252,20 @@
         {
           "changes": [
             [
+              80,
+              "=",
+              {
+                "field": 81
+              }
+            ]
+          ],
+          "ids": [
+            72623
+          ]
+        },
+        {
+          "changes": [
+            [
               86,
               "=",
               15
@@ -3267,6 +3306,11 @@
         },
         {
           "changes": [
+            [
+              96,
+              "=",
+              4
+            ],
             [
               110,
               "=",
@@ -3458,6 +3502,11 @@
         {
           "changes": [
             [
+              95,
+              "=",
+              33
+            ],
+            [
               80,
               "=",
               -25
@@ -3565,6 +3614,11 @@
               6
             ],
             [
+              96,
+              "=",
+              270
+            ],
+            [
               81,
               "=",
               100
@@ -3643,6 +3697,11 @@
               4,
               "|=",
               2147483648
+            ],
+            [
+              96,
+              "=",
+              12
             ],
             [
               73,
@@ -3828,6 +3887,11 @@
               6
             ],
             [
+              96,
+              "=",
+              108
+            ],
+            [
               87,
               "=",
               1
@@ -3918,6 +3982,11 @@
               72,
               "=",
               6
+            ],
+            [
+              96,
+              "=",
+              23
             ]
           ],
           "ids": [
@@ -4108,6 +4177,11 @@
               87,
               "=",
               6
+            ],
+            [
+              96,
+              "=",
+              4
             ]
           ],
           "ids": [
@@ -4162,6 +4236,18 @@
           ],
           "ids": [
             23272
+          ]
+        },
+        {
+          "changes": [
+            [
+              97,
+              "=",
+              12
+            ]
+          ],
+          "ids": [
+            30298
           ]
         },
         {
@@ -4354,14 +4440,6 @@
       "guards": [
         {
           "fields": [
-            "1:ApplyAuraName"
-          ],
-          "ids": [
-            53480
-          ]
-        },
-        {
-          "fields": [
             "visibility"
           ],
           "ids": [
@@ -4386,65 +4464,12 @@
         },
         {
           "fields": [
-            "1:ApplyAuraName"
-          ],
-          "ids": [
-            64904
-          ]
-        },
-        {
-          "fields": [
-            "1:ApplyAuraName",
             "visibility"
           ],
           "ids": [
             51735,
             51734,
             51726
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            41913
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            64949
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            34231,
-            60792,
-            64956
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            28851,
-            28853,
-            32403
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            70650
           ]
         },
         {
@@ -4462,35 +4487,6 @@
           ],
           "ids": [
             45524
-          ]
-        },
-        {
-          "fields": [
-            "0:ApplyAuraName"
-          ],
-          "ids": [
-            40453
-          ]
-        },
-        {
-          "fields": [
-            "1:ApplyAuraName"
-          ],
-          "ids": [
-            69131
-          ]
-        },
-        {
-          "fields": [
-            "1:ApplyAuraName"
-          ],
-          "ids": [
-            24869,
-            61874,
-            71068,
-            71071,
-            71073,
-            71074
           ]
         }
       ],
@@ -4751,6 +4747,11 @@
               6
             ],
             [
+              96,
+              "=",
+              4
+            ],
+            [
               111,
               "=",
               127
@@ -4780,6 +4781,18 @@
         {
           "changes": [
             [
+              96,
+              "=",
+              132
+            ]
+          ],
+          "ids": [
+            64904
+          ]
+        },
+        {
+          "changes": [
+            [
               88,
               "=",
               1
@@ -4787,6 +4800,32 @@
           ],
           "ids": [
             19465
+          ]
+        },
+        {
+          "changes": [
+            [
+              96,
+              "=",
+              87
+            ]
+          ],
+          "ids": [
+            51735,
+            51734,
+            51726
+          ]
+        },
+        {
+          "changes": [
+            [
+              95,
+              "=",
+              4
+            ]
+          ],
+          "ids": [
+            41913
           ]
         },
         {
@@ -4870,6 +4909,46 @@
         {
           "changes": [
             [
+              95,
+              "=",
+              107
+            ]
+          ],
+          "ids": [
+            64949
+          ]
+        },
+        {
+          "changes": [
+            [
+              95,
+              "=",
+              107
+            ]
+          ],
+          "ids": [
+            34231,
+            60792,
+            64956
+          ]
+        },
+        {
+          "changes": [
+            [
+              95,
+              "=",
+              107
+            ]
+          ],
+          "ids": [
+            28851,
+            28853,
+            32403
+          ]
+        },
+        {
+          "changes": [
+            [
               80,
               "=",
               0
@@ -4890,6 +4969,18 @@
           "ids": [
             64745,
             64936
+          ]
+        },
+        {
+          "changes": [
+            [
+              95,
+              "=",
+              108
+            ]
+          ],
+          "ids": [
+            70650
           ]
         },
         {
@@ -5139,6 +5230,30 @@
         {
           "changes": [
             [
+              95,
+              "=",
+              42
+            ]
+          ],
+          "ids": [
+            40453
+          ]
+        },
+        {
+          "changes": [
+            [
+              96,
+              "=",
+              33
+            ]
+          ],
+          "ids": [
+            69131
+          ]
+        },
+        {
+          "changes": [
+            [
               4,
               "|=",
               536870912
@@ -5223,6 +5338,11 @@
               1
             ],
             [
+              96,
+              "=",
+              23
+            ],
+            [
               117,
               "=",
               24870
@@ -5251,7 +5371,11 @@
       "data/sql/base/db_world/spell_dbc.sql": "4244b73996af464366d3ad857008b202f188e9c2247aea0931b25ba3109ef5f8",
       "data/sql/base/db_world/talent_dbc.sql": "a4210f7a6e12ac1789133c09d52b831563831cc8dea00f45b693090723046cd7",
       "data/sql/base/db_world/talenttab_dbc.sql": "0705b86a7b17a07d20d26166be9a5507d156331b9e40be239903ee00de9a3d42",
+      "src/server/game/Scripting/ScriptDefines/SpellScriptLoader.h": "68eb3db69b6fcf0c8909a6b3e9d41271f92e988378eb09f8dbd75db14af08bbe",
+      "src/server/game/Spells/Auras/SpellAuraDefines.h": "75aeaa2620ad0841997e82383ed0ce2609de5d370be40f9ed3e4b05c50c0886d",
+      "src/server/game/Spells/SpellDefines.h": "e37856ce41701971a082082b1e1e0f30b1c07b78a7e60a07678a987467e680c1",
       "src/server/game/Spells/SpellInfoCorrections.cpp": "d2864343af4683fff898da118bc77b520aa51dba9981f65a4e762933cf4531b2",
+      "src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp": "ad456fd8ccf14368cb5132ce05b84e2a763ee0040a24ba79113ce6b54cbbf126",
       "src/server/scripts/Spells/spell_dk.cpp": "a0be1b684171cd8525cfe360de44d7559f781d3ed7ad281bf16a9dd2d9d1d2ad",
       "src/server/scripts/Spells/spell_druid.cpp": "83bba92baa154ea9893a5f8b3bff63a329f2c1bf79f2183d41947bee39109d8d",
       "src/server/scripts/Spells/spell_generic.cpp": "6f570fa512364a97f4a59e5e8b361a0dc9613d517bf697c2ab6ce147aafbceb7",
@@ -5270,7 +5394,11 @@
       "src/server/shared/SharedDefines.h": "7b17defee7cfb58fe42bcfbc2aab304b210eb922446cdf4193925d220b9bdf47"
     },
     "tc": {
+      "src/server/game/Scripting/ScriptMgr.h": "1ddce424d2ef2a3494b0948a98e8f9b06c6b0f6af6d0f9682a533bcc786b4cb1",
+      "src/server/game/Spells/Auras/SpellAuraDefines.h": "f083b57e26b285a713059a3fc94331b237f6b402237eee8e7ff9fc1a9c6faed0",
+      "src/server/game/Spells/SpellDefines.h": "59a060ab01461cc1300bc6b9f70f8a74446c56396eaddf8fbd46221ed5141b5d",
       "src/server/game/Spells/SpellMgr.cpp": "44903947322b5fadeb075c6d01f0b25a2004f0cae22bb43a6df75624b5e80817",
+      "src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp": "e17458084f52015228b2318a21a15410b37c7951282ccdab3708cef6636eb198",
       "src/server/scripts/Spells/spell_dk.cpp": "c8cffae736da46bc1aeb70a6f390e9e8e5dd98178973bc16d67c8d0406bf200a",
       "src/server/scripts/Spells/spell_druid.cpp": "31dc1fcefc78f8bdfab401985062a33794b937f7c8fc76959e3cc678e775b4fc",
       "src/server/scripts/Spells/spell_generic.cpp": "e067dc20995db4ca0f24763a9db649700c5636c461b7f1e5bb325204882329ac",
@@ -5292,6 +5420,12 @@
   },
   "scripts": {
     "ac": {
+      "spell_big_blizzard_bear": "NO_SPELLBOOK_MUTATION",
+      "spell_big_love_rocket": "NO_SPELLBOOK_MUTATION",
+      "spell_blazing_hippogryph": "NO_SPELLBOOK_MUTATION",
+      "spell_celestial_steed": "NO_SPELLBOOK_MUTATION",
+      "spell_cenarion_scout_lifebloom": "NO_SPELLBOOK_MUTATION",
+      "spell_consume_aq20": "NO_SPELLBOOK_MUTATION",
       "spell_contagion_of_rot": "NO_SPELLBOOK_MUTATION",
       "spell_dk_acclimation": "NO_SPELLBOOK_MUTATION",
       "spell_dk_advantage_t10_4p": "NO_SPELLBOOK_MUTATION",
@@ -5415,8 +5549,12 @@
       "spell_dru_typhoon": "NO_SPELLBOOK_MUTATION",
       "spell_dru_wild_growth": "NO_SPELLBOOK_MUTATION",
       "spell_dru_wild_growth_aura": "NO_SPELLBOOK_MUTATION",
+      "spell_faction_champion_dru_lifebloom": "NO_SPELLBOOK_MUTATION",
       "spell_freezing_circle": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_10pct_count_pct_from_max_hp": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_26pct_count_pct_from_max_hp": "NO_SPELLBOOK_MUTATION",
       "spell_gen_5000_gold": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_50pct_count_pct_from_max_hp": "NO_SPELLBOOK_MUTATION",
       "spell_gen_absorb0_hitlimit1": "NO_SPELLBOOK_MUTATION",
       "spell_gen_adaptive_warding": "NO_SPELLBOOK_MUTATION",
       "spell_gen_allow_cast_from_item_only": "NO_SPELLBOOK_MUTATION",
@@ -5457,9 +5595,12 @@
       "spell_gen_curse_of_pain": "NO_SPELLBOOK_MUTATION",
       "spell_gen_dalaran_disguise": "NO_SPELLBOOK_MUTATION",
       "spell_gen_damage_reduction_aura": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_default_count_pct_from_max_hp": "NO_SPELLBOOK_MUTATION",
       "spell_gen_defend": "NO_SPELLBOOK_MUTATION",
       "spell_gen_despawn_self": "NO_SPELLBOOK_MUTATION",
       "spell_gen_disabled_above_63": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_disabled_above_70": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_disabled_above_73": "NO_SPELLBOOK_MUTATION",
       "spell_gen_disabled_above_level": "NO_SPELLBOOK_MUTATION",
       "spell_gen_divine_storm_cd_reset": "NO_SPELLBOOK_MUTATION",
       "spell_gen_ds_flush_knockback": "NO_SPELLBOOK_MUTATION",
@@ -5537,10 +5678,19 @@
       "spell_gen_retaliation_toc": "NO_SPELLBOOK_MUTATION",
       "spell_gen_seaforium_blast": "NO_SPELLBOOK_MUTATION",
       "spell_gen_select_target_count": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_select_target_count_15_1": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_select_target_count_15_2": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_select_target_count_15_3": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_select_target_count_15_4": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_select_target_count_15_5": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_select_target_count_24_1": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_select_target_count_30_1": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_select_target_count_7_1": "NO_SPELLBOOK_MUTATION",
       "spell_gen_set_health": "NO_SPELLBOOK_MUTATION",
       "spell_gen_showlabel_off": "NO_SPELLBOOK_MUTATION",
       "spell_gen_showlabel_on": "NO_SPELLBOOK_MUTATION",
       "spell_gen_shriveling_gaze": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_silver_covenant_disguise": "NO_SPELLBOOK_MUTATION",
       "spell_gen_sober_up": "NO_SPELLBOOK_MUTATION",
       "spell_gen_spectator_cheer_trigger": "NO_SPELLBOOK_MUTATION",
       "spell_gen_spirit_healer_res": "NO_SPELLBOOK_MUTATION",
@@ -5548,15 +5698,21 @@
       "spell_gen_spirit_of_competition_winner": "NO_SPELLBOOK_MUTATION",
       "spell_gen_steal_weapon": "NO_SPELLBOOK_MUTATION",
       "spell_gen_submerge_visual": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_summon_earth_elemental": "NO_SPELLBOOK_MUTATION",
       "spell_gen_summon_elemental": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_summon_fire_elemental": "NO_SPELLBOOK_MUTATION",
       "spell_gen_summon_tournament_mount": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_sunreaver_disguise": "NO_SPELLBOOK_MUTATION",
       "spell_gen_teleporting": "NO_SPELLBOOK_MUTATION",
       "spell_gen_threshalisk_charge": "NO_SPELLBOOK_MUTATION",
       "spell_gen_throw_back": "NO_SPELLBOOK_MUTATION",
       "spell_gen_throw_shield": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_tournament_counterattack": "NO_SPELLBOOK_MUTATION",
       "spell_gen_tournament_duel": "NO_SPELLBOOK_MUTATION",
       "spell_gen_tournament_pennant": "NO_SPELLBOOK_MUTATION",
       "spell_gen_translocate": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_translocate_down": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_translocate_up": "NO_SPELLBOOK_MUTATION",
       "spell_gen_turkey_marker": "NO_SPELLBOOK_MUTATION",
       "spell_gen_upper_deck_create_foam_sword": "NO_SPELLBOOK_MUTATION",
       "spell_gen_use_spell_base_level_check": "NO_SPELLBOOK_MUTATION",
@@ -5571,6 +5727,8 @@
       "spell_gen_whisper_to_controller": "NO_SPELLBOOK_MUTATION",
       "spell_gen_yehkinya_bramble": "NO_SPELLBOOK_MUTATION",
       "spell_generic_quest_update_entry_SpellScript": "NO_SPELLBOOK_MUTATION",
+      "spell_headless_horseman_mount": "NO_SPELLBOOK_MUTATION",
+      "spell_hexlord_lifebloom": "NO_SPELLBOOK_MUTATION",
       "spell_hun_animal_handler": "NO_SPELLBOOK_MUTATION",
       "spell_hun_ascpect_of_the_viper": "NO_SPELLBOOK_MUTATION",
       "spell_hun_aspect_of_the_beast": "NO_SPELLBOOK_MUTATION",
@@ -5613,10 +5771,14 @@
       "spell_hun_volley_trigger": "NO_SPELLBOOK_MUTATION",
       "spell_hun_wyvern_sting": "NO_SPELLBOOK_MUTATION",
       "spell_image_of_drakuru_reagent_check": "NO_SPELLBOOK_MUTATION",
+      "spell_invincible": "NO_SPELLBOOK_MUTATION",
+      "spell_itch_aq20": "NO_SPELLBOOK_MUTATION",
+      "spell_itch_aq40": "NO_SPELLBOOK_MUTATION",
       "spell_item_aegis_of_preservation": "NO_SPELLBOOK_MUTATION",
       "spell_item_alchemists_stone": "NO_SPELLBOOK_MUTATION",
       "spell_item_anti_venom": "NO_SPELLBOOK_MUTATION",
       "spell_item_arcane_shroud": "NO_SPELLBOOK_MUTATION",
+      "spell_item_arcanite_dragonling": "NO_SPELLBOOK_MUTATION",
       "spell_item_ashbringer": "NO_SPELLBOOK_MUTATION",
       "spell_item_aura_of_madness": "NO_SPELLBOOK_MUTATION",
       "spell_item_blessing_of_ancient_kings": "NO_SPELLBOOK_MUTATION",
@@ -5668,11 +5830,15 @@
       "spell_item_flexweave_underlay": "NO_SPELLBOOK_MUTATION",
       "spell_item_freeze_rookery_egg": "NO_SPELLBOOK_MUTATION",
       "spell_item_frozen_shadoweave": "NO_SPELLBOOK_MUTATION",
+      "spell_item_gnomish_army_knife": "NO_SPELLBOOK_MUTATION",
+      "spell_item_gnomish_battle_chicken": "NO_SPELLBOOK_MUTATION",
       "spell_item_gnomish_death_ray": "NO_SPELLBOOK_MUTATION",
       "spell_item_gnomish_shrink_ray": "NO_SPELLBOOK_MUTATION",
       "spell_item_gnomish_universal_remote": "NO_SPELLBOOK_MUTATION",
       "spell_item_goblin_bomb": "NO_SPELLBOOK_MUTATION",
       "spell_item_goblin_gumbo_kettle": "NO_SPELLBOOK_MUTATION",
+      "spell_item_goblin_jumper_cables": "NO_SPELLBOOK_MUTATION",
+      "spell_item_goblin_jumper_cables_xl": "NO_SPELLBOOK_MUTATION",
       "spell_item_goblin_weather_machine": "NO_SPELLBOOK_MUTATION",
       "spell_item_goblin_weather_machine_aura": "NO_SPELLBOOK_MUTATION",
       "spell_item_gor_dreks_ointment": "NO_SPELLBOOK_MUTATION",
@@ -5700,11 +5866,13 @@
       "spell_item_map_of_the_geyser_fields": "NO_SPELLBOOK_MUTATION",
       "spell_item_mark_of_conquest": "NO_SPELLBOOK_MUTATION",
       "spell_item_massive_seaforium_charge": "NO_SPELLBOOK_MUTATION",
+      "spell_item_mechanical_dragonling": "NO_SPELLBOOK_MUTATION",
       "spell_item_mercurial_shield": "NO_SPELLBOOK_MUTATION",
       "spell_item_mind_amplify_dish": "NO_SPELLBOOK_MUTATION",
       "spell_item_mind_control_cap": "NO_SPELLBOOK_MUTATION",
       "spell_item_mingos_fortune_generator": "NO_SPELLBOOK_MUTATION",
       "spell_item_mirrens_drinking_hat": "NO_SPELLBOOK_MUTATION",
+      "spell_item_mithril_mechanical_dragonling": "NO_SPELLBOOK_MUTATION",
       "spell_item_muisek_vessel": "NO_SPELLBOOK_MUTATION",
       "spell_item_multiphase_goggles": "NO_SPELLBOOK_MUTATION",
       "spell_item_necrotic_touch": "NO_SPELLBOOK_MUTATION",
@@ -5824,7 +5992,9 @@
       "spell_mage_pet_scaling": "NO_SPELLBOOK_MUTATION",
       "spell_mage_polymorph_cast_visual": "NO_SPELLBOOK_MUTATION",
       "spell_mage_summon_water_elemental": "NO_SPELLBOOK_MUTATION",
+      "spell_magic_broom": "NO_SPELLBOOK_MUTATION",
       "spell_magic_eater_food": "NO_SPELLBOOK_MUTATION",
+      "spell_murmur_sonic_boom_effect": "NO_SPELLBOOK_MUTATION",
       "spell_pal_ardent_defender": "NO_SPELLBOOK_MUTATION",
       "spell_pal_aura_mastery": "NO_SPELLBOOK_MUTATION",
       "spell_pal_aura_mastery_immune": "NO_SPELLBOOK_MUTATION",
@@ -5853,12 +6023,19 @@
       "spell_pal_immunities": "NO_SPELLBOOK_MUTATION",
       "spell_pal_improved_aura": "NO_SPELLBOOK_MUTATION",
       "spell_pal_improved_aura_effect": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_improved_concentraction_aura": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_improved_concentraction_aura_effect": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_improved_devotion_aura": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_improved_devotion_aura_effect": "NO_SPELLBOOK_MUTATION",
       "spell_pal_improved_lay_of_hands": "NO_SPELLBOOK_MUTATION",
       "spell_pal_infusion_of_light": "NO_SPELLBOOK_MUTATION",
       "spell_pal_item_t6_trinket": "NO_SPELLBOOK_MUTATION",
       "spell_pal_judgement": "NO_SPELLBOOK_MUTATION",
       "spell_pal_judgement_of_command": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_judgement_of_justice": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_judgement_of_light": "NO_SPELLBOOK_MUTATION",
       "spell_pal_judgement_of_light_heal": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_judgement_of_wisdom": "NO_SPELLBOOK_MUTATION",
       "spell_pal_judgement_of_wisdom_mana": "NO_SPELLBOOK_MUTATION",
       "spell_pal_judgements_of_the_just": "NO_SPELLBOOK_MUTATION",
       "spell_pal_judgements_of_the_wise": "NO_SPELLBOOK_MUTATION",
@@ -5868,14 +6045,18 @@
       "spell_pal_righteous_vengeance": "NO_SPELLBOOK_MUTATION",
       "spell_pal_sacred_shield": "NO_SPELLBOOK_MUTATION",
       "spell_pal_sacred_shield_dummy": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_sanctified_retribution": "NO_SPELLBOOK_MUTATION",
       "spell_pal_sanctified_retribution_effect": "NO_SPELLBOOK_MUTATION",
       "spell_pal_seal_of_command": "NO_SPELLBOOK_MUTATION",
       "spell_pal_seal_of_command_aura": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_seal_of_corruption": "NO_SPELLBOOK_MUTATION",
       "spell_pal_seal_of_light": "NO_SPELLBOOK_MUTATION",
       "spell_pal_seal_of_righteousness": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_seal_of_vengeance": "NO_SPELLBOOK_MUTATION",
       "spell_pal_seal_of_vengeance_aura": "NO_SPELLBOOK_MUTATION",
       "spell_pal_sheath_of_light": "NO_SPELLBOOK_MUTATION",
       "spell_pal_spiritual_attunement": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_swift_retribution": "NO_SPELLBOOK_MUTATION",
       "spell_pal_t3_6p_bonus": "NO_SPELLBOOK_MUTATION",
       "spell_pal_t8_2p_bonus": "NO_SPELLBOOK_MUTATION",
       "spell_pet_hit_expertise_scalling": "NO_SPELLBOOK_MUTATION",
@@ -5925,6 +6106,7 @@
       "spell_q10720_the_smallest_creature": "NO_SPELLBOOK_MUTATION",
       "spell_q10769_dissension_amongst_the_ranks": "NO_SPELLBOOK_MUTATION",
       "spell_q10769_dissension_amongst_the_ranks_aura": "NO_SPELLBOOK_MUTATION",
+      "spell_q10838_demoniac_scryer_visual": "NO_SPELLBOOK_MUTATION",
       "spell_q10985_light_of_the_naaru": "NO_SPELLBOOK_MUTATION",
       "spell_q11010_q11102_q11023_aggro_burst": "NO_SPELLBOOK_MUTATION",
       "spell_q11010_q11102_q11023_aggro_check": "NO_SPELLBOOK_MUTATION",
@@ -5979,6 +6161,7 @@
       "spell_q13413_wyrmrest_skytalon_ride_periodic": "NO_SPELLBOOK_MUTATION",
       "spell_q14112_14145_chum_the_water": "NO_SPELLBOOK_MUTATION",
       "spell_q1846_bending_shinbone": "NO_SPELLBOOK_MUTATION",
+      "spell_q20438_q24556_aquantos_laundry": "NO_SPELLBOOK_MUTATION",
       "spell_q2203_thaumaturgy_channel": "NO_SPELLBOOK_MUTATION",
       "spell_q4735_collect_rookery_egg": "NO_SPELLBOOK_MUTATION",
       "spell_q5056_summon_shy_rotam": "NO_SPELLBOOK_MUTATION",
@@ -6086,6 +6269,8 @@
       "spell_spawn_blood_pool": "NO_SPELLBOOK_MUTATION",
       "spell_symbol_of_life_dummy": "NO_SPELLBOOK_MUTATION",
       "spell_the_flag_of_ownership": "NO_SPELLBOOK_MUTATION",
+      "spell_tur_ragepaw_lifebloom": "NO_SPELLBOOK_MUTATION",
+      "spell_twisted_visage_lifebloom": "NO_SPELLBOOK_MUTATION",
       "spell_war_sudden_death_aura": "NO_SPELLBOOK_MUTATION",
       "spell_warl_banish": "NO_SPELLBOOK_MUTATION",
       "spell_warl_create_healthstone": "NO_SPELLBOOK_MUTATION",
@@ -6164,9 +6349,16 @@
       "spell_warr_vigilance": "NO_SPELLBOOK_MUTATION",
       "spell_warr_vigilance_redirect_threat": "NO_SPELLBOOK_MUTATION",
       "spell_warr_vigilance_trigger": "NO_SPELLBOOK_MUTATION",
-      "spell_warr_warriors_wrath": "NO_SPELLBOOK_MUTATION"
+      "spell_warr_warriors_wrath": "NO_SPELLBOOK_MUTATION",
+      "spell_winged_steed_of_the_ebon_blade": "NO_SPELLBOOK_MUTATION",
+      "spell_x53_touring_rocket": "NO_SPELLBOOK_MUTATION"
     },
     "tc": {
+      "spell_big_blizzard_bear": "NO_SPELLBOOK_MUTATION",
+      "spell_big_love_rocket": "NO_SPELLBOOK_MUTATION",
+      "spell_blazing_hippogryph": "NO_SPELLBOOK_MUTATION",
+      "spell_celestial_steed": "NO_SPELLBOOK_MUTATION",
+      "spell_cenarion_scout_lifebloom": "NO_SPELLBOOK_MUTATION",
       "spell_corrupting_plague_aura": "NO_SPELLBOOK_MUTATION",
       "spell_dk_acclimation": "NO_SPELLBOOK_MUTATION",
       "spell_dk_advantage_t10_4p": "NO_SPELLBOOK_MUTATION",
@@ -6295,8 +6487,11 @@
       "spell_ethereal_pet_aura": "NO_SPELLBOOK_MUTATION",
       "spell_ethereal_pet_aura_remove": "NO_SPELLBOOK_MUTATION",
       "spell_ethereal_pet_onsummon": "NO_SPELLBOOK_MUTATION",
+      "spell_faction_champion_dru_lifebloom": "NO_SPELLBOOK_MUTATION",
       "spell_freezing_circle": "NO_SPELLBOOK_MUTATION",
+      "spell_future_you_whisper_to_controller_random": "NO_SPELLBOOK_MUTATION",
       "spell_gen_5000_gold": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_50pct_count_pct_from_max_hp": "NO_SPELLBOOK_MUTATION",
       "spell_gen_absorb0_hitlimit1": "NO_SPELLBOOK_MUTATION",
       "spell_gen_adaptive_warding": "NO_SPELLBOOK_MUTATION",
       "spell_gen_allow_cast_from_item_only": "NO_SPELLBOOK_MUTATION",
@@ -6333,6 +6528,7 @@
       "spell_gen_decay_over_time_fungal_decay": "NO_SPELLBOOK_MUTATION",
       "spell_gen_decay_over_time_spell": "NO_SPELLBOOK_MUTATION",
       "spell_gen_decay_over_time_tail_sting": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_default_count_pct_from_max_hp": "NO_SPELLBOOK_MUTATION",
       "spell_gen_defend": "NO_SPELLBOOK_MUTATION",
       "spell_gen_despawn_aura": "NO_SPELLBOOK_MUTATION",
       "spell_gen_despawn_self": "NO_SPELLBOOK_MUTATION",
@@ -6343,6 +6539,8 @@
       "spell_gen_dungeon_credit": "NO_SPELLBOOK_MUTATION",
       "spell_gen_eject_all_passengers": "NO_SPELLBOOK_MUTATION",
       "spell_gen_eject_passenger": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_eject_passenger_1": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_eject_passenger_3": "NO_SPELLBOOK_MUTATION",
       "spell_gen_eject_passenger_with_seatId": "NO_SPELLBOOK_MUTATION",
       "spell_gen_feast": "NO_SPELLBOOK_MUTATION",
       "spell_gen_feign_death_all_flags": "NO_SPELLBOOK_MUTATION",
@@ -6360,6 +6558,9 @@
       "spell_gen_hate_to_zero_caster_target": "NO_SPELLBOOK_MUTATION",
       "spell_gen_injured": "NO_SPELLBOOK_MUTATION",
       "spell_gen_knock_away_threat_reduction": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_knock_away_threat_reduction_100": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_knock_away_threat_reduction_25": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_knock_away_threat_reduction_50": "NO_SPELLBOOK_MUTATION",
       "spell_gen_landmine_knockback_achievement": "NO_SPELLBOOK_MUTATION",
       "spell_gen_lifeblood": "NO_SPELLBOOK_MUTATION",
       "spell_gen_lifeblood_aura": "NO_SPELLBOOK_MUTATION",
@@ -6397,13 +6598,16 @@
       "spell_gen_restoration": "NO_SPELLBOOK_MUTATION",
       "spell_gen_revive_self": "NO_SPELLBOOK_MUTATION",
       "spell_gen_seaforium_blast": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_silver_covenant_disguise": "NO_SPELLBOOK_MUTATION",
       "spell_gen_spectator_cheer_trigger": "NO_SPELLBOOK_MUTATION",
       "spell_gen_spirit_healer_res": "NO_SPELLBOOK_MUTATION",
       "spell_gen_stand": "NO_SPELLBOOK_MUTATION",
       "spell_gen_submerged": "NO_SPELLBOOK_MUTATION",
       "spell_gen_summon_tournament_mount": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_sunreaver_disguise": "NO_SPELLBOOK_MUTATION",
       "spell_gen_teleporting": "NO_SPELLBOOK_MUTATION",
       "spell_gen_throw_shield": "NO_SPELLBOOK_MUTATION",
+      "spell_gen_tournament_counterattack": "NO_SPELLBOOK_MUTATION",
       "spell_gen_tournament_duel": "NO_SPELLBOOK_MUTATION",
       "spell_gen_tournament_pennant": "NO_SPELLBOOK_MUTATION",
       "spell_gen_turkey_marker": "NO_SPELLBOOK_MUTATION",
@@ -6417,6 +6621,7 @@
       "spell_gen_whisper_to_controller": "NO_SPELLBOOK_MUTATION",
       "spell_gen_whisper_to_controller_random": "NO_SPELLBOOK_MUTATION",
       "spell_gen_zero_mana_full_health": "NO_SPELLBOOK_MUTATION",
+      "spell_headless_horseman_mount": "NO_SPELLBOOK_MUTATION",
       "spell_hun_animal_handler": "NO_SPELLBOOK_MUTATION",
       "spell_hun_animal_handler_AuraScript": "NO_SPELLBOOK_MUTATION",
       "spell_hun_ascpect_of_the_viper": "NO_SPELLBOOK_MUTATION",
@@ -6467,6 +6672,7 @@
       "spell_hun_thrill_of_the_hunt": "NO_SPELLBOOK_MUTATION",
       "spell_hun_viper_attack_speed": "NO_SPELLBOOK_MUTATION",
       "spell_hun_wyvern_sting": "NO_SPELLBOOK_MUTATION",
+      "spell_invincible": "NO_SPELLBOOK_MUTATION",
       "spell_item_aegis_of_preservation": "NO_SPELLBOOK_MUTATION",
       "spell_item_alchemists_stone": "NO_SPELLBOOK_MUTATION",
       "spell_item_anger_capacitor": "NO_SPELLBOOK_MUTATION",
@@ -6476,10 +6682,14 @@
       "spell_item_aura_of_madness": "NO_SPELLBOOK_MUTATION",
       "spell_item_blessing_of_ancient_kings": "NO_SPELLBOOK_MUTATION",
       "spell_item_book_of_glyph_mastery": "UNSUPPORTED_SPELLBOOK_MUTATION",
+      "spell_item_bountiful_feast": "NO_SPELLBOOK_MUTATION",
       "spell_item_brittle_armor": "NO_SPELLBOOK_MUTATION",
       "spell_item_charm_witch_doctor": "NO_SPELLBOOK_MUTATION",
       "spell_item_chicken_cover": "NO_SPELLBOOK_MUTATION",
+      "spell_item_commendation_of_kaelthas": "NO_SPELLBOOK_MUTATION",
       "spell_item_complete_raptor_capture": "NO_SPELLBOOK_MUTATION",
+      "spell_item_corpse_tongue_coin": "NO_SPELLBOOK_MUTATION",
+      "spell_item_corpse_tongue_coin_heroic": "NO_SPELLBOOK_MUTATION",
       "spell_item_crazy_alchemists_potion": "NO_SPELLBOOK_MUTATION",
       "spell_item_crystal_spire_of_karabor": "NO_SPELLBOOK_MUTATION",
       "spell_item_darkmoon_card_greatness": "NO_SPELLBOOK_MUTATION",
@@ -6510,12 +6720,15 @@
       "spell_item_extract_gas": "NO_SPELLBOOK_MUTATION",
       "spell_item_fate_rune_of_unsurpassed_vigor": "NO_SPELLBOOK_MUTATION",
       "spell_item_feast": "NO_SPELLBOOK_MUTATION",
+      "spell_item_fish_feast": "NO_SPELLBOOK_MUTATION",
       "spell_item_flask_of_the_north": "NO_SPELLBOOK_MUTATION",
       "spell_item_frozen_shadoweave": "NO_SPELLBOOK_MUTATION",
       "spell_item_gift_of_the_harvester": "NO_SPELLBOOK_MUTATION",
+      "spell_item_gigantic_feast": "NO_SPELLBOOK_MUTATION",
       "spell_item_gnomish_death_ray": "NO_SPELLBOOK_MUTATION",
       "spell_item_goblin_bomb_dispenser": "NO_SPELLBOOK_MUTATION",
       "spell_item_goblin_weather_machine": "NO_SPELLBOOK_MUTATION",
+      "spell_item_great_feast": "NO_SPELLBOOK_MUTATION",
       "spell_item_greatmothers_soulcatcher": "NO_SPELLBOOK_MUTATION",
       "spell_item_harm_prevention_belt": "NO_SPELLBOOK_MUTATION",
       "spell_item_healing_touch_refund": "NO_SPELLBOOK_MUTATION",
@@ -6544,6 +6757,8 @@
       "spell_item_pendant_of_the_violet_eye": "NO_SPELLBOOK_MUTATION",
       "spell_item_persistent_shield": "NO_SPELLBOOK_MUTATION",
       "spell_item_pet_healing": "NO_SPELLBOOK_MUTATION",
+      "spell_item_petrified_twilight_scale": "NO_SPELLBOOK_MUTATION",
+      "spell_item_petrified_twilight_scale_heroic": "NO_SPELLBOOK_MUTATION",
       "spell_item_piccolo_of_the_flaming_fire": "NO_SPELLBOOK_MUTATION",
       "spell_item_poultryizer": "NO_SPELLBOOK_MUTATION",
       "spell_item_power_circle": "NO_SPELLBOOK_MUTATION",
@@ -6561,6 +6776,8 @@
       "spell_item_shard_of_the_scale": "NO_SPELLBOOK_MUTATION",
       "spell_item_shard_of_the_scale_AuraScript": "NO_SPELLBOOK_MUTATION",
       "spell_item_six_demon_bag": "NO_SPELLBOOK_MUTATION",
+      "spell_item_small_feast": "NO_SPELLBOOK_MUTATION",
+      "spell_item_soul_harvesters_charm": "NO_SPELLBOOK_MUTATION",
       "spell_item_soul_preserver": "NO_SPELLBOOK_MUTATION",
       "spell_item_sunwell_neck": "NO_SPELLBOOK_MUTATION",
       "spell_item_sunwell_neck_AuraScript": "NO_SPELLBOOK_MUTATION",
@@ -6623,7 +6840,9 @@
       "spell_mage_polymorph_cast_visual_SpellScript": "NO_SPELLBOOK_MUTATION",
       "spell_mage_polymorph_visual": "NO_SPELLBOOK_MUTATION",
       "spell_mage_summon_water_elemental": "NO_SPELLBOOK_MUTATION",
+      "spell_magic_broom": "NO_SPELLBOOK_MUTATION",
       "spell_magic_eater_food": "NO_SPELLBOOK_MUTATION",
+      "spell_murmur_sonic_boom_effect": "NO_SPELLBOOK_MUTATION",
       "spell_pal_ardent_defender": "NO_SPELLBOOK_MUTATION",
       "spell_pal_aura_mastery": "NO_SPELLBOOK_MUTATION",
       "spell_pal_aura_mastery_immune": "NO_SPELLBOOK_MUTATION",
@@ -6648,13 +6867,18 @@
       "spell_pal_illumination": "NO_SPELLBOOK_MUTATION",
       "spell_pal_immunities": "NO_SPELLBOOK_MUTATION",
       "spell_pal_improved_aura": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_improved_concentraction_aura": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_improved_devotion_aura": "NO_SPELLBOOK_MUTATION",
       "spell_pal_improved_lay_of_hands": "NO_SPELLBOOK_MUTATION",
       "spell_pal_infusion_of_light": "NO_SPELLBOOK_MUTATION",
       "spell_pal_item_healing_discount": "NO_SPELLBOOK_MUTATION",
       "spell_pal_item_t6_trinket": "NO_SPELLBOOK_MUTATION",
       "spell_pal_judgement": "NO_SPELLBOOK_MUTATION",
       "spell_pal_judgement_of_command": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_judgement_of_justice": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_judgement_of_light": "NO_SPELLBOOK_MUTATION",
       "spell_pal_judgement_of_light_heal": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_judgement_of_wisdom": "NO_SPELLBOOK_MUTATION",
       "spell_pal_judgement_of_wisdom_mana": "NO_SPELLBOOK_MUTATION",
       "spell_pal_judgements_of_the_just": "NO_SPELLBOOK_MUTATION",
       "spell_pal_judgements_of_the_wise": "NO_SPELLBOOK_MUTATION",
@@ -6664,14 +6888,17 @@
       "spell_pal_righteous_vengeance": "NO_SPELLBOOK_MUTATION",
       "spell_pal_sacred_shield": "NO_SPELLBOOK_MUTATION",
       "spell_pal_sacred_shield_dummy": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_sanctified_retribution": "NO_SPELLBOOK_MUTATION",
       "spell_pal_seal_of_righteousness": "NO_SPELLBOOK_MUTATION",
       "spell_pal_seal_of_vengeance": "NO_SPELLBOOK_MUTATION",
       "spell_pal_seal_of_vengeance_AuraScript": "NO_SPELLBOOK_MUTATION",
       "spell_pal_seals": "NO_SPELLBOOK_MUTATION",
       "spell_pal_sheath_of_light": "NO_SPELLBOOK_MUTATION",
       "spell_pal_spiritual_attunement": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_swift_retribution": "NO_SPELLBOOK_MUTATION",
       "spell_pal_t3_6p_bonus": "NO_SPELLBOOK_MUTATION",
       "spell_pal_t8_2p_bonus": "NO_SPELLBOOK_MUTATION",
+      "spell_past_you_whisper_to_controller_random": "NO_SPELLBOOK_MUTATION",
       "spell_pet_dk_gargoyle_strike": "NO_SPELLBOOK_MUTATION",
       "spell_pri_aq_3p_bonus": "NO_SPELLBOOK_MUTATION",
       "spell_pri_blessed_recovery": "NO_SPELLBOOK_MUTATION",
@@ -6798,6 +7025,8 @@
       "spell_spawn_blood_pool": "NO_SPELLBOOK_MUTATION",
       "spell_stasis_field_aura": "NO_SPELLBOOK_MUTATION",
       "spell_steal_essence_visual": "NO_SPELLBOOK_MUTATION",
+      "spell_tur_ragepaw_lifebloom": "NO_SPELLBOOK_MUTATION",
+      "spell_twisted_visage_lifebloom": "NO_SPELLBOOK_MUTATION",
       "spell_warl_banish": "NO_SPELLBOOK_MUTATION",
       "spell_warl_create_healthstone": "NO_SPELLBOOK_MUTATION",
       "spell_warl_create_healthstone_SpellScript": "NO_SPELLBOOK_MUTATION",
@@ -6838,6 +7067,8 @@
       "spell_warl_pet_scaling_05_AuraScript": "NO_SPELLBOOK_MUTATION",
       "spell_warl_ritual_of_doom_effect": "NO_SPELLBOOK_MUTATION",
       "spell_warl_ritual_of_souls": "NO_SPELLBOOK_MUTATION",
+      "spell_warl_ritual_of_souls_r1": "NO_SPELLBOOK_MUTATION",
+      "spell_warl_ritual_of_souls_r2": "NO_SPELLBOOK_MUTATION",
       "spell_warl_seduction": "NO_SPELLBOOK_MUTATION",
       "spell_warl_seed_of_corruption": "NO_SPELLBOOK_MUTATION",
       "spell_warl_seed_of_corruption_dummy": "NO_SPELLBOOK_MUTATION",
@@ -6876,7 +7107,10 @@
       "spell_warr_vigilance": "NO_SPELLBOOK_MUTATION",
       "spell_warr_vigilance_redirect_threat": "NO_SPELLBOOK_MUTATION",
       "spell_warr_vigilance_trigger": "NO_SPELLBOOK_MUTATION",
-      "spell_warr_warriors_wrath": "NO_SPELLBOOK_MUTATION"
+      "spell_warr_warriors_wrath": "NO_SPELLBOOK_MUTATION",
+      "spell_winged_steed_of_the_ebon_blade": "NO_SPELLBOOK_MUTATION",
+      "spell_wyrmrest_defender_whisper_to_controller_random": "NO_SPELLBOOK_MUTATION",
+      "spell_x53_touring_rocket": "NO_SPELLBOOK_MUTATION"
     }
   },
   "stores": {

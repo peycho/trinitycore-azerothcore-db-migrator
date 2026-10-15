@@ -88,11 +88,24 @@ schemas and run ID; do not replace code underneath an existing run.
 
 Talent metadata is an authorization source, not evidence of training additional
 ability ranks. Derived rank traversal ends at the legitimate known anchor.
+Ordinary prerequisites may be satisfied by a verified predecessor that TC
+would restore from a stored higher rank: for example, stored Dire Bear Form
+`9634` establishes known Bear Form `5487` for Challenging Roar `5209`. Both
+cores must agree on that rank prefix; an absent prerequisite without a known
+anchor still blocks. This check does not grant any new higher rank or talent.
 Pet teaching effects do not authorize player spells. Conditional learned spells
 and temporary ranked/mixed learn-effect representations that cannot be proved
-safe are rejected. Profile correction rules contain reviewed integer updates
-and conservative guards for unsupported conditional corrections; no C++ text
+safe are rejected. Profile correction rules contain reviewed integer updates,
+bounded effect-field copies and conservative guards for unsupported conditional
+corrections. Enum values come from protected shared, spell and aura definitions;
+no C++ text
 is executed. Unknown or spellbook-mutating spell scripts require review.
+The reviewed `spell_murmur_sonic_boom_effect` handler only adjusts hit damage;
+its complete native source files are protected in both core manifests. Other
+encounter handlers remain unreviewed unless separately covered by the profile.
+Named native script registrations inherit the implementation's mutation policy;
+for paired spell/aura handlers, either implementation can force rejection. This
+includes the native Judgement of Justice/Light/Wisdom aliases.
 
 The migrator changes no talent selections, skill rows, skill caps or profession
 slots. Profession/riding spell effects are checked against existing skills;
@@ -123,6 +136,34 @@ Private reports include:
   rank root, talent owner IDs/masks, prerequisites and mask policy, alongside
   original source flags, so specialization reductions have an explicit reason.
 - `spell-drift-fingerprints.tsv`: observed input evidence when a snapshot changes.
+
+The console prints reason counts and the full blocker-report path. The current
+audit records the first failure per character; these counts describe affected
+characters, not an exhaustive list of bad rows. A script/correction guard can
+mean that compatibility has not been reviewed; it does not prove corrupt data.
+`INVALID_TALENT_OWNERSHIP` is separate: a talent-entry ID stored instead of a
+rank spell ID cannot be repaired by guessing which rank was selected. Disabled
+direct talent spells without matching selected ownership also remain blocked
+under the current policy. Do not turn these records into active AC spell rows,
+delete them, or infer replacement talent selections as part of rank completion.
+
+Use the retained report to review representative failures before another run:
+
+```bash
+awk -F '\t' 'NR==1 {print; next} n[$3]++ < 3 {print}' \
+  "$RUN_REPORTS/spell-state-blockers.tsv"
+```
+
+| Blocker family | Required review; current behavior |
+|---|---|
+| Invalid or unowned talents | Compare stored talent rank spell IDs, selected groups and TC flags. Block; never guess a rank from a talent-entry ID or activate a disabled unowned talent. |
+| Script or core correction guards | Review the actual protected implementation and metadata. A guard can indicate incomplete compatibility coverage, not corrupt character data. |
+| Incompatible or temporary rank chains, learned-spell dependencies | Compare both worlds, DBC relationships and native runtime ownership. Block unsupported representations; never copy a source-only dependency blindly. |
+| Missing/incompatible skills, skill-step teaching spells | Check native loader behavior, profession slots, recipes and existing skill values/caps. Block any unproved skill change. |
+| Inactive/disabled spell states | Compare stored anchors, flags, selected talents and both cores' visibility rules. Block when representability is not established. |
+
+Resolving one blocker can expose another for the same character. A successful
+focused regression does not clear every record in a production-sized source.
 
 The final report summarizes persistent, runtime-owned and direct-talent rows.
 Validation compares exact spell IDs/masks or TC flags, rejects unexpected grants,
