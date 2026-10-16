@@ -22,6 +22,11 @@ prepare_spell_snapshot() {
         --tc-dbc "$TRINITYCORE_DBC_DIR" --ac-dbc "$AZEROTHCORE_DBC_DIR" \
         --control "$CONTROL_SCHEMA" --run-id "$RUN_ID" --direction "$MIGRATION_DIRECTION" \
         --mysql "${MYSQL_ARGS[@]}" || reader_status=$?
+    # This diagnostic also covers bindings hidden by a character's first error.
+    # Its own status stays INCOMPLETE if the source/metadata read did not finish.
+    if [[ -f $temporary/spell-script-review.json ]]; then
+        cp "$temporary/spell-script-review.json" "$REPORTS_DIR/$RUN_ID/"
+    fi
     if (( reader_status != 0 )); then
         mkdir -p "$REPORTS_DIR/$RUN_ID"
         if (( reader_status == 2 )); then

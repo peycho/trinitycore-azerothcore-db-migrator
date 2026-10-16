@@ -60,7 +60,11 @@ identity, matching DBCs, exact expected counts, duplicate keys, unknown skills,
 zero/equal caps, numeric types, report tampering, live drift and offline state.
 These include rank-derived prerequisites (Dire Bear Form/Bear Form/Challenging
 Roar), native script aliases and paired mutation guards, reviewed encounter
-handlers, and spell/aura enum and effect-copy corrections.
+handlers, and spell/aura enum and effect-copy corrections. Script inventory
+regressions cover bindings hidden by earlier ownership/correction failures,
+multiple bindings per spell, deterministic output, dual-spec counting, orphan
+exclusion and incomplete query reports. The encounter callback harness also
+executes the protected Shadowy Construct load/apply bodies with mocked sinks.
 The spell regressions also cover reviewed legacy constructor aliases, bounded
 family-flag corrections, authorized AC-only temporary rank prefixes and rejection
 when TC still requires a temporary predecessor.

@@ -457,3 +457,53 @@ as did 23 supplied-DBC checks including all three old-profile regressions.
 All 92 frozen runtime/profile/test files matched after the final run and all
 14 supplied DBC assets remained unchanged. Native gameplay, updated operator
 preflight and production-sized acceptance remain untested; approval is unchanged.
+
+
+## Shadowy Construct and script inventory, 2026-10-16
+
+The remaining reported script binding is AC `40326` /
+`spell_teron_gorefiend_shadowy_construct`. The already protected complete Teron
+file matches AC pin `1cd97629...`, configured checkout `cb3d99cd...` and staging
+`f089543d...` byte for byte. Its creature-only aura load/apply handler changes
+immunities, combat/threat and casts `41421`, with no spellbook mutation. Only
+this named handler is added; TC has no equivalent script registration in the
+reviewed inventory. Pins, v1, semantic manifest membership and release approval
+remain unchanged. Existing eligibility and disabled-state guards still apply.
+
+The regression removes this single policy entry to reproduce the old blocker,
+then checks exact forward/reverse preservation without triggered grants. A
+compiled harness runs the protected load/apply bodies with recording sinks for
+creature filtering, immunity calls, hostile-only threat and the exact stun.
+These are isolated behavioral checks, not live gameplay acceptance.
+
+The read-only script inventory reports every binding on existing characters'
+stored spell and selected talent IDs, even when ownership, rank or another
+script check fails first. It shares the conversion's per-binding metadata
+contract, sorts output and marks incomplete reads explicitly. It excludes
+relationships reached only through derivation. Character counts are per source
+category and may overlap; they are not an exact cleanup candidate count.
+No additional SQL reads, source changes, target grants or cleanup permissions
+are introduced. Character blocker rows still record the first failure each.
+
+The four reported chain disagreement groups retain their guard: unowned Fiery
+Payback children, TC-only Seal of Righteousness predecessors, AC-only Ebon
+Plague predecessors and TC-only Borrowed Time predecessors. In particular,
+AC's native skill reward loader deliberately skips `20154` when `21084`
+supersedes it. Generic predecessor insertion is not a reviewed representation
+for these mismatches. Disabled history and enabled ownership conflicts need a
+separate exact-row preparation policy; no blanket removal/reset is authorized.
+
+Use fresh migration target/control schemas and a new run for this toolkit.
+Retain the cleaned source and its preparation archives; a source reimport is
+unnecessary. Existing staging repair and gameplay/production-size acceptance
+remain separate. Approval stays **UNREVIEWED**.
+
+Validation for this change passed locally: 90 unit tests, ShellCheck, profile
+reproducibility, six targeted supplied-DBC checks, compiled protected callbacks
+and the full frozen-input MySQL 8.4.10 rehearsal. Both directions reached `READY`
+with zero failed ERROR checks. The exported inventories match committed input
+fingerprints; rollback/resume/reruns, malformed relationships, input drift and
+source/world/unrelated-data preservation passed. All 92 frozen runtime/profile/
+test files and 14 supplied DBC assets remained unchanged. The disposable test
+server is removed after validation. Operator preflight, staging gameplay and
+production-sized acceptance are not established by these tests.

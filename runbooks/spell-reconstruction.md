@@ -176,6 +176,17 @@ Only this handler is approved from the newly protected Black Temple instance
 file. Other handlers in that file remain unreviewed. The complete file matches
 the retained pin and AC staging reference; the pins are unchanged.
 
+AC's `spell_teron_gorefiend_shadowy_construct` (`40326`) is also reviewed
+from the already protected Teron encounter file. Its `Load` accepts creatures
+only; applying the aura sets immunities, combat/threat and casts stun `41421`.
+It neither learns nor removes spells. The supplied spell is a non-passive dummy
+aura, without teaching effects. Preserve only an otherwise eligible stored
+`40326`; never grant the stun or additional encounter abilities. Other Teron
+handlers still require their own review. The complete file matches the retained
+AC pin and staging reference. A compiled harness executes its exact load/apply
+bodies with recording sinks, including null, friendly and hostile player
+references; this does not establish gameplay parity.
+
 The supplied DBCs make known WotF non-passive, the T4 set bonus a passive dummy
 aura with a proc callback, and Free Friend non-passive. Native loading does not
 execute the WotF/Free Friend cast callbacks or a T4 combat proc. Migration
@@ -249,6 +260,16 @@ Private reports include:
 - `spell-fingerprints.tsv`: metadata and source-input SHA-256 evidence.
 - `spell-expected.tsv`: preflight reconstruction and original flags/proofs.
 - `spell-state-blockers.tsv`: incompatible character keys, reason codes and details.
+- `spell-script-review.json`: all script bindings on stored spell and selected
+  talent IDs of existing source characters, with per-ID character counts for
+  each source category, per-binding review status/reason and input fingerprint.
+  It scans both cores independently of the first character failure, including
+  all bindings on an ID. Selected groups count once per character. A
+  `COMPLETE` report means this limited inventory finished; it excludes
+  derived-only IDs and does not establish ownership, satisfy correction/skill
+  guards, approve cleanup or make the migration ready. Failed reads leave
+  `INCOMPLETE`. Produced on successful and blocked preflights without extra
+  database queries; the migrator copies it before discarding temporary files.
 - `spell-metadata-errors.tsv`: failed query input, reason code and database error;
   no spell compatibility conclusion was possible.
 - `spell-reconstruction.tsv`: committed rows, masks, derived/runtime dispositions
@@ -262,6 +283,22 @@ The console prints reason counts and the full blocker-report path. The current
 audit records the first failure per character; these counts describe affected
 characters, not an exhaustive list of bad rows. A script/correction guard can
 mean that compatibility has not been reviewed; it does not prove corrupt data.
+Use the script inventory to review bindings hidden behind earlier failures
+without repeatedly running preflight to discover one more stored script.
+Print unresolved bindings from the saved JSON (replace the path):
+
+```bash
+python3 - /path/to/report/spell-script-review.json <<'PY'
+import json, sys
+report = json.load(open(sys.argv[1]))
+print('inventory_status:', report['status'])
+for row in report['bindings']:
+    if row['status'] == 'REVIEW_REQUIRED':
+        print(row['core'], row['spell'], row['script'], row['stored_characters'],
+              row['talent_characters'], row['reason_code'], sep='\t')
+PY
+```
+
 Rank disagreements report both predecessor prefixes. Unowned spell reports
 include stored flags, rank root and selected ranks from the same talent family,
 so disabled history can be distinguished from an unexplained enabled grant.

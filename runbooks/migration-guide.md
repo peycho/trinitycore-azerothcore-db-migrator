@@ -348,6 +348,11 @@ the first blocker per character; inspect representative rows using the
 [blocker review instructions](spell-reconstruction.md#checkpoints-evidence-and-validation)
 before another preflight attempt. Unreviewed script/correction behavior is not
 automatically corrupt source data.
+Also inspect `spell-script-review.json`: it inventories every binding on stored
+spell and selected talent IDs, even when an earlier character error hides it.
+Require inventory status `COMPLETE`; its per-binding reviews do not approve
+ownership or cleanup and exclude derived-only IDs. Review unresolved bindings
+from this saved file before rerunning a long preflight.
 
 If preflight fails, use the [problem table](#problems-and-evidence) below.
 For source changes, fix only an explicitly reviewed staging preparation copy

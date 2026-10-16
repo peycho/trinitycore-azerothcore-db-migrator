@@ -28,7 +28,8 @@ REVIEWED_ENCOUNTER_SCRIPTS = {
     'src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp': {
         'spell_murmur_sonic_boom','spell_murmur_sonic_boom_effect'},
     'src/server/scripts/Outland/BlackTemple/boss_teron_gorefiend.cpp': {
-        'spell_teron_gorefiend_shadow_of_death'},
+        'spell_teron_gorefiend_shadow_of_death',
+        'spell_teron_gorefiend_shadowy_construct'},
 }
 REVIEWED_CORE_SCRIPTS = {
     'tc': {'src/server/scripts/EasternKingdoms/ScarletEnclave/chapter1.cpp': {

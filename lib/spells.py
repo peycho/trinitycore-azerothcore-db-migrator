@@ -6,7 +6,7 @@ statements are executed here; generated control/target SQL is executed by the
 transactional Bash loader. Character rows are streamed in GUID order.
 """
 import argparse
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 import hashlib
 import itertools
 import json
@@ -344,31 +344,38 @@ class Metadata:
             effect = record[71 + int(index)]
             if name == 'Effect' or effect in (LEARN, SKILL, SKILL_STEP, DUAL_WIELD, 65) or (effect == 6 and name == 'ApplyAuraName'):
                 reject('UNSUPPORTED_CORE_CORRECTION', f'{self.core}: {spell}: {field}')
-        for name in self.scripts[spell]:
-            if name in self.aura_talent_scripts:
-                rule = self.aura_talent_scripts[name]
-                entry = rule['parents'].get(str(spell),{})
-                helper = self.spells.get(entry.get('child'),[])
-                if (not entry or spell not in self.talents or self.talents[spell][1] != entry['rank']
-                        or record[71:74] != rule['effects'] or record[95] != rule['aura']
-                        or not record[4] & PASSIVE or record[12] or record[20]
-                        or not helper or entry['child'] in self.talents
-                        or helper[71:74] != rule['helper_effects'] or helper[95] != rule['helper_aura']
-                        or helper[12] != rule['helper_stances'] or helper[20]
-                        or helper[4] & (PASSIVE|HIDDEN) != HIDDEN):
-                    reject('UNSUPPORTED_TALENT_AURA_SCRIPT',f'{self.core}: {spell}: {name}')
-            elif self.script_policy.get(name) != 'NO_SPELLBOOK_MUTATION':
-                rule = self.cast_only_scripts.get(name,{})
-                skill = rule.get('spell_skills',{}).get(str(spell))
-                # Both native loaders leave this exact non-passive research
-                # spell uncast. Passive/stance, talent and teaching variants
-                # require a separate review even if they use the same script.
-                if (not skill or spell in self.talents or record[4] & PASSIVE
-                        or (record[4] & HIDDEN and record[12])
-                        or record[71:74] != rule.get('effects')
-                        or self.stores['SkillLine'].get(skill,[0,0])[1] != 11
-                        or not any(row[1] == skill for row in self.abilities[spell])):
-                    reject('UNSUPPORTED_LEARNING_SCRIPT', f'{self.core}: {spell}: {name}')
+        for name in sorted(self.scripts[spell]):
+            self.check_script(spell, name)
+
+    def check_script(self, spell, name):
+        """One binding's metadata contract, independent of character ownership."""
+        if spell not in self.spells:
+            reject('UNKNOWN_SPELL_ID', f'{self.core}: {spell}')
+        record = self.spells[spell]
+        if name in self.aura_talent_scripts:
+            rule = self.aura_talent_scripts[name]
+            entry = rule['parents'].get(str(spell),{})
+            helper = self.spells.get(entry.get('child'),[])
+            if (not entry or spell not in self.talents or self.talents[spell][1] != entry['rank']
+                    or record[71:74] != rule['effects'] or record[95] != rule['aura']
+                    or not record[4] & PASSIVE or record[12] or record[20]
+                    or not helper or entry['child'] in self.talents
+                    or helper[71:74] != rule['helper_effects'] or helper[95] != rule['helper_aura']
+                    or helper[12] != rule['helper_stances'] or helper[20]
+                    or helper[4] & (PASSIVE|HIDDEN) != HIDDEN):
+                reject('UNSUPPORTED_TALENT_AURA_SCRIPT',f'{self.core}: {spell}: {name}')
+        elif self.script_policy.get(name) != 'NO_SPELLBOOK_MUTATION':
+            rule = self.cast_only_scripts.get(name,{})
+            skill = rule.get('spell_skills',{}).get(str(spell))
+            # Both native loaders leave this exact non-passive research
+            # spell uncast. Passive/stance, talent and teaching variants
+            # require a separate review even if they use the same script.
+            if (not skill or spell in self.talents or record[4] & PASSIVE
+                    or (record[4] & HIDDEN and record[12])
+                    or record[71:74] != rule.get('effects')
+                    or self.stores['SkillLine'].get(skill,[0,0])[1] != 11
+                    or not any(row[1] == skill for row in self.abilities[spell])):
+                reject('UNSUPPORTED_LEARNING_SCRIPT', f'{self.core}: {spell}: {name}')
 
     def skill_effect(self, spell):
         record = self.spells[spell]
@@ -381,6 +388,28 @@ class Metadata:
             if record[71 + i] == DUAL_WIELD:
                 return 118, 1, 1, 1
         return None
+
+
+def script_review(metadata, stored_counts, talent_counts):
+    """Inventory every binding on stored/selected IDs, including later failures.
+
+    This is not a grant set or a source cleanup selection. Counts are per
+    character, with selected groups merged. Derived-only IDs are outside scope.
+    """
+    rows = []
+    for core in sorted(metadata, key=lambda item: item.core):
+        for spell in sorted(stored_counts.keys() | talent_counts.keys()):
+            for name in sorted(core.scripts.get(spell, ())):
+                row = {'core': core.core, 'spell': spell, 'script': name,
+                       'stored_characters': stored_counts[spell],
+                       'talent_characters': talent_counts[spell],
+                       'status': 'REVIEWED', 'reason_code': '', 'detail': ''}
+                try:
+                    core.check_script(spell, name)
+                except Unsupported as error:
+                    row.update(status='REVIEW_REQUIRED', reason_code=error.reason, detail=str(error))
+                rows.append(row)
+    return rows
 
 
 def assert_acyclic(metadata, seeds):
@@ -890,6 +919,13 @@ def main(args):
     output.mkdir(parents=True, exist_ok=True)
     blockers = output / 'spell-state-blockers.tsv'
     blockers.write_text('guid\tspell\treason_code\tdetail\n')
+    review_path = output / 'spell-script-review.json'
+    review = {'status': 'INCOMPLETE',
+              'scope': 'Bindings on stored spell and selected talent IDs of existing source characters; '
+                       'excludes derived-only IDs; metadata contract only, not ownership or cleanup approval',
+              'bindings': []}
+    review_path.write_text(json.dumps(review, indent=2, sort_keys=True) + '\n')
+    stored_counts, talent_counts = Counter(), Counter()
     metadata = None
     expected_hasher = hashlib.sha256()
     expected_sql = output / 'spell-expected.sql'
@@ -914,6 +950,8 @@ def main(args):
                 # These rows are already covered by target orphan policy.
                 # No unverifiable spell grant is made for a nonexistent player.
                 continue
+            stored_counts.update(stored.keys())
+            talent_counts.update(talents.keys())
             try:
                 if metadata is None:
                     if not args.source_world or not args.target_world or not args.tc_dbc or not args.ac_dbc:
@@ -953,6 +991,9 @@ def main(args):
             fingerprints.update(core.hashes)
     input_hash = digest(canonical(fingerprints))
     expected_hash = expected_hasher.hexdigest()
+    review.update(status='COMPLETE', input_sha256=input_hash,
+                  bindings=script_review(metadata or (), stored_counts, talent_counts))
+    review_path.write_text(json.dumps(review, indent=2, sort_keys=True) + '\n')
     (output / 'spell-fingerprints.tsv').write_text('input\tsha256\n' + ''.join(f'{key}\t{value}\n' for key, value in sorted(fingerprints.items())))
     (output / 'spell-digests.tsv').write_text(f'{input_hash}\t{expected_hash}\n')
     if len(blockers.read_text().splitlines()) > 1:

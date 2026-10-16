@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Semantic regressions using synthetic WDBC assets and explicit expectations."""
 import copy
+from collections import Counter
+from types import SimpleNamespace
+from unittest import mock
 import importlib.util
 import json
 import os
@@ -13,7 +16,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'lib'))
-from spells import Database, Metadata, Unsupported, read_dbc, reconstruct
+from spells import Database, Metadata, Unsupported, read_dbc, reconstruct, script_review, main
 spec = importlib.util.spec_from_file_location('fixtures',ROOT/'tests/spell-fixtures.py')
 fixtures = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixtures)
@@ -36,7 +39,8 @@ class World:
         rows=list(self.tables.get(table,[]))
         if table=='spell_script_names':
             rows += ([['7744','spell_wotf_shared_cd'],['37377','spell_warl_t4_2p_bonus_shadow']]
-                     if world=='tc' else [['40081','spell_black_template_free_friend']])
+                     if world=='tc' else [['40081','spell_black_template_free_friend'],
+                                      ['40326','spell_teron_gorefiend_shadowy_construct']])
         if world=='ac' and table=='spell_ranks':
             rows += [['44440','44440','1'],['44440','44441','2']]
         return sorted(rows,key=lambda row:int(row[0]))
@@ -182,6 +186,8 @@ prepare_spell_snapshot capture
             self.assertIn('compatibility could not be established', wrapper.stderr)
             self.assertNotIn('Spell state is incompatible', wrapper.stderr)
             self.assertTrue((root/'reports/fixture/spell-metadata-errors.tsv').exists())
+            self.assertEqual(json.loads((root/'reports/fixture/spell-script-review.json').read_text())['status'],
+                             'INCOMPLETE')
             queries = (root/'reports/queries').read_text()
             self.assertNotIn('migration_reject', queries)
             self.assertNotIn('spell_expected', queries)
@@ -210,7 +216,7 @@ class SpellTests(unittest.TestCase):
         self.assertEqual(error.exception.reason,reason)
 
     def test_remaining_nonlearning_script_bindings_preserve_only_known_spells(self):
-        for spell in (7744,37377,40081):
+        for spell in (7744,37377,40081,40326):
             skills={220:(1,1)} if spell==7744 else {}
             for reverse in (False,True):
                 result=self.convert({spell:(3,) if reverse else (1,0)},skills=skills,cls=1,race=5,reverse=reverse)
@@ -221,12 +227,58 @@ class SpellTests(unittest.TestCase):
         self.fails('AC_WOULD_DELETE_SPELL',lambda:self.convert({7744:(1,0)},skills={220:(1,1)},cls=1,race=1))
         for metadata,spell,name in [(self.tc,7744,'spell_wotf_shared_cd'),
                                     (self.tc,37377,'spell_warl_t4_2p_bonus_shadow'),
-                                    (self.ac,40081,'spell_black_template_free_friend')]:
+                                    (self.ac,40081,'spell_black_template_free_friend'),
+                                    (self.ac,40326,'spell_teron_gorefiend_shadowy_construct')]:
             self.assertEqual(metadata.script_policy[name],'NO_SPELLBOOK_MUTATION')
             altered=copy.deepcopy(metadata)
             altered.scripts[spell].add('spell_unreviewed_template')
             self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:altered.check_spell(spell))
         self.assertNotIn('spell_black_template_harpooners_mark_aura',self.ac.script_policy)
+
+    def test_script_inventory_covers_each_binding_despite_earlier_ownership_failure(self):
+        tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+        ac.scripts[40081].update({'unreviewed_one','unreviewed_two'})
+        tc.scripts[40081].add('unreviewed_three')
+        ac.correction_guards[40081].append('visibility')
+        stored=Counter({40326:2,40081:1})
+        talents=Counter({33873:1})
+        rows=script_review((tc,ac),stored,talents)
+        guards=[row for row in rows if row['status']=='REVIEW_REQUIRED']
+        self.assertEqual({row['script'] for row in guards},
+                         {'unreviewed_one','unreviewed_two','unreviewed_three'})
+        self.assertTrue(all(row['reason_code']=='UNSUPPORTED_LEARNING_SCRIPT' for row in guards))
+        self.assertEqual(rows,script_review((ac,tc),stored,talents))
+        self.assertFalse(any(row['spell']==7744 for row in rows))
+        with tempfile.TemporaryDirectory() as directory:
+            args=SimpleNamespace(mysql=[], profile=str(ROOT/'compatibility/tc335-acwotlk-v2/spell-metadata.json'),
+                output=directory,source_characters='chars',source_world='tc',target_world='ac',
+                tc_dbc='unused',ac_dbc='unused',direction='tc-to-ac',control='control',run_id='fixture')
+            records=[['1','0','1','1','0','2'],['1','1','130','1','0','0'],
+                     ['1','3','40081','1','0','0'],['1','3','40326','1','0','0'],
+                     ['2','0','1','1','0','2'],['2','1','33873','1','0','0'],
+                     ['2','1','33873','2','0','0'],['2','3','40326','1','0','0'],
+                     ['3','3','7744','1','0','0']]
+            with mock.patch('spells.Database',return_value=SimpleNamespace(fingerprints={})), \
+                 mock.patch('spells.Metadata',side_effect=lambda core,*unused:tc if core=='tc' else ac), \
+                 mock.patch('spells.character_rows',return_value=iter(records)):
+                self.assertEqual(main(args),1)
+            report=json.loads((Path(directory)/'spell-script-review.json').read_text())
+            self.assertEqual(report['status'],'COMPLETE')
+            self.assertEqual(report['bindings'],rows)
+            self.assertEqual(len(report['input_sha256']),64)
+            self.assertIn('INVALID_TALENT_OWNERSHIP',(Path(directory)/'spell-state-blockers.tsv').read_text())
+            self.assertEqual((Path(directory)/'spell-expected.sql').read_text(),'')
+
+    def test_shadowy_construct_regression_and_unsafe_encounter_boundary(self):
+        ac=copy.deepcopy(self.ac)
+        del ac.script_policy['spell_teron_gorefiend_shadowy_construct']
+        self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:self.convert({40326:(1,0)},ac=ac,skills={}))
+        self.assertNotIn('spell_teron_gorefiend_shadowy_construct',self.tc.script_policy)
+        self.assertNotIn('spell_teron_gorefiend_shadow_of_death_remove',self.ac.script_policy)
+        self.fails('UNREPRESENTABLE_DISABLED_SPELL',lambda:self.convert({40326:(1,1)},skills={}))
+        ac=copy.deepcopy(self.ac)
+        ac.scripts[40326].add('spell_teron_gorefiend_shadow_of_death_remove')
+        self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:self.convert({40326:(1,0)},ac=ac,skills={}))
 
     def test_highest_only_regression_and_no_higher_grant(self):
         for index,chain in enumerate(fixtures.CHAINS[:7]):
