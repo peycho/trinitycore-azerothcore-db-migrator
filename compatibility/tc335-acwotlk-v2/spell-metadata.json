@@ -1,4 +1,34 @@
 {
+  "cast_only_scripts": {
+    "ac": {
+      "spell_gen_profession_research": {
+        "effects": [
+          157,
+          77,
+          0
+        ],
+        "spell_skills": {
+          "60893": 171,
+          "61177": 773,
+          "61288": 773
+        }
+      }
+    },
+    "tc": {
+      "spell_gen_profession_research": {
+        "effects": [
+          157,
+          77,
+          0
+        ],
+        "spell_skills": {
+          "60893": 171,
+          "61177": 773,
+          "61288": 773
+        }
+      }
+    }
+  },
   "corrections": {
     "ac": {
       "guards": [

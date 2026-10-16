@@ -15,7 +15,7 @@ import struct
 import subprocess
 import sys
 
-POLICY = 'spell-state-v1'
+POLICY = 'spell-state-v2'
 LEARN, SKILL, SKILL_STEP, DUAL_WIELD = 36, 118, 44, 40
 PASSIVE, HIDDEN = 0x40, 0x80
 
@@ -252,6 +252,23 @@ class Metadata:
             for child, _, _ in self.effect_learns[talent]:
                 if child in self.position and not self.spells[child][4] & (PASSIVE | HIDDEN):
                     self.additional.add(child)
+        # Classify ownership from the complete catalog, independently of the
+        # character's selections. Otherwise an unselected hidden talent child
+        # can incorrectly fall through to the ordinary mask-3 policy.
+        self.talent_learn_owners = defaultdict(set)
+        for owner in self.talents:
+            pending,visited = deque([owner]),set()
+            while pending:
+                parent = pending.popleft()
+                if parent in visited:
+                    continue
+                visited.add(parent)
+                pet_children = {self.spells[parent][116+i] for i in range(3)
+                                if self.spells[parent][71+i] == LEARN and self.spells[parent][86+i] == 5}
+                children = {row[0] for row in self.effect_learns[parent] + self.learns[parent]} - pet_children
+                for child in children:
+                    self.talent_learn_owners[child].add(owner)
+                    pending.append(child)
         for spell, prerequisites in self.requires.items():
             if any(parent in self.talents for parent in prerequisites):
                 self.additional.add(spell)
@@ -269,6 +286,7 @@ class Metadata:
             else:
                 self.scripts[spell].add(name)
         self.script_policy = profile.get('scripts', {}).get(core, {})
+        self.cast_only_scripts = profile.get('cast_only_scripts', {}).get(core, {})
         # World custom attributes can change the TC AutoLearned classification.
         custom_columns = ['entry', 'attributes'] if core == 'tc' else ['spell_id', 'attributes']
         for spell, attributes in db.table(world, 'spell_custom_attr', custom_columns):
@@ -321,7 +339,17 @@ class Metadata:
                 reject('UNSUPPORTED_CORE_CORRECTION', f'{self.core}: {spell}: {field}')
         for name in self.scripts[spell]:
             if self.script_policy.get(name) != 'NO_SPELLBOOK_MUTATION':
-                reject('UNSUPPORTED_LEARNING_SCRIPT', f'{self.core}: {spell}: {name}')
+                rule = self.cast_only_scripts.get(name,{})
+                skill = rule.get('spell_skills',{}).get(str(spell))
+                # Both native loaders leave this exact non-passive research
+                # spell uncast. Passive/stance, talent and teaching variants
+                # require a separate review even if they use the same script.
+                if (not skill or spell in self.talents or record[4] & PASSIVE
+                        or (record[4] & HIDDEN and record[12])
+                        or record[71:74] != rule.get('effects')
+                        or self.stores['SkillLine'].get(skill,[0,0])[1] != 11
+                        or not any(row[1] == skill for row in self.abilities[spell])):
+                    reject('UNSUPPORTED_LEARNING_SCRIPT', f'{self.core}: {spell}: {name}')
 
     def skill_effect(self, spell):
         record = self.spells[spell]
@@ -419,7 +447,8 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
                          and bool(tc.spells[spell][4] & (PASSIVE | HIDDEN)))
         if source_prefix != target_prefix and not runtime_exact:
             reject('INCOMPATIBLE_SPELL_CHAIN',
-                   f'{spell}: tc_predecessors={source_prefix}; ac_predecessors={target_prefix}')
+                   f'{spell}: tc_predecessors={source_prefix}; ac_predecessors={target_prefix}; '
+                   f'stored_flags={stored.get(spell)}; selected_learn_owners={sorted(authorization_owners.get(spell,{}).items())}')
         if (spell in tc.talents) != (spell in ac.talents):
             reject('INCOMPATIBLE_TALENT_CLASSIFICATION', str(spell))
         if tc.skill_effect(spell) != ac.skill_effect(spell):
@@ -441,17 +470,27 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
         authorization[spell] |= new
         authorization_owners[spell][owner] = authorization_owners[spell].get(owner,0) | new
         for child, _, _ in tc.effect_learns[spell]:
+            if any(tc.spells[spell][71+i] == LEARN and tc.spells[spell][116+i] == child
+                   and tc.spells[spell][86+i] == 5 for i in range(3)):
+                continue
             queue.append((child, new, owner))
+    def talent_restricted(spell, include_requirements=True):
+        return any(spell in metadata.talents or metadata.first(spell) in metadata.talents
+                   or metadata.talent_learn_owners.get(spell)
+                   or metadata.talent_learn_owners.get(metadata.first(spell))
+                   or (include_requirements and (spell in metadata.additional
+                                                or metadata.first(spell) in metadata.additional))
+                   for metadata in (tc,ac))
     def eligible(spell):
         root = tc.first(spell)
         if spell in tc.talents:
-            return owners[spell]
+            return owners.get(spell,0)
         mask = authorization.get(root, 0) or authorization.get(spell, 0)
         dependencies = tc.requires[spell] | ac.requires[spell]
         if dependencies:
             required_mask = 3
             for prerequisite in dependencies:
-                if prerequisite in tc.talents or authorization.get(tc.first(prerequisite), 0):
+                if talent_restricted(prerequisite):
                     required_mask &= authorization.get(prerequisite, 0) or authorization.get(tc.first(prerequisite), 0)
                 else:
                     # A prerequisite may be a trained spell, but it may not
@@ -459,8 +498,12 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
                     # TC may persist only a higher rank of this prerequisite.
                     # Count its verified known prefix, not just stored rows.
                     required_mask &= 3 if prerequisite in known_rank_prefix else 0
-            mask = (mask or 3) & required_mask
-        talent_based = root in tc.talents or root in ac.additional or spell in ac.additional or bool(authorization.get(root, 0))
+            # A talent requirement can itself authorize an otherwise ordinary
+            # spell. Ordinary prerequisites cannot authorize an unowned talent
+            # or learned child just because they are known.
+            fallback = 0 if talent_restricted(spell,include_requirements=False) else 3
+            mask = (mask or fallback) & required_mask
+        talent_based = talent_restricted(spell)
         return mask if talent_based or dependencies else 3
 
     known_rank_prefix = set(stored)
@@ -480,6 +523,11 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
         mask &= allowed
         if not mask:
             reject('UNAUTHORIZED_TALENT_SPELL', f'{spell}: anchor={anchor}')
+        for metadata in (tc,ac):
+            for script in metadata.scripts[spell]:
+                skill = metadata.cast_only_scripts.get(script,{}).get('spell_skills',{}).get(str(spell))
+                if skill and (skill not in skills or min(skills[skill]) <= 0):
+                    reject('RESEARCH_SKILL_MISSING',f'{spell}: skill={skill}; existing profession required')
         def race_class_rows(metadata, skill):
             return [r for _, r in sorted(metadata.stores['SkillRaceClassInfo'].items())
                     if r[1] == skill and (not r[2] or r[2] & race_mask) and (not r[3] or r[3] & class_mask)]
@@ -544,8 +592,14 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
             family = tc.talents.get(spell,tc.talents.get(root))
             selected_family = [(s,m) for s,m in sorted(owners.items())
                                if m and family and tc.talents[s][0] == family[0]]
-            reject('UNAUTHORIZED_TALENT_SPELL',
-                   f'{spell}: stored_flags={flags}; rank_root={root}; selected_same_talent={selected_family}; eligible_mask=0')
+            required = tc.requires[spell] | ac.requires[spell]
+            reason = ('UNAUTHORIZED_TALENT_SPELL' if talent_restricted(spell)
+                      or any(talent_restricted(parent) for parent in required)
+                      else 'MISSING_SPELL_PREREQUISITE')
+            reject(reason,
+                   f'{spell}: stored_flags={flags}; rank_root={root}; selected_same_talent={selected_family}; '
+                   f'eligible_mask=0; required_spells={sorted(required)}; '
+                   f'known_prerequisites={sorted(required & known_rank_prefix)}')
         if direction == 'tc-to-ac':
             active, disabled = flags
             if active not in (0, 1) or disabled not in (0, 1):
@@ -631,6 +685,13 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
             'rank_root': tc.first(spell), 'owner_masks': sorted(authorized_by.items()),
             'required_spells': requirements,
         }
+        load_contracts = sorted(
+            (metadata.core,name,'CAST_ONLY_RESEARCH_EXISTING_SKILL',
+             metadata.cast_only_scripts[name]['spell_skills'][str(spell)])
+            for metadata in (tc,ac) for name in metadata.scripts[spell]
+            if str(spell) in metadata.cast_only_scripts.get(name,{}).get('spell_skills',{}))
+        if load_contracts:
+            row['authorization']['load_script_contracts'] = load_contracts
         row['derived'] = spell not in stored
         row['active'] = 1
         row['disabled'] = int(not row['mask'] & (1 << active_group))

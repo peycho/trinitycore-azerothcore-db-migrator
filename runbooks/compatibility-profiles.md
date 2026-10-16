@@ -37,6 +37,9 @@ conservative unsupported-correction guards and native spell-script dispositions.
 Correction operands can also copy a reviewed effect field. Protected spell/aura
 enum definitions resolve constant operands. Script policy follows native named
 registrations and pairs, and protects each explicitly reviewed encounter source.
+Cast-only script contracts are separate from non-mutating classifications.
+They bind reviewed IDs, exact effects and profession skills to verified native
+loader behavior; they do not authorize running those scripts during migration.
 Review these alongside the expanded spell/DBC/trainer readers. Record the full
 revisions and evidence.
 Never replace an existing approved profile's manifests.

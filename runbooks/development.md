@@ -122,6 +122,12 @@ The separate talent consumer harness compiles AC's protected
 `_addTalentAurasAndSpells` with a recording spell-add sink. It verifies Fiery
 Payback's exact child IDs, temporary flags and additional-talent exclusions;
 it does not execute `_addSpell` effects, specialization switching or gameplay.
+A separate research harness compiles the protected TC/AC loader auto-cast
+branches with recording cast sinks. It verifies that the reviewed research
+effects remain uncast and checks passive/stance/skill-step positive controls.
+Spell units and MySQL fixtures cover preserved research rows/skills, required
+professions, provenance, forbidden effect changes and unselected hidden talent
+children. Fiery Payback fixtures use the real `64353`/`64357` talent ranks.
 
 The rehearsal entrypoint first runs a focused wide-metadata regression against
 the same disposable server. It creates its own temporary schema and SELECT-only

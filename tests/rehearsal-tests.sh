@@ -19,6 +19,7 @@ fi
 # shellcheck source=tests/test-support.sh
 source "$ROOT/tests/test-support.sh"
 python3 "$ROOT/tests/talent-runtime-tests.py" "$AZEROTHCORE_DIR"
+python3 "$ROOT/tests/research-load-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/spell-metadata-tests.py"
 python3 "$ROOT/tests/source-audit-mysql-tests.py"
 python3 "$ROOT/tests/talent-cleanup-mysql-tests.py"

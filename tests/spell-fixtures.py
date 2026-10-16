@@ -36,8 +36,8 @@ def stores(profile):
             row[71] = 10
     for spell in [6603,12282,12663,12664,12300,12301,12296,5209,38795,53407,34074,
                   51466,51470,54347,54348,54349,20911,25899,900000,900010,900011,900012,
-                  38796,53736,40251,51726,64356,64357,44440,44441,64348,64349,
-                  37116,37117,16958,16961]:
+                  38796,53736,40251,51726,64353,64357,44440,44441,64350,64349,
+                  37116,37117,16958,16961,12308,12810,12811,60893,61177,61288]:
         row = record('Spell', spell)
         row[71] = 3
     # Match the stock class skill associations and relevant effect/family
@@ -68,8 +68,9 @@ def stores(profile):
         (3,2,[20473],1),(4,5,[34914],1),(5,9,[17877],1),(6,2,[20911],1),
         (7,5,[900000],0),
         (137,1,[12296],0),
+        (146,1,[12308,12810,12811],0),
         (2049,7,[51466,51470],0),(1882,9,[54347,54348,54349],0),
-        (2001,8,[64356,64357],0),(2002,11,[37116,37117],0),
+        (2001,8,[64353,64357],0),(2002,11,[37116,37117],0),
     ]:
         tab = record('TalentTab', ident)
         tab[20] = 1 << (cls-1)
@@ -89,7 +90,7 @@ def stores(profile):
         data['Spell'][spell][95],data['Spell'][spell][86] = 4,1
     # Native hidden/passive children of Fiery Payback and Primal Fury.
     # Fiery Payback has an AC-only child rank chain; Primal Fury has one in TC too.
-    for owner,children in [(64356,[44440,64348]),(64357,[44441,64349]),
+    for owner,children in [(64353,[44440,64350]),(64357,[44441,64349]),
                            (37116,[16958]),(37117,[16961])]:
         data['Spell'][owner][71:74]=[0,0,0]
         for index,child in enumerate(children):
@@ -116,6 +117,12 @@ def stores(profile):
             ability = record('SkillLineAbility', spell)
             ability[1],ability[2] = skill,spell
             tier[16+step] = step*75
+    record('SkillLine',773)[1]=11
+    record('SkillRaceClassInfo',773)[1]=773
+    for spell,skill in [(60893,171),(61177,773),(61288,773)]:
+        data['Spell'][spell][71:74]=[157,77,0]
+        ability=record('SkillLineAbility',spell)
+        ability[1],ability[2]=skill,spell
     return data
 
 
@@ -149,7 +156,8 @@ def seed_worlds(sql, tc, ac, tc_world, ac_world, profile):
         sql('INSERT INTO spell_required VALUES (25899,20911),(5209,5487)',world)
         sql("INSERT INTO spell_script_names VALUES (38795,'spell_murmur_sonic_boom_effect'),"
             "(53407,'spell_pal_judgement_of_justice'),(53736,'spell_pal_seal_of_corruption'),"
-            "(40251,'spell_teron_gorefiend_shadow_of_death')",world)
+            "(40251,'spell_teron_gorefiend_shadow_of_death'),"
+            "(60893,'spell_gen_profession_research')",world)
         sql('INSERT INTO spell_custom_attr VALUES (6603,0)',world)
     sql('CREATE TABLE spell_learn_spell (entry INT,SpellID INT,Active TINYINT);'
         'INSERT INTO spell_learn_spell VALUES (900011,900012,1)',tc_world)

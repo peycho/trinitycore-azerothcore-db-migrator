@@ -230,3 +230,65 @@ Staging gameplay acceptance for this amendment:
 | Switch both specs and relog in each; verify talent ownership and availability | NOT TESTED |
 | Compare talent points, profession slots, recipes, riding tier, skill values and caps | NOT TESTED |
 | Save, relog and restart AC; repeat checks and inspect spell-deletion/skill-correction logs | NOT TESTED |
+
+## Research and talent-child follow-up, 2026-10-16
+
+`spell-state-v2` uses the complete talent learn catalog to classify dependent
+spells before considering a character's selected ownership. This closes an
+ordinary-mask fallthrough for unselected hidden/passive talent children. It
+adds no ownership and continues blocking disabled unowned history. Pet-target
+teaching is excluded from player authorization. Missing ordinary prerequisites
+now report `MISSING_SPELL_PREREQUISITE`; research without its existing profession
+reports `RESEARCH_SKILL_MISSING`. Rank mismatch evidence includes stored flags
+and selected learned-spell owners.
+
+The earlier analysis relating `12296` to selected `12308` was incorrect:
+Talent.dbc has talent 137 containing only `12296`, while talent 146 contains
+`12308`, `12810`, `12811`. Their ownership is separate. Fiery Payback fixtures
+also incorrectly used `64356`/`64348` for rank one; they now use actual talent
+`64353`, learning `44440` and `64350`. Rank two remains `64357`, learning
+`44441` and `64349`. Tests retain both active/inactive-spec ownership and
+unselected disabled-history boundaries. These corrections do not change the
+source character's selections or grant historical children.
+
+The protected generic script files match the retained TC/AC pins and AC staging
+`f089543d...` byte for byte. The reviewed profession research handler mutates
+recipes when cast. It is not relabeled as non-mutating. A separate contract
+accepts only existing research spells `60893`, `61177`, `61288` with exact
+`[157,77,0]` effects and the matching existing Alchemy/Inscription skill. Both
+native loader cast branches leave these spells uncast; migration derives no
+recipes or skill changes. Unknown attached IDs, passive/stance variants and
+teaching/effect changes remain blocked. TC/AC future research outcomes differ
+as documented in the spell runbook; this change preserves the current known
+recipe set. Profiles and native C++ remain otherwise unchanged.
+
+Profile approval remains **UNREVIEWED**. Changed policy/profile/toolkit hashes
+require a fresh migration toolkit, target/control schemas and run. Existing
+staging/production databases and source cleanup archives are not repaired.
+All five staging gameplay acceptance checks above remain **NOT TESTED**. Add
+research login/relog recipe preservation and a representative native AC research
+cast to staging checks. Production-sized acceptance remains pending.
+
+The operator's actual worlds confirm an AC-only requirement `779 -> 5487`,
+with no TC requirement for `779`. The ordinary-prerequisite diagnostic now
+identifies that boundary without calling it a corrupt talent or granting Bear
+Form. The conservative block remains. Source review also rejects a blanket
+zero-mask repair for temporary children: AC's existing-row `_addSpell` branch
+does not change their persistent state to temporary, and its temporary-only
+removal then retains them. No historical rows are activated or removed here.
+
+Follow-up validation passed with the final implementation: 81 unit tests,
+ShellCheck and static/profile checks, and the complete disposable MySQL 8.4.10
+bidirectional rehearsal. Forward/reverse validation, interruption/resume,
+reruns, rollback, malformed relationships, same-count drift and unrelated-data
+preservation passed. The cleanup rehearsal also passed 21 invalid-talent,
+21 pending-reset and 15 console check groups. All 87 frozen runtime/profile/test
+files matched the implementation after the final rehearsal.
+
+The isolated C++ harness compiled protected native loader cast branches and
+verified that all three research spells remain uncast during loading, with
+passive/stance/skill-step positive controls. The corrected protected AC talent
+consumer also passed its mocked-state checks. These checks do not execute a
+worldserver or certify gameplay. Read-only checks against the supplied DBCs
+confirmed the corrected talent identities and AC-only prerequisite diagnostic;
+their limited world fixtures do not certify the full operator databases.

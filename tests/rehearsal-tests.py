@@ -242,6 +242,20 @@ def assert_ready(values):
         equal(f"SELECT removed_rows FROM `{control}`.cleanup_table_summary WHERE table_name='{table}'", expected_removed)
 
 
+def spell_guard(reason,edit,restore):
+    original_inputs = snapshot(AUTH,CHARS,WORLD,AC_WORLD)
+    cfg,values = config('tc-to-ac','-spell-guard')
+    sql(edit)
+    try:
+        library(cfg,'initialize_control_schema\nprepare_spell_snapshot capture','Spell state is incompatible')
+        report = TOOLKIT/'reports'/values['MIGRATION_RUN_ID']/'spell-state-blockers.tsv'
+        assert reason in report.read_text(),report.read_text()
+        equal(f"SELECT COUNT(*) FROM `{FC}`.spell_input_snapshot WHERE run_id='{values['MIGRATION_RUN_ID']}'",0)
+    finally:
+        sql(restore)
+    assert snapshot(AUTH,CHARS,WORLD,AC_WORLD)==original_inputs,'Spell guard modified an input'
+
+
 def main():
     global OWNED_USER
     server_version = sql('SELECT @@version')
@@ -283,6 +297,13 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     sql("INSERT INTO corpse (guid,itemCache,corpseType) VALUES (100,CONCAT(REPEAT('0 ',19)),1)", CHARS)
     sql("UPDATE item_instance SET charges='1 2 3 4 5 ',enchantments=REPEAT('0 ',36) WHERE guid=200", CHARS)
     sql("INSERT INTO guild_bank_item (guildid,TabId,SlotId,item_guid) VALUES (940,0,0,201)", CHARS)
+    print('Checking research and hidden talent-child blockers',flush=True)
+    spell_guard('UNAUTHORIZED_TALENT_SPELL',
+        f'INSERT INTO `{CHARS}`.character_spell VALUES (113,900010,1,1)',
+        f'DELETE FROM `{CHARS}`.character_spell WHERE guid=113 AND spell=900010')
+    spell_guard('RESEARCH_SKILL_MISSING',
+        f'INSERT INTO `{CHARS}`.character_spell VALUES (114,60893,1,0)',
+        f'DELETE FROM `{CHARS}`.character_spell WHERE guid=114 AND spell=60893')
     print('Checking representation boundaries', flush=True)
     for length in (16, 17, 18, 32, 33, 64):
         sql(f"UPDATE account SET username=REPEAT('A',{length}) WHERE id=1", AUTH)
@@ -358,6 +379,9 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=114',13)
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=115 AND spell IN (5209,5487,9634) AND specMask=3',3)
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=38795',3)
+    equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=60893',3)
+    equal(f"SELECT JSON_LENGTH(JSON_EXTRACT(provenance,'$.authorization.load_script_contracts')) "
+          f"FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=113 AND spell=60893",2)
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=113 '
           'AND spell IN (38796,53736,40251,51726) AND specMask=3',4)
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=118 AND spell IN (44440,44441)',0)
@@ -456,18 +480,6 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
         phase(reverse, name)
     assert snapshot(TC_AUTH, TC_CHARS) == after_reverse, 'Reverse rerun changed data or DDL'
     print('Checking spell blockers and immutable-input guards',flush=True)
-    def spell_guard(reason,edit,restore):
-        original_inputs = snapshot(AUTH,CHARS,WORLD,AC_WORLD)
-        cfg,values = config('tc-to-ac','-spell-guard')
-        sql(edit)
-        try:
-            library(cfg,'initialize_control_schema\nprepare_spell_snapshot capture','Spell state is incompatible')
-            report = TOOLKIT/'reports'/values['MIGRATION_RUN_ID']/'spell-state-blockers.tsv'
-            assert reason in report.read_text(),report.read_text()
-            equal(f"SELECT COUNT(*) FROM `{FC}`.spell_input_snapshot WHERE run_id='{values['MIGRATION_RUN_ID']}'",0)
-        finally:
-            sql(restore)
-        assert snapshot(AUTH,CHARS,WORLD,AC_WORLD)==original_inputs,'Spell guard modified an input'
     spell_guard('UNREPRESENTABLE_DISABLED_SPELL',
         f'UPDATE `{CHARS}`.character_spell SET disabled=1 WHERE guid=110 AND spell=48782',
         f'UPDATE `{CHARS}`.character_spell SET disabled=0 WHERE guid=110 AND spell=48782')

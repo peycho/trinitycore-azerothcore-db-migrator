@@ -81,6 +81,7 @@ schemas and run ID; do not replace code underneath an existing run.
 | Talent-unlocked trained ranks | Apply verified owner masks and intersect prerequisite eligibility; never infer untrained higher ranks |
 | Direct talent ranks | Keep existing selections; never grant preceding talent ranks; follow AC's `addToSpellBook` marker |
 | Native temporary talent spells | Record runtime ownership; omit persistent rows that would outlive the owning talent |
+| Known non-passive profession research | Preserve only reviewed research IDs with matching existing professions and exact load-safe effects; never execute research or infer recipes |
 | Hidden/passive runtime child with an AC-only predecessor prefix | Delegate only the exact authorized learned child to native AC talent loading when TC has no predecessor obligation. Do not persist the child or grant target-only predecessors. |
 | TC dependent learned spells | Reconstruct only verified native-compatible dependencies; unsupported world-only learning relationships block |
 | Profession/riding tiers | Preserve existing skill lines, values and caps; block missing skills, incompatible effects or cap/value increases |
@@ -89,6 +90,9 @@ schemas and run ID; do not replace code underneath an existing run.
 
 Talent metadata is an authorization source, not evidence of training additional
 ability ranks. Derived rank traversal ends at the legitimate known anchor.
+Talent-dependent classification uses the complete verified learn catalog, not
+only selected talents. An unselected hidden/passive child must not fall through
+to ordinary mask `3`. Pet-target teaching does not authorize a player child.
 Ordinary prerequisites may be satisfied by a verified predecessor that TC
 would restore from a stored higher rank: for example, stored Dire Bear Form
 `9634` establishes known Bear Form `5487` for Challenging Roar `5209`. Both
@@ -121,6 +125,21 @@ Bounded constant `SpellFamilyFlags[0..2]` corrections are represented explicitly
 including Ebon Plague's word-2 `0x10` assignment. Conditional, dynamic/out-of-range
 and copied indexed accesses remain guarded.
 
+The reviewed `spell_gen_profession_research` remains classified as a script that
+learns spells. A separate cast-only contract accepts known `60893` (Alchemy) and
+`61177`/`61288` (Inscription), with exact effects `[157,77,0]`, the matching DBC
+skill association and an existing positive profession skill. Both protected
+player loaders leave these non-passive, non-talent research spells uncast.
+Passive, hidden-with-stance, teaching/effect changes, other attached IDs and
+missing professions still block. The migration preserves current recipes,
+values, caps and slots; it does not execute discovery, add recipes or update
+crafting skill. Provenance records this load contract and its required skill.
+
+Research casts after migration use native AC behavior. In the reviewed code,
+TC's first Northrend Inscription Research can discover three recipes, while
+AC's handler discovers one and updates crafting skill. Preserving the current
+known recipe set does not emulate TC's future research behavior.
+
 Fiery Payback illustrates a representable runtime-only rank difference: TC may
 have no `44440 -> 44441` chain while AC does. Native AC talent loading adds the
 exact selected talent's learned child with `_addSpell`, without lower-rank
@@ -129,6 +148,10 @@ obligation, it is runtime-owned only; the transform grants no additional rank.
 If TC does require a predecessor, as with Primal Fury's `16958 -> 16961`, the
 temporary-rank guard remains. Do not persist temporary predecessors to work
 around their missing native restoration; they can outlive talent ownership.
+The actual Fiery Payback talent ranks are `64353` and `64357`; their learned
+children are respectively `44440`/`64350` and `44441`/`64349`. Stored disabled
+children without selected ownership retain the blocking policy. Rank mismatch
+reports include original flags and selected learned-spell owners.
 
 The migrator changes no talent selections, skill rows, skill caps or profession
 slots. Profession/riding spell effects are checked against existing skills;
@@ -177,6 +200,18 @@ flag alone does not establish an enabled grant. AC can load/save a zero-mask
 row, but the current conversion contract does not authorize such history. A
 zero-mask policy needs separate review of resets, relearning and reverse
 conversion; accepting the SQL value alone is insufficient.
+In particular, AC's `_addSpell` can enable an existing persistent zero-mask
+row without changing it to `PLAYERSPELL_TEMPORARY`. Its subsequent
+`removeSpell(..., onlyTemporary=true)` refuses to remove that non-temporary
+row. A blanket zero-mask copy of temporary talent children can therefore
+leave a child available after talent removal. This source-review finding does
+not classify every disabled history row as corrupt or every zero-mask use as
+unsafe; trained talent abilities and runtime children need separate policies.
+`MISSING_SPELL_PREREQUISITE` distinguishes an ordinary missing prerequisite
+from talent ownership. Its detail includes required and known prerequisite
+IDs. It grants nothing and remains a blocker, including for historical GM
+spells. `RESEARCH_SKILL_MISSING` likewise blocks research without its existing
+profession instead of adding one.
 
 Use the retained report to review representative failures before another run:
 

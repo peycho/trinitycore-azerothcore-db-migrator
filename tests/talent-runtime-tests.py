@@ -62,12 +62,12 @@ main = r'''
 int main() {
     // Fiery Payback: each selected talent learns only its own exact children.
     // AC's separate 44440 -> 44441 rank catalog must not add a call for 44440.
-    manager.spells[64356].Effects={SpellEffectInfo{36,44440},SpellEffectInfo{36,64348},{}};
+    manager.spells[64353].Effects={SpellEffectInfo{36,44440},SpellEffectInfo{36,64350},{}};
     manager.spells[64357].Effects={SpellEffectInfo{36,44441},SpellEffectInfo{36,64349},{}};
     Player rank1,rank2;
-    rank1._addTalentAurasAndSpells(64356);
+    rank1._addTalentAurasAndSpells(64353);
     rank2._addTalentAurasAndSpells(64357);
-    assert((rank1.added==std::vector<std::tuple<uint32,uint8,bool>>{{44440,3,true},{64348,3,true}}));
+    assert((rank1.added==std::vector<std::tuple<uint32,uint8,bool>>{{44440,3,true},{64350,3,true}}));
     assert((rank2.added==std::vector<std::tuple<uint32,uint8,bool>>{{44441,3,true},{64349,3,true}}));
     assert(rank1.cast.empty() && rank2.cast.empty());
     // Additional talent spells are owned through their persistent mask policy.

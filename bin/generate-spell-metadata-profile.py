@@ -35,6 +35,14 @@ REVIEWED_ENCOUNTER_SCRIPTS = {
 REVIEWED_LEGACY_ALIASES = {
     'spell_pal_seal_of_corruption':'spell_pal_seal_of_vengeance',
 }
+# These protected SpellScript handlers mutate recipes only when explicitly
+# cast. Do not relabel them as non-mutating or accept other attached spell IDs.
+REVIEWED_CAST_ONLY_SCRIPTS = {
+    'spell_gen_profession_research': {
+        'spell_skills': {'60893':171, '61177':773, '61288':773},
+        'effects': [157,77,0],
+    },
+}
 CORRECTION_DEFINITIONS = (
     'src/server/shared/SharedDefines.h',
     'src/server/game/Spells/SpellDefines.h',
@@ -235,6 +243,7 @@ def generate(tc, ac):
                 if scripts.get(name) != 'UNSUPPORTED_SPELLBOOK_MUTATION':
                     scripts[name] = policy
         result['scripts'][core] = scripts
+        result.setdefault('cast_only_scripts',{})[core] = REVIEWED_CAST_ONLY_SCRIPTS
         result['inputs'][core] = {path: hashlib.sha256((repo/path).read_bytes()).hexdigest()
                                   for path in sorted(set(inputs))}
     return result

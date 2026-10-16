@@ -242,6 +242,14 @@ class SpellTests(unittest.TestCase):
     def test_temporary_dependency_and_persistent_additional_ranks(self):
         result = self.convert({900003:(1,0)},{900000:1},cls=5)
         self.assertEqual(result[900010]['disposition'],'RUNTIME')
+        tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+        for metadata in (tc,ac):
+            metadata.requires[900010].add(6603)
+            metadata.requires[48825].add(6603)
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({900010:(1,0),6603:(1,0)},cls=5,tc=tc,ac=ac))
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({48825:(1,0),6603:(1,0)},tc=tc,ac=ac))
+        authorized=self.convert({900010:(1,1),6603:(1,0)},{900000:2},cls=5,tc=tc,ac=ac)
+        self.assertEqual(authorized[900010]['mask'],2)
         self.assertEqual(result[900001]['mask'],1)
         self.assertEqual(result[900000]['disposition'],'TALENT')
         self.assertTrue(all(result[x]['mask']==1 for x in [900001,900002,900003,900010]))
@@ -259,7 +267,7 @@ class SpellTests(unittest.TestCase):
         self.assertTrue(result[5487]['derived'])
         self.assertEqual(result[5487]['proofs'], [[9634,[9634,5487],'LOWER_RANK']])
         self.assertTrue(all(row['mask']==3 for row in result.values()))
-        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({5209:(1,0)},cls=11))
+        self.fails('MISSING_SPELL_PREREQUISITE',lambda:self.convert({5209:(1,0)},cls=11))
         self.fails('UNREPRESENTABLE_DISABLED_SPELL',lambda:self.convert({5209:(1,0),9634:(1,1)},cls=11))
         ac = copy.deepcopy(self.ac)
         ac.position[9634] = (9634,0)
@@ -308,6 +316,9 @@ class SpellTests(unittest.TestCase):
 
     def test_native_runtime_child_does_not_grant_ac_only_predecessor(self):
         for active in (0,1):
+            lower=self.convert({}, {64353:1<<active},cls=8,active=active)
+            self.assertIn(64350,lower)
+            self.assertNotIn(44441,lower)
             result=self.convert({}, {64357:3},cls=8,active=active)
             self.assertEqual(result[44441]['disposition'],'RUNTIME')
             self.assertEqual(result[44441]['mask'],3)
@@ -319,7 +330,56 @@ class SpellTests(unittest.TestCase):
             reverse=self.convert({}, {64357:1<<active},cls=8,active=active,reverse=True)
             self.assertEqual(reverse[44441]['disposition'],'PERSISTENT')
             self.assertNotIn(44440,reverse)
+            disabled=self.convert({44441:(1,1)},{64357:1<<(1-active)},cls=8,active=active)
+            self.assertEqual(disabled[44441]['mask'],1<<(1-active))
+            with self.assertRaises(Unsupported) as error:
+                self.convert({44441:(1,1),64357:(1,1)},cls=8,active=active)
+            self.assertIn('stored_flags=(1, 1); selected_learn_owners=[]',str(error.exception))
         self.fails('INCOMPATIBLE_SPELL_CHAIN',lambda:self.convert({44441:(1,0)},cls=8))
+
+    def test_unselected_hidden_talent_child_is_not_an_ordinary_grant(self):
+        for flags in ((1,0),(1,1),(0,0)):
+            self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({900010:flags},cls=5))
+        result=self.convert({900010:(1,1)},{900000:2},cls=5)
+        self.assertEqual(result[900010]['mask'],2)
+        self.assertEqual(result[900010]['disposition'],'RUNTIME')
+        # 12308 is not a rank of talent 12296 (different Talent.dbc entries).
+        with self.assertRaises(Unsupported) as error:
+            self.convert({12296:(1,1)},{12308:1},cls=1)
+        self.assertIn('selected_same_talent=[]',str(error.exception))
+
+    def test_research_is_preserved_without_discovering_or_changing_skills(self):
+        name='spell_gen_profession_research'
+        for spell,skill in ((60893,171),(61177,773),(61288,773)):
+            tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+            for metadata in (tc,ac):
+                self.assertEqual(metadata.script_policy[name],'UNSUPPORTED_SPELLBOOK_MUTATION')
+                metadata.scripts[spell].add(name)
+            skills={skill:(320,450)}
+            result=self.convert({spell:(1,0)},skills=skills,tc=tc,ac=ac)
+            self.assertEqual(set(result),{spell})
+            self.assertEqual(result[spell]['mask'],3)
+            self.assertEqual(len(result[spell]['authorization']['load_script_contracts']),2)
+            self.assertEqual(skills,{skill:(320,450)})
+            reverse=self.convert({spell:(3,)},skills=skills,tc=tc,ac=ac,reverse=True)
+            self.assertEqual(set(reverse),{spell})
+            self.fails('RESEARCH_SKILL_MISSING',lambda:self.convert({spell:(1,0)},skills={},tc=tc,ac=ac))
+            self.fails('RESEARCH_SKILL_MISSING',lambda:self.convert({spell:(1,0)},skills={skill:(0,450)},tc=tc,ac=ac))
+            altered=copy.deepcopy(ac)
+            altered.stores['SkillLine'][skill][1]=7
+            self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:self.convert({spell:(1,0)},skills=skills,tc=tc,ac=altered))
+            for index in (0,1,2):
+                altered=copy.deepcopy(ac)
+                altered.spells[spell][71+index]=36
+                self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:self.convert({spell:(1,0)},skills=skills,tc=tc,ac=altered))
+            for flags,stances in ((0x40,0),(0x80,1)):
+                altered=copy.deepcopy(tc)
+                altered.spells[spell][4]|=flags
+                altered.spells[spell][12]=stances
+                self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:self.convert({spell:(1,0)},skills=skills,tc=altered,ac=ac))
+        tc=copy.deepcopy(self.tc)
+        tc.scripts[6603].add(name)
+        self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:self.convert({6603:(1,0)},tc=tc))
 
     def test_source_runtime_predecessor_obligation_stays_blocked(self):
         self.fails('UNSUPPORTED_TEMPORARY_RANK_CHAIN',lambda:self.convert({}, {37117:1},cls=11))
