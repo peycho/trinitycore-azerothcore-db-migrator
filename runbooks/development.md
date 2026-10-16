@@ -128,6 +128,20 @@ effects remain uncast and checks passive/stance/skill-step positive controls.
 Spell units and MySQL fixtures cover preserved research rows/skills, required
 professions, provenance, forbidden effect changes and unselected hidden talent
 children. Fiery Payback fixtures use the real `64353`/`64357` talent ranks.
+Shared-spell regressions distinguish ordinary Dual Wield for warriors, hunters,
+rogues and death knights from shaman talent ownership in either/both specs.
+They reject missing or mismatched native skill routes, class/race exclusions,
+not-trainable routes, unknown owners, skill changes and unowned hidden children.
+The MySQL fixture preserves ordinary Dual Wield and its `1/1` skill in both
+directions, checks recorded authorization evidence and blocks an unowned shaman.
+The Runeforging fixtures preserve ten known enchantments and the existing skill
+in both directions. The loader harness checks that they remain uncast; a
+separate protected TC quest-handler harness verifies the incomplete-quest
+credit cast and completed/nonplayer controls with recording sinks. Unreviewed
+chapter handlers and missing Runeforging skill remain blocked.
+Nonstandard Runeforging values/caps and tier overrides also block; native mono
+normalization is not treated as an approved migration repair. Synthetic recipe
+metadata uses the supplied DBC acquisition methods and trivial-skill fields.
 
 The rehearsal entrypoint first runs a focused wide-metadata regression against
 the same disposable server. It creates its own temporary schema and SELECT-only

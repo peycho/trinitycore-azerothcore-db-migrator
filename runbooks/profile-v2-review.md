@@ -292,3 +292,72 @@ consumer also passed its mocked-state checks. These checks do not execute a
 worldserver or certify gameplay. Read-only checks against the supplied DBCs
 confirmed the corrected talent identities and AC-only prerequisite diagnostic;
 their limited world fixtures do not certify the full operator databases.
+
+## Shared Dual Wield ownership correction, 2026-10-16
+
+The complete talent-child catalog introduced a false blocker for ordinary
+Dual Wield (`674`): shaman talent `30798` teaches it, but its ordinary skill
+route also covers warriors, hunters, rogues and death knights. In the supplied
+TC and AC DBCs, ability row `610` maps skill `118` to `674`, class mask `109`,
+acquisition method `2`. Race/class skill rows `131`, `132`, `913` authorize the
+ordinary classes; the shaman row `883` has the not-trainable flag and the talent
+owner's class mask is `64`.
+
+`spell-state-v3` recognizes matching native skill rewards in both effective
+catalogs only when the character has no applicable or unknown talent owner and
+the explicit class/race skill route is trainable. It preserves reached known
+spells without granting arbitrary skill rewards. Skill values/caps and disabled
+state checks still apply; no skill is inserted or repaired. Provenance records
+the native row IDs, skill, acquisition method, threshold and flags. Shamans keep
+selected talent masks; unowned hidden children remain blocked. This is a
+converter correction, not a reason to remove ordinary Dual Wield from sources.
+
+The protected native `Player.cpp` and `DBCEnums.h` files match the retained TC
+and AC pins and AC staging `f089543d...` byte for byte. The pins and v1
+profile remain unchanged. Nurturing Instinct's AC script really mutates the
+spellbook on aura application/removal and stays blocked pending a separate
+runtime ownership review. Missing ordinary prerequisites, unowned disabled
+history and other unsupported representations are not cleared by this fix.
+
+The cleaned source and cleanup archives remain usable. A new toolkit,
+target/control schemas and run are required by the changed policy hash.
+Profile approval remains **UNREVIEWED**; the five staging gameplay checks and
+research gameplay check remain **NOT TESTED**.
+
+The same review adds only TC's `spell_chapter1_runeforging_credit` to the
+reviewed script inventory. Its complete `ScarletEnclave/chapter1.cpp` file is
+now protected in v2 and matches retained TC `92127cd...` byte for byte. AC has
+no equivalent script registration in this inventory; no cross-core alias is
+invented. The TC handler casts `54586` only for incomplete quest `12842`.
+The supplied DBCs make that spell a quest-completion effect (`16`), not a
+spell-learning effect. The Runeforging spells themselves are non-passive
+item-enchantment/dummy effects (`53,3,0`), so neither native loader casts them.
+The converter preserves only known enchantments, adds no enchantments or quest
+credit, and still requires the existing Runeforging skill. Other chapter
+handlers and Nurturing Instinct remain unreviewed/blocked. The v2 manifest now
+contains 96 TC semantic files; AC remains at 97. Release approval is unchanged.
+
+Runeforging additionally requires existing value/cap `1/1` and compatible mono
+range metadata. Both native skill loaders normalize that skill to `1/1`, so
+nonstandard stored values/caps now block rather than relying on correction.
+Fixtures use the actual recipe acquisition methods and `510/500` trivial-skill
+fields. Focused read-only checks with the actual supplied DBCs verified all ten
+normal enchantments and rejected three nonstandard skill states per enchantment
+(40 checks). This is separate from a complete worldserver loading test.
+
+Final validation passed: 84 unit tests, ShellCheck, profile/schema checks and the
+complete disposable MySQL 8.4.10 bidirectional rehearsal, including the strict
+Runeforging guard and actual recipe acquisition/trivial-skill fields. Both
+directions reached database validation and passed interruption/resume, reruns,
+rollback, malformed/cyclic relationship and same-count input-drift checks.
+Read-only source/world and unrelated-data preservation checks passed. The
+preparation suites retained their 21 invalid-talent, 21 pending-reset and 15
+console check groups. All 88 final frozen runtime/profile/test files matched
+the working implementation; the supplied DBC assets remained unchanged.
+
+Isolated compiled native skill-reward consumers and the AC trainer function
+also passed Dual Wield class/race/acquisition and direct/wrapped trainer checks
+with recording/mocked state. Loader and Runeforging quest-handler harnesses
+passed separately. These are scoped behavioral checks, not full native player
+loading or staging acceptance. Updated operator blocker counts remain untested;
+the release/gameplay gates above are still pending.

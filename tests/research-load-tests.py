@@ -58,6 +58,12 @@ int main() {
         assert(ac.AcLoad(&research));
         assert(tc.casts==0 && ac.casts==0);
     }
+    for (uint32 id:{53323,53331,53341,53342,53343,53344,54446,54447,62158,70164}) {
+        SpellInfo rune; rune.Id=id; rune.flags=65952; rune.effects={53,3,0};
+        Player tc,ac;
+        assert(tc.TcLoad(&rune,true) && ac.AcLoad(&rune));
+        assert(tc.casts==0 && ac.casts==0);
+    }
     SpellInfo passive; passive.flags|=64;
     Player tcPassive,acPassive;
     tcPassive.TcLoad(&passive,true); acPassive.AcLoad(&passive);
@@ -68,7 +74,7 @@ int main() {
     Player tcStep,acStep;
     assert(!tcStep.TcLoad(&step,true) && !acStep.AcLoad(&step));
     assert(tcStep.casts==1 && acStep.casts==1);
-    std::cout << "Protected TC/AC loader auto-cast branches: research uncast; passive/stance/skill-step controls passed\n";
+    std::cout << "Protected TC/AC loader auto-cast branches: research and Runeforging uncast; passive/stance/skill-step controls passed\n";
 }
 '''
 with tempfile.TemporaryDirectory() as directory:

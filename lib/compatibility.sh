@@ -101,6 +101,7 @@ write_trinitycore_semantic_manifest() {
         src/server/scripts/Spells \
         src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp \
         src/server/scripts/Outland/BlackTemple/boss_teron_gorefiend.cpp \
+        src/server/scripts/EasternKingdoms/ScarletEnclave/chapter1.cpp \
         src/server/game/Entities/Item/ItemDefines.h \
         src/server/game/Loot/Loot.h \
         "${FORMAT2_GAME_INPUTS[@]}"

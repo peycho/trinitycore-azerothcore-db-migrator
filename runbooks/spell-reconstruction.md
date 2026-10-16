@@ -73,6 +73,7 @@ schemas and run ID; do not replace code underneath an existing run.
 | Representation | Policy |
 |---|---|
 | Ordinary known higher rank | Preserve it and reconstruct only its verified predecessor prefix; mask `3` |
+| Shared class/weapon skill spell also taught by another class's talent | Preserve ordinary availability only with matching native TC/AC skill-reward relationships and eligible trainable race/class skill metadata; keep applicable talent ownership restrictions and all skill-preservation checks |
 | Complete/overlapping chains | Merge by `(guid,spell)` with deterministic proofs and bitwise-OR masks |
 | TC inactive lower rank | Preserve known state when both cores represent it as superseded |
 | Inactive unsupported state | Block instead of silently activating it |
@@ -212,6 +213,35 @@ from talent ownership. Its detail includes required and known prerequisite
 IDs. It grants nothing and remains a blocker, including for historical GM
 spells. `RESEARCH_SKILL_MISSING` likewise blocks research without its existing
 profession instead of adding one.
+
+`spell-state-v3` corrects a shared-spell classification boundary: Dual Wield
+(`674`) is taught by shaman talent `30798`, but also has an ordinary skill-reward
+route for warriors, hunters, rogues and death knights. Membership in the global
+talent-learn catalog does not make it talent-only for every class. The converter
+requires a matching skill reward in both effective metadata catalogs, explicit
+eligible class masks, matching race/class skill information and no applicable
+or unknown talent owner. A not-trainable skill route cannot bypass ownership.
+This check authorizes only already reached known spells; it does not scan skills
+to grant new spells. Missing or insufficient skill values/caps still block.
+
+Provenance records `ORDINARY_SKILL_AUTHORIZATION` and both native ability and
+race/class skill row IDs in `independent_skill_routes`, together with the skill,
+acquisition method, threshold and flags. Shamans retain selected-spec talent
+authorization; disabled ordinary rows and unowned hidden children remain
+blocked. Installing this correction changes policy/toolkit hashes and requires
+a fresh migration toolkit, target/control schemas and run. Keep the cleaned TC
+source and its cleanup archives.
+
+TC's reviewed `spell_chapter1_runeforging_credit` handler is also accepted.
+Its protected chapter script only casts quest-credit spell `54586` for
+incomplete quest `12842`. Known Runeforging item-enchantment spells remain
+uncast during native loading; migration grants no enchantments or quest credit.
+The existing Runeforging skill must be `1/1`, with matching mono skill metadata
+in both cores. Native skill loading normalizes this skill to `1/1`; other stored
+values/caps block instead of relying on a correction. Only this named handler
+is accepted from that chapter file; other chapter handlers are not implicitly
+approved. Add a staging check that known Runeforging enchantments remain
+available after relog and that loading does not award quest credit.
 
 Use the retained report to review representative failures before another run:
 

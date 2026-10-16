@@ -106,7 +106,7 @@ load_character_spells() {
         WHERE run_id='$(sql_escape "$RUN_ID")';") || die "Could not read spell checkpoint hashes"
     IFS=$'\t' read -r input_hash expected_hash <<< "$snapshot"
     [[ -n $input_hash && -n $expected_hash ]] || die "Spell snapshot is required before loading"
-    hash=$(printf '%s\n' 'spell-state-v2' "$MIGRATION_DIRECTION" "$input_hash" "$expected_hash" "$TOOLKIT_HASH" |
+    hash=$(printf '%s\n' 'spell-state-v3' "$MIGRATION_DIRECTION" "$input_hash" "$expected_hash" "$TOOLKIT_HASH" |
         sha256sum | awk '{print $1}')
     columns='guid,spell,specMask'
     values='guid,spell,spec_mask'
@@ -121,7 +121,7 @@ load_character_spells() {
         FROM \`$CONTROL_SCHEMA\`.spell_expected WHERE run_id='$(sql_escape "$RUN_ID")';") || die "Could not read spell chunk bounds"
     read -r start maximum <<< "$bounds"
     local generated="$REPORTS_DIR/$RUN_ID/generated-characters-character_spell.sql"
-    printf '%s\n' "-- spell-state-v2; inputs=$input_hash; expected=$expected_hash" > "$generated"
+    printf '%s\n' "-- spell-state-v3; inputs=$input_hash; expected=$expected_hash" > "$generated"
     while :; do
         end=$((start + LOAD_CHUNK_SIZE - 1))
         (( end > maximum )) && end=$maximum

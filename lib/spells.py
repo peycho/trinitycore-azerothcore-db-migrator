@@ -15,7 +15,7 @@ import struct
 import subprocess
 import sys
 
-POLICY = 'spell-state-v2'
+POLICY = 'spell-state-v3'
 LEARN, SKILL, SKILL_STEP, DUAL_WIELD = 36, 118, 44, 40
 PASSIVE, HIDDEN = 0x40, 0x80
 
@@ -474,10 +474,53 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
                    and tc.spells[spell][86+i] == 5 for i in range(3)):
                 continue
             queue.append((child, new, owner))
+    independent_routes = {}
+    def independent_skill_routes(spell):
+        """Prove a native ordinary route despite another class's talent learn.
+
+        This authorizes only a reached known spell, never a skill-based grant.
+        Existing skill values/caps are still checked by add(). Require matching
+        TC/AC skill rewards, explicit class masks and trainable race/class skill
+        metadata; an applicable or unknown talent owner keeps its restrictions.
+        """
+        if spell in independent_routes:
+            return independent_routes[spell]
+        independent_routes[spell] = []
+        candidates = []
+        for metadata in (tc,ac):
+            if spell in metadata.talents or metadata.first(spell) in metadata.talents:
+                return []
+            catalog_owners = (metadata.talent_learn_owners.get(spell,set())
+                              | metadata.talent_learn_owners.get(metadata.first(spell),set()))
+            if not catalog_owners:
+                return []
+            for owner in catalog_owners:
+                tab = metadata.stores['TalentTab'].get(metadata.talent_rows[owner][1])
+                if not tab or not tab[20] or tab[20] & class_mask:
+                    return []
+            routes = {}
+            for ability in metadata.abilities[spell]:
+                if (ability[9] not in (1,2) or not ability[4] & class_mask
+                        or (ability[3] and not ability[3] & race_mask)):
+                    continue
+                for info in metadata.stores['SkillRaceClassInfo'].values():
+                    if (info[1] != ability[1] or not info[3] & class_mask
+                            or (info[2] and not info[2] & race_mask) or info[4] & 0x100):
+                        continue
+                    # Compare all relevant relationships, including acquisition
+                    # thresholds and trainability, rather than only table IDs.
+                    key = tuple(ability[1:10] + info[1:7])
+                    routes[key] = [metadata.core,ability[0],info[0],ability[1],ability[9],ability[7],info[4]]
+            candidates.append(routes)
+        common = sorted(candidates[0].keys() & candidates[1].keys())
+        independent_routes[spell] = [routes[key] for key in common for routes in candidates]
+        return independent_routes[spell]
+
     def talent_restricted(spell, include_requirements=True):
+        ordinary_route = independent_skill_routes(spell)
         return any(spell in metadata.talents or metadata.first(spell) in metadata.talents
-                   or metadata.talent_learn_owners.get(spell)
-                   or metadata.talent_learn_owners.get(metadata.first(spell))
+                   or ((metadata.talent_learn_owners.get(spell)
+                        or metadata.talent_learn_owners.get(metadata.first(spell))) and not ordinary_route)
                    or (include_requirements and (spell in metadata.additional
                                                 or metadata.first(spell) in metadata.additional))
                    for metadata in (tc,ac))
@@ -535,6 +578,24 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
                                   if ability[1] in ac.stores['SkillLine']]
         if target_skill_abilities and not any(race_class_rows(ac, ability[1]) for ability in target_skill_abilities):
             reject('AC_WOULD_DELETE_SPELL', f'{spell}: no eligible race/class skill ability')
+        if any(ability[1] == 776 for ability in ac.abilities[spell]):
+            # Both native skill loaders normalize Runeforging's mono range
+            # to 1/1; some addSpell paths also call LearnDefaultSkill. Refuse
+            # nonstandard stored state instead of relying on that correction.
+            if 776 not in skills:
+                reject('SPELL_WOULD_ADD_SKILL',f'{spell}: skill=776')
+            layouts = []
+            for metadata in (tc,ac):
+                infos = race_class_rows(metadata,776)
+                line = metadata.stores['SkillLine'].get(776)
+                if (not line or line[1] != 7 or not infos
+                        or any(info[6] in metadata.stores['SkillTiers'] for info in infos)):
+                    reject('INCOMPATIBLE_SKILL_METADATA',f'{spell}: skill=776; expected mono Runeforging metadata')
+                layouts.append(sorted(tuple(info[1:7]) for info in infos))
+            if layouts[0] != layouts[1]:
+                reject('INCOMPATIBLE_SKILL_METADATA',f'{spell}: skill=776; race/class metadata differ')
+            if tuple(skills[776]) != (1,1):
+                reject('SPELL_WOULD_CHANGE_SKILL',f'{spell}: skill=776; native value=1; cap=1; stored={skills[776]}')
         effect = ac.skill_effect(spell)
         if effect:
             skill, _, minimum, maximum = effect
@@ -685,6 +746,10 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
             'rank_root': tc.first(spell), 'owner_masks': sorted(authorized_by.items()),
             'required_spells': requirements,
         }
+        routes = independent_skill_routes(spell)
+        if routes:
+            row['authorization']['policy'] = 'ORDINARY_SKILL_AUTHORIZATION'
+            row['authorization']['independent_skill_routes'] = routes
         load_contracts = sorted(
             (metadata.core,name,'CAST_ONLY_RESEARCH_EXISTING_SKILL',
              metadata.cast_only_scripts[name]['spell_skills'][str(spell)])

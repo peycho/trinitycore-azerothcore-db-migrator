@@ -212,6 +212,53 @@ class SpellTests(unittest.TestCase):
         self.fails('TC_SPELL_OWNERSHIP_CONFLICT',lambda:self.convert({48825:(1,0)},{20473:2}))
         self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({48825:(1,0)}))
 
+    def test_dual_wield_has_independent_class_skill_ownership(self):
+        for cls in (1,3,4,6):
+            skills={118:(1,1)}
+            for active in (0,1):
+                result=self.convert({674:(1,0)},skills=skills,cls=cls,active=active)
+                self.assertEqual(set(result),{674})
+                self.assertEqual(result[674]['mask'],3)
+                self.assertEqual(result[674]['disposition'],'PERSISTENT')
+                self.assertEqual(result[674]['authorization']['policy'],'ORDINARY_SKILL_AUTHORIZATION')
+                self.assertEqual(len(result[674]['authorization']['independent_skill_routes']),2)
+                reverse=self.convert({674:(3,)},skills=skills,cls=cls,active=active,reverse=True)
+                self.assertEqual((reverse[674]['active'],reverse[674]['disabled']),(1,0))
+            self.assertEqual(skills,{118:(1,1)})
+            self.assertEqual(self.convert({},skills=skills,cls=cls),{})
+            self.fails('SPELL_WOULD_CHANGE_SKILL',lambda:self.convert({674:(1,0)},skills={},cls=cls))
+            self.fails('UNREPRESENTABLE_DISABLED_SPELL',lambda:self.convert({674:(1,1)},skills=skills,cls=cls))
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({674:(1,0)},skills={118:(1,1)},cls=7))
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({674:(1,0)},skills={118:(1,1)},cls=2))
+        for active in (0,1):
+            for mask in (1,2,3):
+                result=self.convert({674:(1,int(not mask & (1<<active)))},{30798:mask},
+                                    skills={118:(1,1)},cls=7,active=active)
+                self.assertEqual(result[674]['mask'],mask)
+                self.assertEqual(result[674]['disposition'],'RUNTIME')
+                self.assertNotIn('independent_skill_routes',result[674]['authorization'])
+
+    def test_independent_skill_routes_require_paired_native_evidence(self):
+        for mutation in ('ability_class','ability_race','acquire','skill_class','skill_race',
+                         'not_trainable','mismatch','talent_class','unknown_talent_class','generic_class'):
+            tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+            if mutation=='ability_class':ac.abilities[674][0][4]=64
+            elif mutation=='ability_race':ac.abilities[674][0][3]=2
+            elif mutation=='acquire':ac.abilities[674][0][9]=0
+            elif mutation=='skill_class':ac.stores['SkillRaceClassInfo'][132][3]=64
+            elif mutation=='skill_race':ac.stores['SkillRaceClassInfo'][132][2]=2
+            elif mutation=='not_trainable':ac.stores['SkillRaceClassInfo'][132][4]|=0x100
+            elif mutation=='mismatch':ac.abilities[674][0][7]=2
+            elif mutation=='unknown_talent_class':ac.stores['TalentTab'][1690][20]=0
+            elif mutation=='generic_class':ac.abilities[674][0][4]=0
+            else:ac.stores['TalentTab'][1690][20]|=1
+            self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({674:(1,0)},skills={118:(1,1)},cls=1,tc=tc,ac=ac))
+        # A generic class-skill association is not a skill-reward route.
+        tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+        for metadata in (tc,ac):
+            metadata.abilities[900010].append([999,118,900010,0,16,0,0,1,0,0,0,0,0,0])
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({900010:(1,0)},cls=5,tc=tc,ac=ac))
+
     def test_inactive_superseded_rank_is_known(self):
         result = self.convert({48942:(1,0),643:(0,0)})
         self.assertEqual(set(result),set(fixtures.CHAINS[0]))
@@ -290,6 +337,28 @@ class SpellTests(unittest.TestCase):
         self.assertEqual(set(self.convert({38795:(1,0)},tc=tc,ac=ac)), {38795})
         ac.scripts[38795].add('spell_unreviewed_encounter')
         self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:self.convert({38795:(1,0)},tc=tc,ac=ac))
+
+    def test_runeforging_quest_credit_handler_preserves_only_known_enchantments(self):
+        tc=copy.deepcopy(self.tc)
+        name='spell_chapter1_runeforging_credit'
+        self.assertEqual(tc.script_policy[name],'NO_SPELLBOOK_MUTATION')
+        self.assertNotIn(name,self.ac.script_policy)
+        self.assertNotIn('spell_chapter1_emblazon_runeblade',tc.script_policy)
+        for spell in fixtures.RUNEFORGING:
+            tc.scripts[spell].add(name)
+            result=self.convert({spell:(1,0)},skills={776:(1,1)},cls=6,tc=tc)
+            self.assertEqual(set(result),{spell})
+            self.assertEqual(result[spell]['mask'],3)
+            reverse=self.convert({spell:(3,)},skills={776:(1,1)},cls=6,tc=tc,reverse=True)
+            self.assertEqual((reverse[spell]['active'],reverse[spell]['disabled']),(1,0))
+        self.fails('SPELL_WOULD_ADD_SKILL',lambda:self.convert({53341:(1,0)},skills={},cls=6,tc=tc))
+        for value,cap in ((0,1),(1,450),(2,2)):
+            self.fails('SPELL_WOULD_CHANGE_SKILL',lambda:self.convert({53341:(1,0)},skills={776:(value,cap)},cls=6,tc=tc))
+        ac=copy.deepcopy(self.ac)
+        ac.stores['SkillRaceClassInfo'][776][6]=171
+        self.fails('INCOMPATIBLE_SKILL_METADATA',lambda:self.convert({53341:(1,0)},skills={776:(1,1)},cls=6,tc=tc,ac=ac))
+        tc.scripts[53341].add('spell_chapter1_emblazon_runeblade')
+        self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:self.convert({53341:(1,0)},skills={776:(1,1)},cls=6,tc=tc))
 
     def test_native_aliases_and_enum_field_copy_corrections(self):
         for metadata in [self.tc,self.ac]:

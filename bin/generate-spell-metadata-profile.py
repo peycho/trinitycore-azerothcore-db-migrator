@@ -30,6 +30,10 @@ REVIEWED_ENCOUNTER_SCRIPTS = {
     'src/server/scripts/Outland/BlackTemple/boss_teron_gorefiend.cpp': {
         'spell_teron_gorefiend_shadow_of_death'},
 }
+REVIEWED_CORE_SCRIPTS = {
+    'tc': {'src/server/scripts/EasternKingdoms/ScarletEnclave/chapter1.cpp': {
+        'spell_chapter1_runeforging_credit'}},
+}
 # Constructor template arguments can change the spells an implementation casts.
 # Resolve only aliases whose actual registration arguments were reviewed.
 REVIEWED_LEGACY_ALIASES = {
@@ -233,12 +237,13 @@ def generate(tc, ac):
             'guards': guards, 'operations': operations,
         }
         scripts = {}
+        reviewed_paths = REVIEWED_ENCOUNTER_SCRIPTS | REVIEWED_CORE_SCRIPTS.get(core,{})
         script_paths = set((repo / 'src/server/scripts/Spells').rglob('*.cpp'))
-        script_paths.update(repo / name for name in REVIEWED_ENCOUNTER_SCRIPTS)
+        script_paths.update(repo / name for name in reviewed_paths)
         for path in sorted(script_paths):
             inputs.append(str(path.relative_to(repo)))
             content = strip_comments(path.read_text())
-            reviewed = REVIEWED_ENCOUNTER_SCRIPTS.get(str(path.relative_to(repo)))
+            reviewed = reviewed_paths.get(str(path.relative_to(repo)))
             for name, policy in script_policies(content, reviewed).items():
                 if scripts.get(name) != 'UNSUPPORTED_SPELLBOOK_MUTATION':
                     scripts[name] = policy

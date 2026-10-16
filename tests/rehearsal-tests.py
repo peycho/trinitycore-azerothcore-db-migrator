@@ -301,9 +301,17 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     spell_guard('UNAUTHORIZED_TALENT_SPELL',
         f'INSERT INTO `{CHARS}`.character_spell VALUES (113,900010,1,1)',
         f'DELETE FROM `{CHARS}`.character_spell WHERE guid=113 AND spell=900010')
+    spell_guard('UNAUTHORIZED_TALENT_SPELL',
+        f'INSERT INTO `{CHARS}`.character_spell VALUES (117,674,1,0);'
+        f'INSERT INTO `{CHARS}`.character_skills (guid,skill,value,max) VALUES (117,118,1,1)',
+        f'DELETE FROM `{CHARS}`.character_spell WHERE guid=117 AND spell=674;'
+        f'DELETE FROM `{CHARS}`.character_skills WHERE guid=117 AND skill=118')
     spell_guard('RESEARCH_SKILL_MISSING',
         f'INSERT INTO `{CHARS}`.character_spell VALUES (114,60893,1,0)',
         f'DELETE FROM `{CHARS}`.character_spell WHERE guid=114 AND spell=60893')
+    spell_guard('SPELL_WOULD_CHANGE_SKILL',
+        f'UPDATE `{CHARS}`.character_skills SET max=450 WHERE guid=119 AND skill=776',
+        f'UPDATE `{CHARS}`.character_skills SET max=1 WHERE guid=119 AND skill=776')
     print('Checking representation boundaries', flush=True)
     for length in (16, 17, 18, 32, 33, 64):
         sql(f"UPDATE account SET username=REPEAT('A',{length}) WHERE id=1", AUTH)
@@ -380,6 +388,14 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=115 AND spell IN (5209,5487,9634) AND specMask=3',3)
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=38795',3)
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=60893',3)
+    equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=674',3)
+    equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=119 AND specMask=3',len(SPELL_FIXTURES.RUNEFORGING))
+    equal(f'SELECT value,max FROM `{AC_CHARS}`.character_skills WHERE guid=119 AND skill=776','1\t1')
+    equal(f'SELECT value,max FROM `{AC_CHARS}`.character_skills WHERE guid=113 AND skill=118','1\t1')
+    equal(f"SELECT JSON_UNQUOTE(JSON_EXTRACT(provenance,'$.authorization.policy')) "
+          f"FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=113 AND spell=674",'ORDINARY_SKILL_AUTHORIZATION')
+    equal(f"SELECT JSON_LENGTH(JSON_EXTRACT(provenance,'$.authorization.independent_skill_routes')) "
+          f"FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=113 AND spell=674",2)
     equal(f"SELECT JSON_LENGTH(JSON_EXTRACT(provenance,'$.authorization.load_script_contracts')) "
           f"FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=113 AND spell=60893",2)
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=113 '
@@ -419,6 +435,9 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
                   'pet_spell', 'pet_aura'):
         sql(f'DELETE FROM {table}', AC_CHARS)
     sql((ROOT / 'tests/fixtures/azerothcore-reverse-data.sql').read_text(), AC_CHARS)
+    sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (113,674,3)',AC_CHARS)
+    sql('INSERT INTO character_spell (guid,spell,specMask) VALUES '+','.join(
+        f'(119,{spell},3)' for spell in SPELL_FIXTURES.RUNEFORGING),AC_CHARS)
     seed_pet_relations(AC_CHARS, reverse=True)
     sql("INSERT INTO item_instance (guid,itemEntry,owner_guid,`count`,enchantments) VALUES (202,20815,100,1,'')", AC_CHARS)
     sql('''INSERT INTO item_loot_storage
@@ -470,6 +489,10 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     phase(reverse, 'sanitize-target')
     phase(reverse, 'validate')
     assert_ready(rv)
+    equal(f'SELECT active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid=113 AND spell=674','1\t0')
+    equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=119 AND active=1 AND disabled=0',len(SPELL_FIXTURES.RUNEFORGING))
+    equal(f'SELECT value,max FROM `{TC_CHARS}`.character_skills WHERE guid=119 AND skill=776','1\t1')
+    equal(f'SELECT value,max FROM `{TC_CHARS}`.character_skills WHERE guid=113 AND skill=118','1\t1')
     equal(f'SELECT GROUP_CONCAT(item_index ORDER BY item_index) FROM `{TC_CHARS}`.item_loot_items WHERE container_id=201', '0,1,2,3')
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.item_loot_items WHERE container_id=201 AND item_id=2590', 2)
     equal(f'SELECT money FROM `{TC_CHARS}`.item_loot_money WHERE container_id=202', 99)

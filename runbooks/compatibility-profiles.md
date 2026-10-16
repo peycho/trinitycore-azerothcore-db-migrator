@@ -37,6 +37,9 @@ conservative unsupported-correction guards and native spell-script dispositions.
 Correction operands can also copy a reviewed effect field. Protected spell/aura
 enum definitions resolve constant operands. Script policy follows native named
 registrations and pairs, and protects each explicitly reviewed encounter source.
+Core-specific quest handlers are reviewed individually; v2 protects TC's
+Scarlet Enclave chapter file and accepts only its Runeforging quest-credit
+handler. It does not approve every script in that file or invent an AC alias.
 Cast-only script contracts are separate from non-mutating classifications.
 They bind reviewed IDs, exact effects and profession skills to verified native
 loader behavior; they do not authorize running those scripts during migration.
