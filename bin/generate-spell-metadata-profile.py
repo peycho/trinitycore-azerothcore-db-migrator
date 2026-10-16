@@ -22,11 +22,18 @@ STORES = {
     'SkillTiers': ('skilltiers_dbc', 'SkillTiersfmt'),
 }
 
-# Reviewed encounter script needed by an explicitly stored player spell.
-# Both cores' Sonic Boom Effect handlers only adjust hit damage. Keep the
-# complete files in semantic manifests; unknown encounter scripts still block.
+# Reviewed encounter handlers do not mutate persistent spell ownership.
+# Keep complete files protected; unreviewed handlers in those files still block.
 REVIEWED_ENCOUNTER_SCRIPTS = {
-    'src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp': {'spell_murmur_sonic_boom_effect'},
+    'src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp': {
+        'spell_murmur_sonic_boom','spell_murmur_sonic_boom_effect'},
+    'src/server/scripts/Outland/BlackTemple/boss_teron_gorefiend.cpp': {
+        'spell_teron_gorefiend_shadow_of_death'},
+}
+# Constructor template arguments can change the spells an implementation casts.
+# Resolve only aliases whose actual registration arguments were reviewed.
+REVIEWED_LEGACY_ALIASES = {
+    'spell_pal_seal_of_corruption':'spell_pal_seal_of_vengeance',
 }
 CORRECTION_DEFINITIONS = (
     'src/server/shared/SharedDefines.h',
@@ -66,9 +73,25 @@ def strip_comments(source):
     return re.sub(r'/\*.*?\*/|//[^\n]*', '', source, flags=re.S)
 
 
-def script_policies(content, reviewed=None):
+def indexed_family_corrections(body, constants):
+    """Read only bounded integer writes; report every unsupported access."""
+    indexed=list(re.finditer(r'spellInfo->SpellFamilyFlags\s*\[([012])\]\s*([|&]?=)\s*([^;]+);',body))
+    changes=[]
+    guarded=len(re.findall(r'SpellFamilyFlags\s*\[',body))!=len(indexed)
+    for assignment in indexed:
+        try:
+            if re.search(r'\b(if|else|for|while|do|switch|goto)\b',body):
+                raise ValueError('Conditional indexed family correction')
+            changes.append([209+int(assignment[1]),assignment[2],integer(assignment[3].strip(),constants)])
+        except (ValueError,KeyError,SyntaxError):
+            guarded=True
+    return changes,guarded
+
+
+def script_policies(content, reviewed=None, legacy_aliases=None):
     """Follow native named registrations without weakening mutation guards."""
     classes, scripts = {}, {}
+    legacy_aliases = REVIEWED_LEGACY_ALIASES if legacy_aliases is None else legacy_aliases
     def store(name, policy):
         if scripts.get(name) != 'UNSUPPORTED_SPELLBOOK_MUTATION':
             scripts[name] = policy
@@ -89,6 +112,12 @@ def script_policies(content, reviewed=None):
     for implementation, alias in re.findall(
             r'\bRegister(?:Spell|Aura)ScriptWithArgs\(\s*(spell_\w+)\s*,\s*"(spell_\w+)"', content):
         if implementation in classes:
+            store(alias, classes[implementation])
+    # TC also registers legacy loaders with new Class<T1,T2>("alias").
+    # Follow only resolved implementations, preserving any mutation rejection.
+    for implementation, alias in re.findall(
+            r'\bnew\s+(spell_\w+)\s*(?:<[^;{}()]+>\s*)?\(\s*"(spell_\w+)"', content):
+        if implementation in classes and legacy_aliases.get(alias)==implementation:
             store(alias, classes[implementation])
     for first, second, alias in re.findall(
             r'\bRegisterSpellAndAuraScriptPair(?:WithArgs)?\(\s*(spell_\w+)\s*,\s*(spell_\w+)'
@@ -181,7 +210,11 @@ def generate(tc, ac):
                                     for i, value in enumerate(flags[1].split(','))])
                 except (ValueError, KeyError, SyntaxError):
                     fields.append('visibility')
-            if re.search(r'SpellFamilyFlags\[|SetStackableWithRanks', body):
+            indexed_changes,indexed_guarded=indexed_family_corrections(body,constants)
+            changes.extend(indexed_changes)
+            # Unparsed indexed access (including copied/dynamic indexes) must
+            # remain guarded; only bounded constant assignments were reviewed.
+            if indexed_guarded or 'SetStackableWithRanks' in body:
                 fields.append('visibility')
             if fields:
                 guards.append({'ids': ids, 'fields': sorted(set(fields))})

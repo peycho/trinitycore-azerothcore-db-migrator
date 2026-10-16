@@ -157,3 +157,76 @@ three correction examples using read-only supplied DBCs with declared synthetic
 skills. These checks do not certify the reported staging character records.
 Native gameplay checks remain **NOT TESTED** and production-sized acceptance
 for the amended toolkit identity is still pending.
+
+
+## Spell blocker review amendment, 2026-10-16
+
+The existing pins and **UNREVIEWED** approval remain unchanged. The additional
+protected Teron file is byte-identical at AC pin `1cd97629...`, staging
+`f089543d...` and configured checkout `cb3d99cd...`; TC matches `92127cd...`.
+The already protected paladin/Murmur files also match those references.
+Configured core checkouts and DBC assets were read-only; no existing staging,
+production or world database was accessed. Database writes were confined to
+synthetic fixtures on a dedicated disposable server.
+
+This amendment resolves specific compatibility gaps exposed by operator reports:
+
+- TC's reviewed legacy Seal of Corruption constructor alias follows its protected
+  implementation with verified damage/aura arguments; other unresolved legacy
+  aliases remain guarded. Mutation rejection still propagates to aliases.
+- Explicitly reviewed Murmur Sonic Boom and Teron Shadow of Death handlers enter
+  the script policy. The complete Teron file is added to both semantic manifests;
+  unreviewed handlers in those files remain blocked.
+- Constant indexed family-flag writes represent Ebon Plague's correction;
+  conditional, dynamic, out-of-range and copied indexed expressions still block.
+- An authorized hidden/passive temporary talent child may have an AC-only rank
+  prefix if TC requires no predecessor. AC's native exact-child `_addSpell` call
+  is the consumer contract. No target-only predecessor or persistent runtime row
+  is granted. TC predecessor obligations, including Primal Fury, still block.
+
+The observed worlds had no TC Fiery Payback chain but an AC `44440 -> 44441`
+chain. Both had Primal Fury `16958 -> 16961`. TC also had inactive learns
+`17002 -> 24867` and `24866 -> 24864`; this amendment does not invent an AC
+ownership/dependency mapping for those rows. These observations are diagnostic
+input, not new stock-world requirements baked into the profile.
+
+Unowned talents, unsupported disabled/inactive state, skill mutations, persistent
+teaching spells and unresolved dependencies remain blockers. The original block
+policy is retained: no new archive override, skill grant, replacement talent or
+blanket source cleanup. Reports now include rank prefixes and unowned talent
+flags/family ownership to support exact subsequent review.
+
+Use a fresh migration toolkit copy, target/control schemas and run after this
+transform/profile change. Existing cleanup archives remain preserved; no repair
+of already migrated targets is implied. Native gameplay and the two required
+production-sized isolated rehearsals are still outstanding release gates.
+
+Local validation passed on 2026-10-16:
+
+- Static checks, profile reproduction/drift rejection and 79 unit tests,
+  including 22 spell tests. Disabled unowned history and zero-mask inputs
+  remain blocked; diagnostics exclude zero-mask entries from selected ownership.
+- The complete rehearsal command exited successfully from a frozen toolkit copy
+  on MySQL 8.4.10 with MySQL 8.0.46 client tools. Both directions reached `READY`;
+  rollback, interruption/resume, completed reruns, exact spell provenance,
+  trainer checks, malformed/cyclic inputs, same-count drift, restored indexes
+  and source/world/unrelated-data preservation passed. The preparation audit,
+  talent cleanup/reset and 15 console check groups also passed.
+- The protected AC talent consumer compiled with a recording spell-add sink
+  verified exact Fiery Payback children, temporary flags and additional-talent
+  exclusions. This verifies delegation only, not `_addSpell` effects or gameplay.
+- Read-only supplied DBC checks with the observed world rank/learn rows accepted
+  Fiery Payback in either spec without granting `44440` from `44441`, applied
+  Ebon Plague's family correction and retained Primal Fury/Feral Swiftness blocks.
+  Other world relationships/overlays were empty in this focused check; it does
+  not certify the complete operator worlds or character records.
+
+Staging gameplay acceptance for this amendment:
+
+| Check | Result |
+| --- | --- |
+| Paladin/priest/warlock rank audit and trainer visits; trained predecessors learned and untrained higher ranks available | NOT TESTED |
+| Cast representative highest and supported lower ranks | NOT TESTED |
+| Switch both specs and relog in each; verify talent ownership and availability | NOT TESTED |
+| Compare talent points, profession slots, recipes, riding tier, skill values and caps | NOT TESTED |
+| Save, relog and restart AC; repeat checks and inspect spell-deletion/skill-correction logs | NOT TESTED |

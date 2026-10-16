@@ -78,7 +78,8 @@ for relative in src/server/game/Entities/Item/Item.h \
     src/server/game/Spells/SpellInfo.cpp src/server/shared/DataStores/DBCfmt.h \
     src/server/game/Entities/Creature/Trainer.cpp \
     src/server/game/Spells/SpellDefines.h src/server/game/Spells/Auras/SpellAuraDefines.h \
-    src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp; do
+    src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp \
+    src/server/scripts/Outland/BlackTemple/boss_teron_gorefiend.cpp; do
     printf '%s\n' '// protected format-2 change' >> "$tc/$relative"
     expect_fail "expanded-reader:$relative"
     git -C "$tc" checkout -q -- "$relative"

@@ -339,6 +339,9 @@ approved cleanup candidates; review the expected removals before loading.
 Inspect `spell-state-blockers.tsv`, `spell-fingerprints.tsv` and
 `spell-expected.tsv` as well. Unsafe spell states block before assembly;
 verified predecessor derivations can increase persistent row counts.
+An empty `source-blockers.tsv` clears the general representation checks only.
+Spell compatibility is checked separately; `spell-state-blockers.tsv` must also
+be empty before migration can proceed.
 Do not resolve a missing-rank problem by granting trainer spells or deleting talents.
 Spell failures print a full report path and counts by reason. The report records
 the first blocker per character; inspect representative rows using the

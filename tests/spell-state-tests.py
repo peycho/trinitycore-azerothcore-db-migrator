@@ -25,17 +25,34 @@ spec.loader.exec_module(spell_profile)
 class World:
     def __init__(self):
         self.tables = {
-            'spell_ranks': [[str(chain[0]),str(spell),str(rank)] for chain in fixtures.CHAINS for rank,spell in enumerate(chain,1)],
+            'spell_ranks': [[str(chain[0]),str(spell),str(rank)] for chain in fixtures.CHAINS for rank,spell in enumerate(chain,1)]
+                           + [['16958','16958','1'],['16958','16961','2']],
             'spell_required': [['25899','20911'], ['5209','5487']],
             'spell_learn_spell': [['900011','900012','1']],
         }
     def table(self,world,table,columns):
-        return sorted(self.tables.get(table,[]),key=lambda row:int(row[0]))
+        rows=list(self.tables.get(table,[]))
+        if world=='ac' and table=='spell_ranks':
+            rows += [['44440','44440','1'],['44440','44441','2']]
+        return sorted(rows,key=lambda row:int(row[0]))
     def rows(self,*args):
         return []
 
 
 class MetadataReaderTests(unittest.TestCase):
+    def test_indexed_family_writes_are_bounded_and_conditional_access_stays_blocked(self):
+        changes,guarded=spell_profile.indexed_family_corrections(
+            'spellInfo->SpellFamilyFlags[2] = 0x10; spellInfo->SpellFamilyFlags[0] |= FLAG;',{'FLAG':4})
+        self.assertEqual(changes,[[211,'=',16],[209,'|=',4]])
+        self.assertFalse(guarded)
+        for body in ('if (condition) { spellInfo->SpellFamilyFlags[0] |= 0x40; }',
+                     'while (condition) { spellInfo->SpellFamilyFlags[0] |= 0x40; }',
+                     'do { spellInfo->SpellFamilyFlags[0] |= 0x40; } while (condition);',
+                     'spellInfo->SpellFamilyFlags[index] = 16;',
+                     'spellInfo->SpellFamilyFlags[3] = 16;',
+                     'spellInfo->SpellFamilyFlags[1] = spellInfo->SpellFamilyFlags[2];'):
+            self.assertTrue(spell_profile.indexed_family_corrections(body,{})[1],body)
+
     def test_registered_aliases_inherit_mutation_policy(self):
         policies = spell_profile.script_policies('''
 class spell_safe : public SpellScript { void Hit() { SetHitDamage(1); } };
@@ -44,11 +61,20 @@ RegisterSpellScriptWithArgs(spell_safe, "spell_safe_alias", 1);
 RegisterSpellScriptWithArgs(spell_mutating, "spell_unsafe_alias", 1);
 RegisterSpellScriptWithArgs(spell_unknown, "spell_unknown_alias", 1);
 RegisterSpellAndAuraScriptPairWithArgs(spell_safe, spell_mutating, "spell_unsafe_pair", 1);
-''')
+new spell_safe<123, 456>("spell_legacy_safe");
+new spell_mutating<123, 456>("spell_legacy_unsafe");
+new spell_unknown("spell_legacy_unknown");
+new spell_safe<123>("spell_unreviewed_legacy");
+''',legacy_aliases={'spell_legacy_safe':'spell_safe','spell_legacy_unsafe':'spell_mutating',
+                    'spell_legacy_unknown':'spell_unknown'})
         self.assertEqual(policies['spell_safe_alias'], 'NO_SPELLBOOK_MUTATION')
         self.assertEqual(policies['spell_unsafe_alias'], 'UNSUPPORTED_SPELLBOOK_MUTATION')
         self.assertEqual(policies['spell_unsafe_pair'], 'UNSUPPORTED_SPELLBOOK_MUTATION')
         self.assertNotIn('spell_unknown_alias', policies)
+        self.assertEqual(policies['spell_legacy_safe'], 'NO_SPELLBOOK_MUTATION')
+        self.assertEqual(policies['spell_legacy_unsafe'], 'UNSUPPORTED_SPELLBOOK_MUTATION')
+        self.assertNotIn('spell_legacy_unknown', policies)
+        self.assertNotIn('spell_unreviewed_legacy', policies)
 
     def test_blocker_summary_is_sorted_and_omits_character_identifiers(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -200,6 +226,19 @@ class SpellTests(unittest.TestCase):
         self.assertNotIn(12663,result)
         self.fails('CONFLICTING_TALENT_RANKS',lambda:self.convert({}, {12664:1,12282:1},cls=1))
 
+    def test_disabled_unowned_history_stays_blocked_with_ownership_evidence(self):
+        stored,ownership={12282:(1,1)},{12664:1}
+        with self.assertRaises(Unsupported) as error:
+            self.convert(stored,ownership,cls=1)
+        self.assertEqual(error.exception.reason,'UNAUTHORIZED_TALENT_SPELL')
+        self.assertIn('stored_flags=(1, 1)',str(error.exception))
+        self.assertIn('selected_same_talent=[(12664, 1)]',str(error.exception))
+        self.assertIn('eligible_mask=0',str(error.exception))
+        self.assertEqual(stored,{12282:(1,1)})
+        self.assertEqual(ownership,{12664:1})
+        self.fails('UNREPRESENTABLE_AC_SPELL_MASK',
+                   lambda:self.convert({6603:(0,)},reverse=True))
+
     def test_temporary_dependency_and_persistent_additional_ranks(self):
         result = self.convert({900003:(1,0)},{900000:1},cls=5)
         self.assertEqual(result[900010]['disposition'],'RUNTIME')
@@ -238,6 +277,7 @@ class SpellTests(unittest.TestCase):
             self.assertEqual(metadata.script_policy[name], 'NO_SPELLBOOK_MUTATION')
             self.assertIn(path, self.profile['inputs'][metadata.core])
             self.assertNotIn('spell_murmur_thundering_storm', metadata.script_policy)
+            self.assertNotIn('spell_teron_gorefiend_shadow_of_death_remove',metadata.script_policy)
             metadata.scripts[38795].add(name)
         self.assertEqual(set(self.convert({38795:(1,0)},tc=tc,ac=ac)), {38795})
         ac.scripts[38795].add('spell_unreviewed_encounter')
@@ -246,6 +286,11 @@ class SpellTests(unittest.TestCase):
     def test_native_aliases_and_enum_field_copy_corrections(self):
         for metadata in [self.tc,self.ac]:
             self.assertEqual(metadata.script_policy['spell_pal_judgement_of_justice'], 'NO_SPELLBOOK_MUTATION')
+            self.assertEqual(metadata.script_policy['spell_pal_seal_of_corruption'], 'NO_SPELLBOOK_MUTATION')
+            self.assertEqual(metadata.script_policy['spell_teron_gorefiend_shadow_of_death'], 'NO_SPELLBOOK_MUTATION')
+            self.assertEqual(metadata.spells[51726][211],0x10)
+            metadata.check_spell(51726)
+        self.assertEqual(self.tc.script_policy['spell_murmur_sonic_boom'],'NO_SPELLBOOK_MUTATION')
         self.assertEqual(self.ac.spells[34074][71:74], [6,6,6])
         self.assertEqual(self.ac.spells[34074][97], 4)
         self.assertEqual(self.ac.spells[51470][72], 6)
@@ -260,6 +305,24 @@ class SpellTests(unittest.TestCase):
         tc = copy.deepcopy(self.tc)
         tc.correction_guards[34074].append('visibility')
         self.fails('UNSUPPORTED_CORE_CORRECTION',lambda:self.convert({34074:(1,0)},cls=3,tc=tc))
+
+    def test_native_runtime_child_does_not_grant_ac_only_predecessor(self):
+        for active in (0,1):
+            result=self.convert({}, {64357:3},cls=8,active=active)
+            self.assertEqual(result[44441]['disposition'],'RUNTIME')
+            self.assertEqual(result[44441]['mask'],3)
+            self.assertNotIn(44440,result)
+            stored=self.convert({44441:(1,0)},{64357:1<<active},cls=8,active=active)
+            self.assertEqual(stored[44441]['disposition'],'RUNTIME')
+            self.assertEqual(stored[44441]['mask'],1<<active)
+            self.assertNotIn(44440,stored)
+            reverse=self.convert({}, {64357:1<<active},cls=8,active=active,reverse=True)
+            self.assertEqual(reverse[44441]['disposition'],'PERSISTENT')
+            self.assertNotIn(44440,reverse)
+        self.fails('INCOMPATIBLE_SPELL_CHAIN',lambda:self.convert({44441:(1,0)},cls=8))
+
+    def test_source_runtime_predecessor_obligation_stays_blocked(self):
+        self.fails('UNSUPPORTED_TEMPORARY_RANK_CHAIN',lambda:self.convert({}, {37117:1},cls=11))
 
     def test_profession_riding_preserve_existing_caps(self):
         skills = {171:(320,450),762:(300,300)}

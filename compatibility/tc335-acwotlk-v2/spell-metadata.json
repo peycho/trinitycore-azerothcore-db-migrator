@@ -31,16 +31,6 @@
             "visibility"
           ],
           "ids": [
-            51735,
-            51734,
-            51726
-          ]
-        },
-        {
-          "fields": [
-            "visibility"
-          ],
-          "ids": [
             63510
           ]
         },
@@ -362,6 +352,11 @@
               96,
               "=",
               87
+            ],
+            [
+              211,
+              "=",
+              16
             ]
           ],
           "ids": [
@@ -4464,16 +4459,6 @@
         },
         {
           "fields": [
-            "visibility"
-          ],
-          "ids": [
-            51735,
-            51734,
-            51726
-          ]
-        },
-        {
-          "fields": [
             "0:TargetA"
           ],
           "ids": [
@@ -4808,6 +4793,11 @@
               96,
               "=",
               87
+            ],
+            [
+              211,
+              "=",
+              16
             ]
           ],
           "ids": [
@@ -5376,6 +5366,7 @@
       "src/server/game/Spells/SpellDefines.h": "e37856ce41701971a082082b1e1e0f30b1c07b78a7e60a07678a987467e680c1",
       "src/server/game/Spells/SpellInfoCorrections.cpp": "d2864343af4683fff898da118bc77b520aa51dba9981f65a4e762933cf4531b2",
       "src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp": "ad456fd8ccf14368cb5132ce05b84e2a763ee0040a24ba79113ce6b54cbbf126",
+      "src/server/scripts/Outland/BlackTemple/boss_teron_gorefiend.cpp": "0b288aedb817304ea88708dd67c6cf3c8d1cee6ecf7101b46e788401ebb55f56",
       "src/server/scripts/Spells/spell_dk.cpp": "a0be1b684171cd8525cfe360de44d7559f781d3ed7ad281bf16a9dd2d9d1d2ad",
       "src/server/scripts/Spells/spell_druid.cpp": "83bba92baa154ea9893a5f8b3bff63a329f2c1bf79f2183d41947bee39109d8d",
       "src/server/scripts/Spells/spell_generic.cpp": "6f570fa512364a97f4a59e5e8b361a0dc9613d517bf697c2ab6ce147aafbceb7",
@@ -5399,6 +5390,7 @@
       "src/server/game/Spells/SpellDefines.h": "59a060ab01461cc1300bc6b9f70f8a74446c56396eaddf8fbd46221ed5141b5d",
       "src/server/game/Spells/SpellMgr.cpp": "44903947322b5fadeb075c6d01f0b25a2004f0cae22bb43a6df75624b5e80817",
       "src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp": "e17458084f52015228b2318a21a15410b37c7951282ccdab3708cef6636eb198",
+      "src/server/scripts/Outland/BlackTemple/boss_teron_gorefiend.cpp": "d381e8eac9b43603699ba7c3fb74eb9fd83002f7d6e77f3eb74f10d1c92db978",
       "src/server/scripts/Spells/spell_dk.cpp": "c8cffae736da46bc1aeb70a6f390e9e8e5dd98178973bc16d67c8d0406bf200a",
       "src/server/scripts/Spells/spell_druid.cpp": "31dc1fcefc78f8bdfab401985062a33794b937f7c8fc76959e3cc678e775b4fc",
       "src/server/scripts/Spells/spell_generic.cpp": "e067dc20995db4ca0f24763a9db649700c5636c461b7f1e5bb325204882329ac",
@@ -6268,6 +6260,7 @@
       "spell_silithyst": "NO_SPELLBOOK_MUTATION",
       "spell_spawn_blood_pool": "NO_SPELLBOOK_MUTATION",
       "spell_symbol_of_life_dummy": "NO_SPELLBOOK_MUTATION",
+      "spell_teron_gorefiend_shadow_of_death": "NO_SPELLBOOK_MUTATION",
       "spell_the_flag_of_ownership": "NO_SPELLBOOK_MUTATION",
       "spell_tur_ragepaw_lifebloom": "NO_SPELLBOOK_MUTATION",
       "spell_twisted_visage_lifebloom": "NO_SPELLBOOK_MUTATION",
@@ -6842,6 +6835,7 @@
       "spell_mage_summon_water_elemental": "NO_SPELLBOOK_MUTATION",
       "spell_magic_broom": "NO_SPELLBOOK_MUTATION",
       "spell_magic_eater_food": "NO_SPELLBOOK_MUTATION",
+      "spell_murmur_sonic_boom": "NO_SPELLBOOK_MUTATION",
       "spell_murmur_sonic_boom_effect": "NO_SPELLBOOK_MUTATION",
       "spell_pal_ardent_defender": "NO_SPELLBOOK_MUTATION",
       "spell_pal_aura_mastery": "NO_SPELLBOOK_MUTATION",
@@ -6889,6 +6883,7 @@
       "spell_pal_sacred_shield": "NO_SPELLBOOK_MUTATION",
       "spell_pal_sacred_shield_dummy": "NO_SPELLBOOK_MUTATION",
       "spell_pal_sanctified_retribution": "NO_SPELLBOOK_MUTATION",
+      "spell_pal_seal_of_corruption": "NO_SPELLBOOK_MUTATION",
       "spell_pal_seal_of_righteousness": "NO_SPELLBOOK_MUTATION",
       "spell_pal_seal_of_vengeance": "NO_SPELLBOOK_MUTATION",
       "spell_pal_seal_of_vengeance_AuraScript": "NO_SPELLBOOK_MUTATION",
@@ -7025,6 +7020,7 @@
       "spell_spawn_blood_pool": "NO_SPELLBOOK_MUTATION",
       "spell_stasis_field_aura": "NO_SPELLBOOK_MUTATION",
       "spell_steal_essence_visual": "NO_SPELLBOOK_MUTATION",
+      "spell_teron_gorefiend_shadow_of_death": "NO_SPELLBOOK_MUTATION",
       "spell_tur_ragepaw_lifebloom": "NO_SPELLBOOK_MUTATION",
       "spell_twisted_visage_lifebloom": "NO_SPELLBOOK_MUTATION",
       "spell_warl_banish": "NO_SPELLBOOK_MUTATION",

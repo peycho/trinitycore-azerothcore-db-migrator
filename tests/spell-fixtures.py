@@ -35,7 +35,9 @@ def stores(profile):
             row = record('Spell', spell)
             row[71] = 10
     for spell in [6603,12282,12663,12664,12300,12301,12296,5209,38795,53407,34074,
-                  51466,51470,54347,54348,54349,20911,25899,900000,900010,900011,900012]:
+                  51466,51470,54347,54348,54349,20911,25899,900000,900010,900011,900012,
+                  38796,53736,40251,51726,64356,64357,44440,44441,64348,64349,
+                  37116,37117,16958,16961]:
         row = record('Spell', spell)
         row[71] = 3
     # Match the stock class skill associations and relevant effect/family
@@ -67,6 +69,7 @@ def stores(profile):
         (7,5,[900000],0),
         (137,1,[12296],0),
         (2049,7,[51466,51470],0),(1882,9,[54347,54348,54349],0),
+        (2001,8,[64356,64357],0),(2002,11,[37116,37117],0),
     ]:
         tab = record('TalentTab', ident)
         tab[20] = 1 << (cls-1)
@@ -84,6 +87,16 @@ def stores(profile):
         data['Spell'][spell][71],data['Spell'][spell][95] = 65,57
     for spell in [54347,54348,54349]:
         data['Spell'][spell][95],data['Spell'][spell][86] = 4,1
+    # Native hidden/passive children of Fiery Payback and Primal Fury.
+    # Fiery Payback has an AC-only child rank chain; Primal Fury has one in TC too.
+    for owner,children in [(64356,[44440,64348]),(64357,[44441,64349]),
+                           (37116,[16958]),(37117,[16961])]:
+        data['Spell'][owner][71:74]=[0,0,0]
+        for index,child in enumerate(children):
+            data['Spell'][owner][71+index]=36
+            data['Spell'][owner][116+index]=child
+            data['Spell'][child][4]|=0xc0
+            data['Spell'][child][71]=6
     # A ranked additional talent spell is persistent, a hidden unranked
     # dependent is runtime temporary; neither is granted in an unowned spec.
     data['Spell'][900000][71] = 36
@@ -132,9 +145,13 @@ def seed_worlds(sql, tc, ac, tc_world, ac_world, profile):
             'CREATE TABLE spell_custom_attr ('+('entry' if world==tc_world else 'spell_id')+' INT,attributes INT UNSIGNED);',world)
         values = ','.join(f'({chain[0]},{spell},{rank})' for chain in CHAINS for rank,spell in enumerate(chain,1))
         sql('INSERT INTO spell_ranks VALUES '+values,world)
+        sql('INSERT INTO spell_ranks VALUES (16958,16958,1),(16958,16961,2)',world)
         sql('INSERT INTO spell_required VALUES (25899,20911),(5209,5487)',world)
         sql("INSERT INTO spell_script_names VALUES (38795,'spell_murmur_sonic_boom_effect'),"
-            "(53407,'spell_pal_judgement_of_justice')",world)
+            "(53407,'spell_pal_judgement_of_justice'),(53736,'spell_pal_seal_of_corruption'),"
+            "(40251,'spell_teron_gorefiend_shadow_of_death')",world)
         sql('INSERT INTO spell_custom_attr VALUES (6603,0)',world)
     sql('CREATE TABLE spell_learn_spell (entry INT,SpellID INT,Active TINYINT);'
         'INSERT INTO spell_learn_spell VALUES (900011,900012,1)',tc_world)
+    sql('INSERT INTO spell_ranks VALUES (44440,44440,1),(44440,44441,2)',ac_world)
+    sql("INSERT INTO spell_script_names VALUES (38796,'spell_murmur_sonic_boom')",tc_world)

@@ -100,6 +100,7 @@ write_trinitycore_semantic_manifest() {
         src/server/game/Scripting/ScriptMgr.h \
         src/server/scripts/Spells \
         src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp \
+        src/server/scripts/Outland/BlackTemple/boss_teron_gorefiend.cpp \
         src/server/game/Entities/Item/ItemDefines.h \
         src/server/game/Loot/Loot.h \
         "${FORMAT2_GAME_INPUTS[@]}"
@@ -148,6 +149,7 @@ write_azerothcore_semantic_manifest() {
         src/server/game/Scripting/ScriptDefines/SpellScriptLoader.h \
         src/server/scripts/Spells \
         src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp \
+        src/server/scripts/Outland/BlackTemple/boss_teron_gorefiend.cpp \
         src/server/game/World/World.cpp \
         data/sql/base/db_world/spell_dbc.sql \
         data/sql/base/db_world/talent_dbc.sql \

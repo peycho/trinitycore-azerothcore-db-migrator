@@ -61,6 +61,9 @@ zero/equal caps, numeric types, report tampering, live drift and offline state.
 These include rank-derived prerequisites (Dire Bear Form/Bear Form/Challenging
 Roar), native script aliases and paired mutation guards, reviewed encounter
 handlers, and spell/aura enum and effect-copy corrections.
+The spell regressions also cover reviewed legacy constructor aliases, bounded
+family-flag corrections, authorized AC-only temporary rank prefixes and rejection
+when TC still requires a temporary predecessor.
 Inventories use `LC_ALL=C`. Candidate approval exists only in disposable
 toolkit copies under `/tmp`; the checkout's approval is unchanged.
 
@@ -115,6 +118,10 @@ unsupported relationships, same-count metadata/source drift and spell transactio
 failure/interruption before and after commit. The trainer harness compiles the
 protected AC trainer-state function with mocked getters and checks migrated
 direct/wrapped spell rows in both specs; this is not a worldserver gameplay test.
+The separate talent consumer harness compiles AC's protected
+`_addTalentAurasAndSpells` with a recording spell-add sink. It verifies Fiery
+Payback's exact child IDs, temporary flags and additional-talent exclusions;
+it does not execute `_addSpell` effects, specialization switching or gameplay.
 
 The rehearsal entrypoint first runs a focused wide-metadata regression against
 the same disposable server. It creates its own temporary schema and SELECT-only

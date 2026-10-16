@@ -81,6 +81,7 @@ schemas and run ID; do not replace code underneath an existing run.
 | Talent-unlocked trained ranks | Apply verified owner masks and intersect prerequisite eligibility; never infer untrained higher ranks |
 | Direct talent ranks | Keep existing selections; never grant preceding talent ranks; follow AC's `addToSpellBook` marker |
 | Native temporary talent spells | Record runtime ownership; omit persistent rows that would outlive the owning talent |
+| Hidden/passive runtime child with an AC-only predecessor prefix | Delegate only the exact authorized learned child to native AC talent loading when TC has no predecessor obligation. Do not persist the child or grant target-only predecessors. |
 | TC dependent learned spells | Reconstruct only verified native-compatible dependencies; unsupported world-only learning relationships block |
 | Profession/riding tiers | Preserve existing skill lines, values and caps; block missing skills, incompatible effects or cap/value increases |
 | Recipes and other ordinary spells | Preserve legitimate stored availability; do not infer recipes from trainer catalogs |
@@ -106,6 +107,28 @@ encounter handlers remain unreviewed unless separately covered by the profile.
 Named native script registrations inherit the implementation's mutation policy;
 for paired spell/aura handlers, either implementation can force rejection. This
 includes the native Judgement of Justice/Light/Wisdom aliases.
+
+The reviewed TC legacy constructor alias `spell_pal_seal_of_corruption` follows
+the protected Seal of Vengeance implementation with its actual Blood Corruption
+and Seal of Corruption Damage template arguments. Unreviewed legacy constructor
+aliases remain blocked, even when their class name is recognized. Murmur's Sonic
+Boom handler triggers its damage spell; the reviewed Teron Shadow of Death aura
+handles absorption and temporary summon/possession effects. Neither handler
+changes persistent spell ownership. Complete encounter source files are
+protected; other handlers in those files are not implicitly approved.
+
+Bounded constant `SpellFamilyFlags[0..2]` corrections are represented explicitly,
+including Ebon Plague's word-2 `0x10` assignment. Conditional, dynamic/out-of-range
+and copied indexed accesses remain guarded.
+
+Fiery Payback illustrates a representable runtime-only rank difference: TC may
+have no `44440 -> 44441` chain while AC does. Native AC talent loading adds the
+exact selected talent's learned child with `_addSpell`, without lower-rank
+reconstruction. If that child is hidden/passive and TC has no predecessor
+obligation, it is runtime-owned only; the transform grants no additional rank.
+If TC does require a predecessor, as with Primal Fury's `16958 -> 16961`, the
+temporary-rank guard remains. Do not persist temporary predecessors to work
+around their missing native restoration; they can outlive talent ownership.
 
 The migrator changes no talent selections, skill rows, skill caps or profession
 slots. Profession/riding spell effects are checked against existing skills;
@@ -141,11 +164,19 @@ The console prints reason counts and the full blocker-report path. The current
 audit records the first failure per character; these counts describe affected
 characters, not an exhaustive list of bad rows. A script/correction guard can
 mean that compatibility has not been reviewed; it does not prove corrupt data.
+Rank disagreements report both predecessor prefixes. Unowned spell reports
+include stored flags, rank root and selected ranks from the same talent family,
+so disabled history can be distinguished from an unexplained enabled grant.
 `INVALID_TALENT_OWNERSHIP` is separate: a talent-entry ID stored instead of a
 rank spell ID cannot be repaired by guessing which rank was selected. Disabled
 direct talent spells without matching selected ownership also remain blocked
 under the current policy. Do not turn these records into active AC spell rows,
 delete them, or infer replacement talent selections as part of rank completion.
+The TC `disabled` flag controls availability even when `active=1`; the active
+flag alone does not establish an enabled grant. AC can load/save a zero-mask
+row, but the current conversion contract does not authorize such history. A
+zero-mask policy needs separate review of resets, relearning and reverse
+conversion; accepting the SQL value alone is insufficient.
 
 Use the retained report to review representative failures before another run:
 

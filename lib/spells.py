@@ -388,13 +388,38 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
     seeds = set(stored) | set(owners)
     for metadata in (tc, ac):
         assert_acyclic(metadata, seeds)
+    # Determine native talent-owned runtime spells before rank compatibility.
+    # AC's _addTalentAurasAndSpells uses _addSpell for the exact learned child;
+    # it does not reconstruct that child's lower ranks.
+    temporary_spells = set()
+    temporary_queue = deque(child for owner in owners for child, _, _ in ac.effect_learns[owner]
+                            if child not in ac.additional)
+    while temporary_queue:
+        child = temporary_queue.popleft()
+        if child in temporary_spells:
+            continue
+        temporary_spells.add(child)
+        effects = [effect for effect in ac.spells[child][71:74] if effect]
+        if LEARN in effects:
+            if any(effect != LEARN for effect in effects):
+                reject('UNSUPPORTED_TEMPORARY_LEARN_EFFECT', str(child))
+            temporary_queue.extend(row[0] for row in ac.effect_learns[child])
+        elif tc.predecessors(child):
+            reject('UNSUPPORTED_TEMPORARY_RANK_CHAIN', str(child))
     # Every reached relationship must agree on rank ordering. Comparing the
     # predecessor prefix allows additional *unlearned* higher target ranks.
     def compatible(spell):
         tc.check_spell(spell)
         ac.check_spell(spell)
-        if tc.predecessors(spell) != ac.predecessors(spell):
-            reject('INCOMPATIBLE_SPELL_CHAIN', str(spell))
+        source_prefix, target_prefix = tc.predecessors(spell), ac.predecessors(spell)
+        # An AC-only rank prefix is harmless for a hidden/passive child that
+        # native talents own temporarily, provided TC knows no preceding rank.
+        # No persistent row or target predecessor is granted by this exception.
+        runtime_exact = (spell in temporary_spells and not source_prefix
+                         and bool(tc.spells[spell][4] & (PASSIVE | HIDDEN)))
+        if source_prefix != target_prefix and not runtime_exact:
+            reject('INCOMPATIBLE_SPELL_CHAIN',
+                   f'{spell}: tc_predecessors={source_prefix}; ac_predecessors={target_prefix}')
         if (spell in tc.talents) != (spell in ac.talents):
             reject('INCOMPATIBLE_TALENT_CLASSIFICATION', str(spell))
         if tc.skill_effect(spell) != ac.skill_effect(spell):
@@ -447,21 +472,6 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
             known_rank_prefix.update(tc.predecessors(anchor))
 
     result = {}
-    temporary_spells = set()
-    temporary_queue = deque(child for owner in owners for child, _, _ in ac.effect_learns[owner]
-                            if child not in ac.additional)
-    while temporary_queue:
-        child = temporary_queue.popleft()
-        if child in temporary_spells:
-            continue
-        temporary_spells.add(child)
-        effects = [effect for effect in ac.spells[child][71:74] if effect]
-        if LEARN in effects:
-            if any(effect != LEARN for effect in effects):
-                reject('UNSUPPORTED_TEMPORARY_LEARN_EFFECT', str(child))
-            temporary_queue.extend(row[0] for row in ac.effect_learns[child])
-        elif tc.predecessors(child):
-            reject('UNSUPPORTED_TEMPORARY_RANK_CHAIN', str(child))
     def add(spell, mask, anchor, path, reason):
         compatible(spell)
         allowed = eligible(spell)
@@ -530,7 +540,12 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
     for spell, flags in sorted(stored.items()):
         mask = eligible(spell)
         if not mask:
-            reject('UNAUTHORIZED_TALENT_SPELL', str(spell))
+            root = tc.first(spell)
+            family = tc.talents.get(spell,tc.talents.get(root))
+            selected_family = [(s,m) for s,m in sorted(owners.items())
+                               if m and family and tc.talents[s][0] == family[0]]
+            reject('UNAUTHORIZED_TALENT_SPELL',
+                   f'{spell}: stored_flags={flags}; rank_root={root}; selected_same_talent={selected_family}; eligible_mask=0')
         if direction == 'tc-to-ac':
             active, disabled = flags
             if active not in (0, 1) or disabled not in (0, 1):
