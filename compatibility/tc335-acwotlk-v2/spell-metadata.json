@@ -1,4 +1,62 @@
 {
+  "aura_talent_scripts": {
+    "ac": {
+      "spell_dru_nurturing_instinct": {
+        "aura": 175,
+        "effects": [
+          6,
+          0,
+          0
+        ],
+        "helper_aura": 118,
+        "helper_effects": [
+          6,
+          0,
+          0
+        ],
+        "helper_stances": 1,
+        "mode": "TEMPORARY_SPELL",
+        "parents": {
+          "33872": {
+            "child": 47179,
+            "rank": 1
+          },
+          "33873": {
+            "child": 47180,
+            "rank": 2
+          }
+        }
+      }
+    },
+    "tc": {
+      "spell_dru_nurturing_instinct": {
+        "aura": 175,
+        "effects": [
+          6,
+          0,
+          0
+        ],
+        "helper_aura": 118,
+        "helper_effects": [
+          6,
+          0,
+          0
+        ],
+        "helper_stances": 1,
+        "mode": "CAST_AURA",
+        "parents": {
+          "33872": {
+            "child": 47179,
+            "rank": 1
+          },
+          "33873": {
+            "child": 47180,
+            "rank": 2
+          }
+        }
+      }
+    }
+  },
   "cast_only_scripts": {
     "ac": {
       "spell_gen_profession_research": {
@@ -7139,6 +7197,30 @@
       "spell_winged_steed_of_the_ebon_blade": "NO_SPELLBOOK_MUTATION",
       "spell_wyrmrest_defender_whisper_to_controller_random": "NO_SPELLBOOK_MUTATION",
       "spell_x53_touring_rocket": "NO_SPELLBOOK_MUTATION"
+    }
+  },
+  "skill_reward_dependencies": {
+    "53428": {
+      "acquire": 1,
+      "child_effects": [
+        53,
+        3,
+        0
+      ],
+      "children": [
+        53341,
+        53343
+      ],
+      "class_mask": 32,
+      "max": 1,
+      "minimum": 1,
+      "parent_effects": [
+        47,
+        0,
+        0
+      ],
+      "skill": 776,
+      "value": 1
     }
   },
   "stores": {

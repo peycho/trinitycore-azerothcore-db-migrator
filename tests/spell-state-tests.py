@@ -26,9 +26,11 @@ class World:
     def __init__(self):
         self.tables = {
             'spell_ranks': [[str(chain[0]),str(spell),str(rank)] for chain in fixtures.CHAINS for rank,spell in enumerate(chain,1)]
-                           + [['16958','16958','1'],['16958','16961','2']],
+                           + [['16958','16958','1'],['16958','16961','2'],
+                              ['47179','47179','1'],['47179','47180','2']],
             'spell_required': [['25899','20911'], ['5209','5487']],
-            'spell_learn_spell': [['900011','900012','1']],
+            'spell_learn_spell': [['900011','900012','1'],['53428','53341','1'],['53428','53343','1']],
+            'spell_script_names': [['-33872','spell_dru_nurturing_instinct']],
         }
     def table(self,world,table,columns):
         rows=list(self.tables.get(table,[]))
@@ -359,6 +361,69 @@ class SpellTests(unittest.TestCase):
         self.fails('INCOMPATIBLE_SKILL_METADATA',lambda:self.convert({53341:(1,0)},skills={776:(1,1)},cls=6,tc=tc,ac=ac))
         tc.scripts[53341].add('spell_chapter1_emblazon_runeblade')
         self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:self.convert({53341:(1,0)},skills={776:(1,1)},cls=6,tc=tc))
+
+    def test_runeforging_dependencies_delegate_to_verified_native_skill_rewards(self):
+        for reverse in (False,True):
+            result=self.convert({53428:(3,) if reverse else (1,0)},skills={776:(1,1)},cls=6,reverse=reverse)
+            self.assertEqual(set(result),{53428,53341,53343})
+            for spell in (53341,53343):
+                self.assertEqual(result[spell]['disposition'],'SKILL')
+                self.assertEqual(result[spell]['mask'],3)
+                self.assertTrue(result[spell]['derived'])
+                proof=result[spell]['authorization']['native_skill_rewards'][0]
+                self.assertEqual((proof['parent'],proof['skill'],proof['value'],proof['max']),(53428,776,1,1))
+            self.assertEqual(result[53428]['disposition'],'PERSISTENT')
+        merged=self.convert({53428:(1,0),53341:(1,0)},skills={776:(1,1)},cls=6)
+        self.assertFalse(merged[53341]['derived'])
+        self.assertEqual(len(merged[53341]['proofs']),2)
+        self.fails('SPELL_WOULD_ADD_SKILL',lambda:self.convert({53428:(1,0)},skills={},cls=6))
+        self.fails('SPELL_WOULD_CHANGE_SKILL',lambda:self.convert({53428:(1,0)},skills={776:(1,450)},cls=6))
+        for mutation in ('method','class','threshold','superseded','effects','inactive'):
+            tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+            if mutation=='method':ac.abilities[53341][0][9]=0
+            elif mutation=='class':ac.abilities[53341][0][4]=64
+            elif mutation=='threshold':ac.abilities[53341][0][7]=2
+            elif mutation=='superseded':ac.abilities[53341][0][8]=53343
+            elif mutation=='effects':ac.spells[53341][71]=3
+            else:tc.learns[53428][0]=(53341,0,False)
+            self.fails('UNSUPPORTED_DEPENDENT_LEARN',lambda:self.convert({53428:(1,0)},skills={776:(1,1)},cls=6,tc=tc,ac=ac))
+
+    def test_nurturing_instinct_uses_native_transient_helpers_without_spell_rows(self):
+        for active in (0,1):
+            for reverse in (False,True):
+                result=self.convert({}, {33872:1,33873:2},cls=11,active=active,reverse=reverse)
+                self.assertEqual(set(result),{33872,33873,47179,47180})
+                for parent,child,mask in ((33872,47179,1),(33873,47180,2)):
+                    self.assertEqual(result[parent]['disposition'],
+                                     'PERSISTENT' if reverse and mask & (1<<active) else 'TALENT')
+                    self.assertEqual(result[child]['disposition'],'AURA')
+                    self.assertEqual(result[child]['mask'],mask)
+                    self.assertEqual(result[child]['authorization']['owner_masks'],[(parent,mask)])
+                    self.assertEqual(result[child]['proofs'],[[parent,[parent,child],'NATIVE_TALENT_AURA']])
+        both=self.convert({}, {33873:3},cls=11)
+        self.assertEqual(set(both),{33873,47180})
+        self.assertEqual(both[47180]['mask'],3)
+        tc=copy.deepcopy(self.tc)
+        tc.learns[47180].append((6603,1,False))
+        self.assertEqual(set(self.convert({}, {33873:3},cls=11,tc=tc)),{33873,47180})
+        self.fails('UNSUPPORTED_AURA_HELPER_SPELL_ROW',lambda:self.convert({47180:(1,0)}, {33873:1},cls=11))
+        self.fails('UNSUPPORTED_AURA_HELPER_SPELL_ROW',lambda:self.convert({47180:(1,1)},cls=11))
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({33873:(1,1)},cls=11))
+        tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+        tc.scripts[33873].clear()
+        self.fails('INCOMPATIBLE_TALENT_AURA_SCRIPT',lambda:self.convert({}, {33873:1},cls=11,tc=tc,ac=ac))
+        ac=copy.deepcopy(self.ac)
+        ac.scripts[34914].add('spell_dru_nurturing_instinct')
+        self.fails('UNSUPPORTED_TALENT_AURA_SCRIPT',lambda:self.convert({}, {34914:1},cls=5,ac=ac))
+        for mutation in ('aura','helper','stance','rank','unknown'):
+            ac=copy.deepcopy(self.ac)
+            if mutation=='aura':ac.spells[33873][95]=4
+            elif mutation=='helper':ac.spells[47180][71]=36
+            elif mutation=='stance':ac.spells[47180][12]=0
+            elif mutation=='rank':ac.talents[33873]=(1792,1)
+            else:ac.scripts[6603].add('spell_dru_nurturing_instinct')
+            reason='INVALID_TALENT_OWNERSHIP' if mutation=='rank' else 'UNSUPPORTED_TALENT_AURA_SCRIPT'
+            self.fails(reason,lambda:self.convert({6603:(1,0)}, {33873:1},cls=11,ac=ac))
 
     def test_native_aliases_and_enum_field_copy_corrections(self):
         for metadata in [self.tc,self.ac]:

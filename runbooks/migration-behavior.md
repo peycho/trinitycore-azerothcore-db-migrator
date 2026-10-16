@@ -57,7 +57,10 @@ the selected mapping registries.
   Inactive superseded ranks remain known. Unexplained disabled/inactive states,
   incompatible chains and unsafe dependencies block migration. Direct talent
   ranks are never expanded; native talent/temporary spells are delegated to AC
-  where appropriate. Profession/riding transforms must preserve existing skills.
+  where appropriate. Reviewed Nurturing Instinct helpers remain native transient
+  state; verified Runeforging dependencies are delegated to existing native skill
+  rewards. Both dispositions are reported and emit no persistent spell rows in
+  either direction. Profession/riding transforms must preserve existing skills.
   See [spell reconstruction](spell-reconstruction.md) for the precise policy.
 - Cooldown category/end fields are consolidated with the later expiration time.
 - Instance extension enum value `EXTENDED` becomes the target boolean.

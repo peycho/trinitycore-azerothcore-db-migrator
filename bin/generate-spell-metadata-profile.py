@@ -47,6 +47,20 @@ REVIEWED_CAST_ONLY_SCRIPTS = {
         'effects': [157,77,0],
     },
 }
+# TC casts/removes these helper auras; AC adds/removes temporary spells.
+# Neither representation belongs in the persistent spellbook.
+REVIEWED_AURA_TALENT_SCRIPTS = {
+    'spell_dru_nurturing_instinct': {
+        'parents': {'33872': {'rank':1,'child':47179}, '33873': {'rank':2,'child':47180}},
+        'effects': [6,0,0], 'aura':175,
+        'helper_effects': [6,0,0], 'helper_aura':118, 'helper_stances':1,
+    },
+}
+REVIEWED_SKILL_REWARD_DEPENDENCIES = {
+    '53428': {'skill':776, 'children':[53341,53343], 'value':1, 'max':1,
+              'parent_effects':[47,0,0], 'child_effects':[53,3,0],
+              'class_mask':32, 'acquire':1, 'minimum':1},
+}
 CORRECTION_DEFINITIONS = (
     'src/server/shared/SharedDefines.h',
     'src/server/game/Spells/SpellDefines.h',
@@ -144,6 +158,7 @@ def script_policies(content, reviewed=None, legacy_aliases=None):
 
 def generate(tc, ac):
     result = {'version': 1, 'stores': {}, 'corrections': {}, 'scripts': {}, 'inputs': {}}
+    result['skill_reward_dependencies'] = REVIEWED_SKILL_REWARD_DEPENDENCIES
     for name, (table, fmt_name) in STORES.items():
         sql = (ac / f'data/sql/base/db_world/{table}.sql').read_text()
         columns = re.findall(r'^  `([^`]+)` ', sql, re.M)
@@ -249,6 +264,9 @@ def generate(tc, ac):
                     scripts[name] = policy
         result['scripts'][core] = scripts
         result.setdefault('cast_only_scripts',{})[core] = REVIEWED_CAST_ONLY_SCRIPTS
+        result.setdefault('aura_talent_scripts',{})[core] = {
+            name: rule | {'mode':'CAST_AURA' if core=='tc' else 'TEMPORARY_SPELL'}
+            for name,rule in REVIEWED_AURA_TALENT_SCRIPTS.items()}
         result['inputs'][core] = {path: hashlib.sha256((repo/path).read_bytes()).hexdigest()
                                   for path in sorted(set(inputs))}
     return result

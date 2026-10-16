@@ -38,7 +38,8 @@ def stores(profile):
     for spell in [6603,12282,12663,12664,12300,12301,12296,5209,38795,53407,34074,
                   51466,51470,54347,54348,54349,20911,25899,900000,900010,900011,900012,
                   38796,53736,40251,51726,64353,64357,44440,44441,64350,64349,
-                  37116,37117,16958,16961,12308,12810,12811,60893,61177,61288,674,30798]:
+                  37116,37117,16958,16961,12308,12810,12811,60893,61177,61288,674,30798,
+                  53428,33872,33873,47179,47180]:
         row = record('Spell', spell)
         row[71] = 3
     # Match the stock class skill associations and relevant effect/family
@@ -73,6 +74,7 @@ def stores(profile):
         (2049,7,[51466,51470],0),(1882,9,[54347,54348,54349],0),
         (2001,8,[64353,64357],0),(2002,11,[37116,37117],0),
         (1690,7,[30798],1),
+        (1792,11,[33872,33873],0),
     ]:
         tab = record('TalentTab', ident)
         tab[20] = 1 << (cls-1)
@@ -107,6 +109,16 @@ def stores(profile):
     data['Spell'][900000][72] = 36
     data['Spell'][900000][117] = 900010
     data['Spell'][900010][4] = 0x80
+    for spell in (33872,33873):
+        data['Spell'][spell][4]=464
+        data['Spell'][spell][71:74]=[6,0,0]
+        data['Spell'][spell][95]=175
+        ability=record('SkillLineAbility',spell)
+        ability[1],ability[2],ability[4]=134,spell,1024
+    for spell in (47179,47180):
+        data['Spell'][spell][4],data['Spell'][spell][12]=400,1
+        data['Spell'][spell][71:74]=[6,0,0]
+        data['Spell'][spell][95]=118
     # Dual Wield is ordinary for warriors/hunters/rogues/death knights, but
     # talent-owned for shamans. Match the supplied stock DBC relationships.
     data['Spell'][674][4],data['Spell'][674][71] = 80,40
@@ -139,6 +151,9 @@ def stores(profile):
     record('SkillLine',776)[1]=7
     info=record('SkillRaceClassInfo',776)
     info[1],info[3],info[4]=776,32,0x80
+    data['Spell'][53428][4],data['Spell'][53428][71:74]=16842768,[47,0,0]
+    ability=record('SkillLineAbility',53428)
+    ability[1],ability[2],ability[4],ability[7]=776,53428,32,1
     for spell in RUNEFORGING:
         row=record('Spell',spell)
         row[4],row[71:74]=65952,[53,3,0]
@@ -176,14 +191,16 @@ def seed_worlds(sql, tc, ac, tc_world, ac_world, profile):
         values = ','.join(f'({chain[0]},{spell},{rank})' for chain in CHAINS for rank,spell in enumerate(chain,1))
         sql('INSERT INTO spell_ranks VALUES '+values,world)
         sql('INSERT INTO spell_ranks VALUES (16958,16958,1),(16958,16961,2)',world)
+        sql('INSERT INTO spell_ranks VALUES (47179,47179,1),(47179,47180,2)',world)
         sql('INSERT INTO spell_required VALUES (25899,20911),(5209,5487)',world)
         sql("INSERT INTO spell_script_names VALUES (38795,'spell_murmur_sonic_boom_effect'),"
             "(53407,'spell_pal_judgement_of_justice'),(53736,'spell_pal_seal_of_corruption'),"
             "(40251,'spell_teron_gorefiend_shadow_of_death'),"
             "(60893,'spell_gen_profession_research')",world)
         sql('INSERT INTO spell_custom_attr VALUES (6603,0)',world)
+        sql("INSERT INTO spell_script_names VALUES (-33872,'spell_dru_nurturing_instinct')",world)
     sql('CREATE TABLE spell_learn_spell (entry INT,SpellID INT,Active TINYINT);'
-        'INSERT INTO spell_learn_spell VALUES (900011,900012,1)',tc_world)
+        'INSERT INTO spell_learn_spell VALUES (900011,900012,1),(53428,53341,1),(53428,53343,1)',tc_world)
     sql('INSERT INTO spell_script_names VALUES '+','.join(
         f"({spell},'spell_chapter1_runeforging_credit')" for spell in RUNEFORGING),tc_world)
     sql('INSERT INTO spell_ranks VALUES (44440,44440,1),(44440,44441,2)',ac_world)

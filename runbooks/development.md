@@ -134,11 +134,30 @@ They reject missing or mismatched native skill routes, class/race exclusions,
 not-trainable routes, unknown owners, skill changes and unowned hidden children.
 The MySQL fixture preserves ordinary Dual Wield and its `1/1` skill in both
 directions, checks recorded authorization evidence and blocks an unowned shaman.
-The Runeforging fixtures preserve ten known enchantments and the existing skill
-in both directions. The loader harness checks that they remain uncast; a
+The Runeforging fixtures preserve eight ordinary enchantment rows plus the
+known parent, delegating Cinderglacier and Razorice to existing skill `776` in
+both directions. One child starts omitted and one stored to test overlapping
+derivations; neither is persisted after conversion. Provenance and unchanged
+`1/1` skill checks cover both. The loader harness checks that they remain uncast; a
 separate protected TC quest-handler harness verifies the incomplete-quest
 credit cast and completed/nonplayer controls with recording sinks. Unreviewed
 chapter handlers and missing Runeforging skill remain blocked.
+The protected TC/AC skill-reward functions run in a separate compiled harness
+with dependent/temporary spell sinks, checking the two Runeforging rewards,
+threshold, class, race and acquisition controls. A separate Nurturing Instinct
+harness executes the protected apply/remove handlers for both ranks, checking
+TC aura casts and AC temporary-only removal. Both use recording sinks; they do
+not execute full spell effects or certify gameplay. MySQL fixtures preserve
+selected ranks in different specs, emit `AURA` provenance without helper rows,
+and block stored helper rows or differing world bindings. Exact skills/talents,
+transaction rollback, interruption/resume and completed reruns remain checked.
+Run just the two native consumer harnesses without MySQL using:
+
+```bash
+python3 tests/nurturing-instinct-tests.py /srv/src/TrinityCore /srv/src/azerothcore-wotlk
+python3 tests/skill-reward-tests.py /srv/src/TrinityCore /srv/src/azerothcore-wotlk
+```
+
 Nonstandard Runeforging values/caps and tier overrides also block; native mono
 normalization is not treated as an approved migration repair. Synthetic recipe
 metadata uses the supplied DBC acquisition methods and trivial-skill fields.

@@ -361,3 +361,51 @@ with recording/mocked state. Loader and Runeforging quest-handler harnesses
 passed separately. These are scoped behavioral checks, not full native player
 loading or staging acceptance. Updated operator blocker counts remain untested;
 the release/gameplay gates above are still pending.
+
+## Native aura and skill review, 2026-10-16 (`spell-state-v4`)
+
+This later amendment supersedes the earlier pending Nurturing Instinct review.
+The operator's read-only worlds bind `-33872` to
+`spell_dru_nurturing_instinct` in both cores and contain `47179 -> 47180` in
+both rank tables. TC casts the exact helper aura; AC adds the exact helper
+with mask `3`, update `false`, temporary `true`, then removes only temporary
+spells on aura removal. The conversion records the selected owner's mask and
+exact helper as `AURA` without persistent helper rows in either direction.
+The shared helper rank chain does not establish learned predecessor ownership:
+TC casts an aura here rather than learning a spell. The temporary-rank blockers
+for genuinely learned Primal Fury and death-knight children remain unchanged.
+Stored Nurturing helpers, differing bindings and incompatible effective
+parent/helper shapes block explicitly. No zero-mask history policy is added.
+
+The operator's TC world also confirms enabled dependencies from Runeforging
+`53428` to `53341` and `53343`. Both supplied DBCs make these native skill `776`
+rewards with acquisition method `1` and threshold `1`. With an existing skill
+exactly `1/1`, matching eligible native relationships and a known parent, the
+converter delegates these exact children as `SKILL` in both directions. TC
+restores dependent spells and AC restores temporary spells from skill loading;
+no persistent children, extra recipes, skill repairs or quest credit are added.
+A stored child and an omitted child merge with recorded provenance. This does
+not approve arbitrary world dependencies or riding upgrades.
+
+The protected `spell_druid.cpp`, `Player.cpp`, `SpellMgr.cpp` and AC
+`PlayerStorage.cpp` match the retained pins byte for byte; the AC files also
+match staging `f089543d...`. Configured checkout revision differences therefore
+do not silently replace the pins. Existing v2 manifests already protect these
+consumers; no manifest expansion, pin replacement or v1 modification is needed.
+Release approval remains **UNREVIEWED**. All five staging gameplay acceptance
+checks, plus native Nurturing aura/form/spec and Runeforging checks, remain
+**NOT TESTED**. Use fresh migration target/control schemas and a new run; keep
+the cleaned source and its separate cleanup archives.
+
+Final v4 validation passed: 86 unit tests, ShellCheck, profile reproducibility,
+schema guards and the complete disposable MySQL 8.4.10 bidirectional rehearsal.
+Both directions reached database `READY` with zero failed ERROR checks.
+Interruption/resume, rollback, completed reruns, malformed/cyclic relationships,
+same-count input drift and read-only source/world/unrelated-data preservation
+passed. Final provenance checks cover two native aura helpers with distinct
+spec masks and two skill rewards, including stored/derived overlap. Isolated
+compiled protected aura handlers and skill loaders passed; 20 checks against
+the supplied DBCs also passed and reproduced both previous-converter blockers.
+All 90 frozen runtime/profile/test files matched the final implementation and
+all 14 supplied DBC assets remained unchanged. These are fixture and consumer
+results; operator preflight and native gameplay acceptance remain untested.

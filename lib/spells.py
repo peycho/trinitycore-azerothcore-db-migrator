@@ -15,7 +15,7 @@ import struct
 import subprocess
 import sys
 
-POLICY = 'spell-state-v3'
+POLICY = 'spell-state-v4'
 LEARN, SKILL, SKILL_STEP, DUAL_WIELD = 36, 118, 44, 40
 PASSIVE, HIDDEN = 0x40, 0x80
 
@@ -287,6 +287,13 @@ class Metadata:
                 self.scripts[spell].add(name)
         self.script_policy = profile.get('scripts', {}).get(core, {})
         self.cast_only_scripts = profile.get('cast_only_scripts', {}).get(core, {})
+        self.aura_talent_scripts = profile.get('aura_talent_scripts', {}).get(core, {})
+        self.skill_reward_dependencies = profile.get('skill_reward_dependencies', {})
+        self.aura_owners = defaultdict(set)
+        for name,rule in self.aura_talent_scripts.items():
+            for parent,entry in rule['parents'].items():
+                if name in self.scripts[int(parent)]:
+                    self.aura_owners[entry['child']].add(int(parent))
         # World custom attributes can change the TC AutoLearned classification.
         custom_columns = ['entry', 'attributes'] if core == 'tc' else ['spell_id', 'attributes']
         for spell, attributes in db.table(world, 'spell_custom_attr', custom_columns):
@@ -338,7 +345,19 @@ class Metadata:
             if name == 'Effect' or effect in (LEARN, SKILL, SKILL_STEP, DUAL_WIELD, 65) or (effect == 6 and name == 'ApplyAuraName'):
                 reject('UNSUPPORTED_CORE_CORRECTION', f'{self.core}: {spell}: {field}')
         for name in self.scripts[spell]:
-            if self.script_policy.get(name) != 'NO_SPELLBOOK_MUTATION':
+            if name in self.aura_talent_scripts:
+                rule = self.aura_talent_scripts[name]
+                entry = rule['parents'].get(str(spell),{})
+                helper = self.spells.get(entry.get('child'),[])
+                if (not entry or spell not in self.talents or self.talents[spell][1] != entry['rank']
+                        or record[71:74] != rule['effects'] or record[95] != rule['aura']
+                        or not record[4] & PASSIVE or record[12] or record[20]
+                        or not helper or entry['child'] in self.talents
+                        or helper[71:74] != rule['helper_effects'] or helper[95] != rule['helper_aura']
+                        or helper[12] != rule['helper_stances'] or helper[20]
+                        or helper[4] & (PASSIVE|HIDDEN) != HIDDEN):
+                    reject('UNSUPPORTED_TALENT_AURA_SCRIPT',f'{self.core}: {spell}: {name}')
+            elif self.script_policy.get(name) != 'NO_SPELLBOOK_MUTATION':
                 rule = self.cast_only_scripts.get(name,{})
                 skill = rule.get('spell_skills',{}).get(str(spell))
                 # Both native loaders leave this exact non-passive research
@@ -416,6 +435,25 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
     seeds = set(stored) | set(owners)
     for metadata in (tc, ac):
         assert_acyclic(metadata, seeds)
+    aura_helpers = defaultdict(dict)
+    for spell in stored:
+        if tc.aura_owners.get(spell) or ac.aura_owners.get(spell):
+            reject('UNSUPPORTED_AURA_HELPER_SPELL_ROW',f'{spell}: native aura/temporary state must not be persisted')
+    for owner,mask in sorted(owners.items()):
+        bindings = []
+        for metadata in (tc,ac):
+            metadata.check_spell(owner)
+            bindings.append({name: metadata.aura_talent_scripts[name]['parents'][str(owner)]
+                             for name in metadata.scripts[owner] if name in metadata.aura_talent_scripts})
+        if bindings[0] != bindings[1]:
+            reject('INCOMPATIBLE_TALENT_AURA_SCRIPT',f'{owner}: source/target bindings differ')
+        for name,entry in bindings[0].items():
+            child=entry['child']
+            # TC casts the exact aura; it never learns this helper or its
+            # predecessors. AC's native aura handler owns the temporary row.
+            if tc.predecessors(child) != ac.predecessors(child):
+                reject('INCOMPATIBLE_TALENT_AURA_SCRIPT',f'{owner}:{child}: helper ranks differ')
+            aura_helpers[child][owner] = mask
     # Determine native talent-owned runtime spells before rank compatibility.
     # AC's _addTalentAurasAndSpells uses _addSpell for the exact learned child;
     # it does not reconstruct that child's lower ranks.
@@ -474,6 +512,10 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
                    and tc.spells[spell][86+i] == 5 for i in range(3)):
                 continue
             queue.append((child, new, owner))
+    for child,helper_owners in aura_helpers.items():
+        for owner,mask in helper_owners.items():
+            authorization[child] |= mask
+            authorization_owners[child][owner] = mask
     independent_routes = {}
     def independent_skill_routes(spell):
         """Prove a native ordinary route despite another class's talent learn.
@@ -521,10 +563,15 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
         return any(spell in metadata.talents or metadata.first(spell) in metadata.talents
                    or ((metadata.talent_learn_owners.get(spell)
                         or metadata.talent_learn_owners.get(metadata.first(spell))) and not ordinary_route)
+                   or metadata.aura_owners.get(spell)
                    or (include_requirements and (spell in metadata.additional
                                                 or metadata.first(spell) in metadata.additional))
                    for metadata in (tc,ac))
     def eligible(spell):
+        if spell in aura_helpers:
+            # Casting a helper aura does not learn its rank chain. Each
+            # selected talent authorizes its exact helper, in its own specs.
+            return authorization.get(spell, 0)
         root = tc.first(spell)
         if spell in tc.talents:
             return owners.get(spell,0)
@@ -556,6 +603,32 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
             # Direct talent rank lists never establish lower talent ownership.
             compatible(anchor)
             known_rank_prefix.update(tc.predecessors(anchor))
+
+    skill_delegates = defaultdict(list)
+    for parent,flags in sorted(stored.items()):
+        rule = tc.skill_reward_dependencies.get(str(parent))
+        if not rule or eligible(parent) != 3 or cls != 6:
+            continue
+        if tc.spells[parent][71:74] != rule['parent_effects'] or ac.spells[parent][71:74] != rule['parent_effects']:
+            continue
+        for child,active,auto in tc.learns[parent]:
+            if child not in rule['children'] or not active or auto:
+                continue
+            pairs = []
+            for metadata in (tc,ac):
+                if metadata.spells[child][71:74] != rule['child_effects']:
+                    break
+                abilities = [a for a in metadata.abilities[child]
+                             if a[1] == rule['skill'] and a[4] == rule['class_mask']
+                             and (not a[3] or a[3] & race_mask) and a[9] == rule['acquire']
+                             and a[7] == rule['minimum'] and not a[8]]
+                pairs.append({tuple(a[1:12]):a[0] for a in sorted(abilities)})
+            if len(pairs) != 2:
+                continue
+            for relationship in sorted(pairs[0].keys() & pairs[1].keys()):
+                skill_delegates[child].append({'parent':parent,'skill':rule['skill'],
+                    'value':rule['value'],'max':rule['max'],'tc_ability':pairs[0][relationship],
+                    'ac_ability':pairs[1][relationship],'acquire':rule['acquire'],'minimum':rule['minimum']})
 
     result = {}
     def add(spell, mask, anchor, path, reason):
@@ -622,10 +695,11 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
             disposition = 'PERSISTENT' if persistent else 'TALENT'
         else:
             runtime = spell in temporary_spells
-            disposition = 'RUNTIME' if runtime else 'PERSISTENT'
+            disposition = ('AURA' if spell in aura_helpers else 'SKILL' if spell in skill_delegates
+                           else 'RUNTIME' if runtime else 'PERSISTENT')
         if disposition == 'PERSISTENT' and LEARN in ac.spells[spell][71:74]:
             reject('UNSUPPORTED_PERSISTENT_LEARN_EFFECT', str(spell))
-        if direction == 'ac-to-tc':
+        if direction == 'ac-to-tc' and disposition not in ('SKILL','AURA'):
             # TC removes alternate direct talent ranks when AddSpell runs.
             # Only the active selected rank belongs in its stored spellbook;
             # character_talent retains the other specialization's selection.
@@ -694,6 +768,9 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
                 # Pet teaching effects cannot authorize a player spell.
                 continue
             pending.append((child, mask, owner, [owner, child], 'TALENT_LEARN_EFFECT'))
+    for child,helper_owners in sorted(aura_helpers.items()):
+        for owner,mask in sorted(helper_owners.items()):
+            pending.append((child,mask,owner,[owner,child],'NATIVE_TALENT_AURA'))
     visited = set()
     while pending:
         spell, mask, anchor, path, reason = pending.popleft()
@@ -702,13 +779,18 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
             continue
         visited.add(key)
         add(spell, mask, anchor, path, reason)
+        if spell in aura_helpers:
+            # TC casts this exact helper aura, not AddSpell: neither rank
+            # predecessors nor world learn-map entries are spellbook roots.
+            continue
         # Direct talent rank lists must never be expanded.
         if spell not in tc.talents:
             for previous in tc.predecessors(spell)[-1:]:
                 pending.append((previous, mask, anchor, path + [previous], 'LOWER_RANK'))
         for child, child_active, auto in tc.learns[spell]:
             if not auto:
-                if not any(row[0] == child for row in ac.effect_learns[spell]) and child not in tc.predecessors(spell):
+                skill_reward = any(r['parent'] == spell for r in skill_delegates.get(child,[]))
+                if not any(row[0] == child for row in ac.effect_learns[spell]) and child not in tc.predecessors(spell) and not skill_reward:
                     reject('UNSUPPORTED_DEPENDENT_LEARN', f'{spell}:{child}: no verified native AC dependency')
                 if not child_active and child not in tc.talents and not ac.spells[child][4] & HIDDEN:
                     reject('UNREPRESENTABLE_INACTIVE_DEPENDENCY', f'{spell}:{child}')
@@ -735,7 +817,8 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
                 reject('SPELL_WOULD_ADD_SKILL', f'{spell}: skill={skill}')
         row['proofs'].sort()
         row['original'] = list(stored.get(spell, ()))
-        authorized_by = dict(authorization_owners.get(tc.first(spell),{}))
+        authorized_by = ({} if spell in aura_helpers else
+                         dict(authorization_owners.get(tc.first(spell),{})))
         authorized_by.update(authorization_owners.get(spell,{}))
         requirements = sorted(tc.requires[spell] | ac.requires[spell])
         for prerequisite in requirements:
@@ -750,6 +833,19 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
         if routes:
             row['authorization']['policy'] = 'ORDINARY_SKILL_AUTHORIZATION'
             row['authorization']['independent_skill_routes'] = routes
+        if spell in skill_delegates:
+            row['authorization']['policy'] = 'NATIVE_SKILL_REWARD'
+            row['authorization']['native_skill_rewards'] = skill_delegates[spell]
+        if spell in aura_helpers:
+            row['authorization']['policy'] = 'NATIVE_TALENT_AURA'
+            row['authorization']['aura_owners'] = sorted(aura_helpers[spell].items())
+        aura_contracts = sorted(
+            (metadata.core,name,metadata.aura_talent_scripts[name]['mode'],
+             metadata.aura_talent_scripts[name]['parents'][str(spell)]['child'])
+            for metadata in (tc,ac) for name in metadata.scripts[spell]
+            if name in metadata.aura_talent_scripts)
+        if aura_contracts:
+            row['authorization']['aura_script_contracts'] = aura_contracts
         load_contracts = sorted(
             (metadata.core,name,'CAST_ONLY_RESEARCH_EXISTING_SKILL',
              metadata.cast_only_scripts[name]['spell_skills'][str(spell)])

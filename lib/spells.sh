@@ -106,7 +106,7 @@ load_character_spells() {
         WHERE run_id='$(sql_escape "$RUN_ID")';") || die "Could not read spell checkpoint hashes"
     IFS=$'\t' read -r input_hash expected_hash <<< "$snapshot"
     [[ -n $input_hash && -n $expected_hash ]] || die "Spell snapshot is required before loading"
-    hash=$(printf '%s\n' 'spell-state-v3' "$MIGRATION_DIRECTION" "$input_hash" "$expected_hash" "$TOOLKIT_HASH" |
+    hash=$(printf '%s\n' 'spell-state-v4' "$MIGRATION_DIRECTION" "$input_hash" "$expected_hash" "$TOOLKIT_HASH" |
         sha256sum | awk '{print $1}')
     columns='guid,spell,specMask'
     values='guid,spell,spec_mask'
@@ -121,7 +121,7 @@ load_character_spells() {
         FROM \`$CONTROL_SCHEMA\`.spell_expected WHERE run_id='$(sql_escape "$RUN_ID")';") || die "Could not read spell chunk bounds"
     read -r start maximum <<< "$bounds"
     local generated="$REPORTS_DIR/$RUN_ID/generated-characters-character_spell.sql"
-    printf '%s\n' "-- spell-state-v3; inputs=$input_hash; expected=$expected_hash" > "$generated"
+    printf '%s\n' "-- spell-state-v4; inputs=$input_hash; expected=$expected_hash" > "$generated"
     while :; do
         end=$((start + LOAD_CHUNK_SIZE - 1))
         (( end > maximum )) && end=$maximum
@@ -220,10 +220,24 @@ validate_character_spells() {
           CROSS JOIN JSON_TABLE(e.provenance,'$.derivations[*]'
             COLUMNS (anchor INT UNSIGNED PATH '\$[0]')) proof
           LEFT JOIN ($talent_state) t ON t.guid=e.guid AND t.spell=proof.anchor
-          WHERE e.run_id='$(sql_escape "$RUN_ID")' AND e.disposition='RUNTIME'
+          WHERE e.run_id='$(sql_escape "$RUN_ID")' AND e.disposition IN ('RUNTIME','AURA')
           GROUP BY e.guid,e.spell,e.spec_mask
         ) ownership WHERE spec_mask<>owned_mask;" \
         "Runtime temporary spells must be covered by verified target talent ownership"
+    check_zero character_spell_skill_reward_mismatch "
+        SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.spell_expected e
+        JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=e.guid
+        LEFT JOIN JSON_TABLE(e.provenance,'$.authorization.native_skill_rewards[*]'
+          COLUMNS (parent_spell INT PATH '$.parent',skill INT PATH '$.skill',
+                   value_expected INT PATH '$.value',max_expected INT PATH '$.max')) reward ON TRUE
+        LEFT JOIN \`$CONTROL_SCHEMA\`.spell_expected parent ON parent.run_id=e.run_id
+          AND parent.guid=e.guid AND parent.spell=reward.parent_spell
+        LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_skills s ON s.guid=e.guid AND s.skill=reward.skill
+        WHERE e.run_id='$(sql_escape "$RUN_ID")' AND e.disposition='SKILL'
+          AND (e.spec_mask<>3 OR reward.skill IS NULL OR parent.spell IS NULL
+            OR parent.disposition<>'PERSISTENT' OR parent.spec_mask<>3
+            OR s.skill IS NULL OR s.value<>reward.value_expected OR s.max<>reward.max_expected);" \
+        "Native skill rewards require an unchanged skill and verified known parent"
     check_zero character_spell_specialization_context_mismatch "
         SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.characters s
         JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters t ON t.guid=s.guid

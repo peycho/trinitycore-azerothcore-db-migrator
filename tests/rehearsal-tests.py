@@ -312,6 +312,12 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     spell_guard('SPELL_WOULD_CHANGE_SKILL',
         f'UPDATE `{CHARS}`.character_skills SET max=450 WHERE guid=119 AND skill=776',
         f'UPDATE `{CHARS}`.character_skills SET max=1 WHERE guid=119 AND skill=776')
+    spell_guard('UNSUPPORTED_AURA_HELPER_SPELL_ROW',
+        f'INSERT INTO `{CHARS}`.character_spell VALUES (115,47179,1,0)',
+        f'DELETE FROM `{CHARS}`.character_spell WHERE guid=115 AND spell=47179')
+    spell_guard('INCOMPATIBLE_TALENT_AURA_SCRIPT',
+        f'DELETE FROM `{AC_WORLD}`.spell_script_names WHERE spell_id=-33872',
+        f"INSERT INTO `{AC_WORLD}`.spell_script_names VALUES (-33872,'spell_dru_nurturing_instinct')")
     print('Checking representation boundaries', flush=True)
     for length in (16, 17, 18, 32, 33, 64):
         sql(f"UPDATE account SET username=REPEAT('A',{length}) WHERE id=1", AUTH)
@@ -389,8 +395,16 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=38795',3)
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=60893',3)
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=674',3)
-    equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=119 AND specMask=3',len(SPELL_FIXTURES.RUNEFORGING))
+    equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=119 AND specMask=3',len(SPELL_FIXTURES.RUNEFORGING)-1)
     equal(f'SELECT value,max FROM `{AC_CHARS}`.character_skills WHERE guid=119 AND skill=776','1\t1')
+    equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=119 AND spell IN (53341,53343)',0)
+    for child,derived in [(53341,1),(53343,0)]:
+        equal(f"SELECT disposition,spec_mask,derived FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=119 AND spell={child}",f'SKILL\t3\t{derived}')
+    for helper,mask in [(47179,1),(47180,2)]:
+        equal(f"SELECT disposition,spec_mask FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=115 AND spell={helper}",f'AURA\t{mask}')
+    equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=115 AND spell IN (33872,33873,47179,47180)',0)
+    equal(f'SELECT GROUP_CONCAT(CONCAT(spell,":",specMask) ORDER BY spell) FROM `{AC_CHARS}`.character_talent WHERE guid=115','33872:1,33873:2')
+
     equal(f'SELECT value,max FROM `{AC_CHARS}`.character_skills WHERE guid=113 AND skill=118','1\t1')
     equal(f"SELECT JSON_UNQUOTE(JSON_EXTRACT(provenance,'$.authorization.policy')) "
           f"FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=113 AND spell=674",'ORDINARY_SKILL_AUTHORIZATION')
@@ -437,7 +451,8 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     sql((ROOT / 'tests/fixtures/azerothcore-reverse-data.sql').read_text(), AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (113,674,3)',AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES '+','.join(
-        f'(119,{spell},3)' for spell in SPELL_FIXTURES.RUNEFORGING),AC_CHARS)
+        f'(119,{spell},3)' for spell in [*SPELL_FIXTURES.RUNEFORGING,53428]),AC_CHARS)
+    sql('INSERT INTO character_talent (guid,spell,specMask) VALUES (115,33872,1),(115,33873,2)',AC_CHARS)
     seed_pet_relations(AC_CHARS, reverse=True)
     sql("INSERT INTO item_instance (guid,itemEntry,owner_guid,`count`,enchantments) VALUES (202,20815,100,1,'')", AC_CHARS)
     sql('''INSERT INTO item_loot_storage
@@ -490,8 +505,15 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     phase(reverse, 'validate')
     assert_ready(rv)
     equal(f'SELECT active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid=113 AND spell=674','1\t0')
-    equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=119 AND active=1 AND disabled=0',len(SPELL_FIXTURES.RUNEFORGING))
+    equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=119 AND active=1 AND disabled=0',len(SPELL_FIXTURES.RUNEFORGING)-1)
     equal(f'SELECT value,max FROM `{TC_CHARS}`.character_skills WHERE guid=119 AND skill=776','1\t1')
+    equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=119 AND spell IN (53341,53343)',0)
+    equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=115 AND spell IN (47179,47180)',0)
+    equal(f'SELECT active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid=115 AND spell=33872','1\t0')
+    equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=115 AND spell=33873',0)
+    for child in (53341,53343):
+        equal(f"SELECT disposition,spec_mask FROM `{RC}`.spell_provenance WHERE run_id='{rv['MIGRATION_RUN_ID']}' AND guid=119 AND spell={child}",'SKILL\t3')
+
     equal(f'SELECT value,max FROM `{TC_CHARS}`.character_skills WHERE guid=113 AND skill=118','1\t1')
     equal(f'SELECT GROUP_CONCAT(item_index ORDER BY item_index) FROM `{TC_CHARS}`.item_loot_items WHERE container_id=201', '0,1,2,3')
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.item_loot_items WHERE container_id=201 AND item_id=2590', 2)

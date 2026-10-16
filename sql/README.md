@@ -38,3 +38,15 @@ The reviewed TrinityCore auth schema contains two administration views, both
 explicitly dispositioned in `mappings/tc-to-ac/objects.csv`; AzerothCore has no
 target counterparts. Live dumps include all non-table object types, and any
 unlisted view, routine, trigger, or event blocks preflight.
+
+### Native spell dispositions
+
+`spell_expected` and committed `spell_provenance` distinguish persisted spells
+from native talent/runtime ownership. `spell-state-v4` adds `AURA` (reviewed
+Nurturing Instinct aura/temporary helpers) and `SKILL` (reviewed Runeforging
+native rewards). Neither emits a target `character_spell` row. Validation checks
+unchanged target talent ownership for `AURA`, and exact existing skill plus
+known persistent parent for `SKILL`, alongside exact skill/talent preservation.
+Their relationship IDs and masks remain in exported reconstruction reports.
+A changed policy requires a fresh target/control schema and run; existing
+control tables are not upgraded by an in-place `CREATE TABLE IF NOT EXISTS`.
