@@ -53,7 +53,7 @@ def toolkit_hashes():
     names=('console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
-           'tools/container-recovery.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in')
+           'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in')
     hashes={}
     for name in names:
         path=ROOT/name
@@ -584,6 +584,10 @@ def command_action(settings, work, args):
     try:
         result=settings.sql(f"SET @{ack}='STOPPED_PREPARATION_COPY_ONLY';\n"+scripts[action],'write',headers=True)
     except CleanupError as error:
+        if manifest.get('policy')=='tc-active-build-native-reset-v1' and any(
+                text in str(error) for text in ('DELETE command denied','INSERT command denied','UPDATE command denied')):
+            error.hint=('This reviewed reset needs DELETE/INSERT on character_spell and UPDATE(at_login) on characters. '
+                'Have the preparation administrator grant only those source privileges to the configured writer, then retry; no source grants were added automatically.')
         if manifest.get('policy')=='tc-skill-clamp-stored-cap-v1' and 'UPDATE command denied' in str(error):
             error.hint=('The skill policy needs the writer column privilege. An administrator can run: '
                 f"GRANT UPDATE (`value`) ON `{settings.schemas['characters']}`.`character_skills` TO {principal[0]}@{principal[1]}; "
@@ -637,6 +641,10 @@ def parser():
     skills.add_argument('--expect-rows',type=int,required=True)
     reset=types.add_parser('reset-talents',help='One character: archive unavailable group 1 and queue free native reset')
     reset.add_argument('--guid',type=int,required=True)
+    active_reset=types.add_parser('reset-active-talents',help='Queue one native active reset; inactive builds must be empty; archive explicit foreign talent 12284')
+    active_reset.add_argument('--guid',type=int,required=True)
+    active_reset.add_argument('--remove-spells',required=True)
+    active_reset.add_argument('--expect-talent-rows',type=int,required=True)
     items=types.add_parser('items',help='Recover exact contents of selected zero-entry containers to native mail')
     items.add_argument('--containers',required=True,help='Comma-separated container GUIDs from inspect-items')
     for name in ('prepare','apply','restore','status'):

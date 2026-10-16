@@ -15,7 +15,7 @@ This guide introduces no production or existing-staging repair command.
 
 For repeated cleanup from the Linux shell, use the
 [cleanup console guide](cleanup-console.md). It wraps the audit and reviewed
-talent/item policies with one private config file, per-import sessions, archived
+talent/item/skill policies and scoped pending native resets with one private config file, per-import sessions, archived
 originals, execution/error reports and guarded apply/restore commands. The raw
 audit command below remains available for standalone inspection.
 

@@ -28,7 +28,9 @@ python3 "$ROOT/tests/temporary-rank-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_D
 python3 "$ROOT/tests/spell-metadata-tests.py"
 python3 "$ROOT/tests/source-audit-mysql-tests.py"
 python3 "$ROOT/tests/talent-cleanup-mysql-tests.py"
+python3 "$ROOT/tests/native-talent-reset-tests.py" "$TRINITYCORE_DIR"
 python3 "$ROOT/tests/character-talent-reset-mysql-tests.py"
+python3 "$ROOT/tests/active-talent-reset-mysql-tests.py"
 python3 "$ROOT/tests/cleanup-console-mysql-tests.py"
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT

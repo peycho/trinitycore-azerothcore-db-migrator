@@ -71,6 +71,12 @@ when TC still requires a temporary predecessor.
 Inventories use `LC_ALL=C`. Candidate approval exists only in disposable
 toolkit copies under `/tmp`; the checkout's approval is unchanged.
 
+The active-build pending-reset tests exercise the real console on MySQL 8.4:
+read-only planning/prepare, custom binary/timestamp snapshots, narrow source
+grants, rollback/interruption, drift rejection, exact restoration and preservation
+of ownership, skills/caps, glyphs/actions, items/mail, other characters and worlds.
+This policy queues native login reset; SQL tests do not establish gameplay reset.
+
 ## Disposable MySQL fixture rehearsals
 
 Python 3, g++ (C++17), MySQL 8 client tools, and a dedicated disposable MySQL **8.4.x** server

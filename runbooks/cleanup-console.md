@@ -5,11 +5,12 @@ restore workflow for a **stopped restored TrinityCore preparation copy**. Use
 Python 3.10 or later and MySQL 8 client tools against MySQL 8.4.x. It uses the
 standard library; no Python database package is required.
 
-The console supports four reviewed policies: remove verified non-rank talent
+The console supports five reviewed policies: remove verified non-rank talent
 records; archive an unavailable second group and queue a single character's
 free native talent reset; recover existing item instances from reviewed
 zero-entry containers into mail; and explicitly clamp reviewed over-cap skill
-values to their existing stored caps. It never treats every audit finding as a
+values to their existing stored caps; and queue a native active-build reset
+while archiving/removing an explicitly reviewed foreign-class talent spell. It never treats every audit finding as a
 removal instruction. Missing custom item templates, spell history, skill caps,
 other talent conflicts and migration compatibility blockers need separate
 review. World schemas, DBC assets and core source checkouts receive no writes.
@@ -97,6 +98,7 @@ never added automatically. The source privileges are:
 | Invalid talent values | DELETE on character_talent | INSERT on character_talent |
 | Scoped pending talent reset | DELETE on character_talent and UPDATE(at_login) on characters | INSERT on character_talent and UPDATE(at_login) on characters |
 | Item recovery | DELETE on character_inventory; INSERT on mail and mail_items | INSERT on character_inventory; DELETE on mail and mail_items |
+| Active-build pending reset with reviewed foreign spell | DELETE on character_spell and UPDATE(at_login) on characters | INSERT on character_spell and UPDATE(at_login) on characters |
 | Reviewed skill clamp | UPDATE(value) on character_skills | UPDATE(value) on character_skills |
 
 Do not give source item_instance UPDATE/DELETE or auth/world writes for these
@@ -221,6 +223,76 @@ the core unlearns their spells and dependencies during its free native reset.
 been reset. Both reviewed cores consume this flag; the migrator preserves it.
 Realm configuration determines the resulting free points. Pending reset does
 not bypass any migration spell authorization/compatibility guard.
+
+## Queue an active-build reset and remove a reviewed foreign talent
+
+This separate policy supports an explicitly chosen character with a populated
+active build and **empty inactive builds**. It supports one or two configured
+specs and either active group. It does not reset another populated spec or
+change spec availability. Use the exact reviewed talent-row count:
+
+```bash
+python3 console plan reset-active-talents \
+  --guid 12345 --remove-spells 12284 --expect-talent-rows 81
+python3 console prepare
+python3 console status
+python3 console apply
+python3 console status
+```
+
+Replace the example GUID and count with the reviewed character's values. Keep
+your current config, workspace and session; no new full audit or migration
+preflight is needed to generate this plan. Planning reads just this character
+and the source metadata. It records a full byte-sensitive fingerprint of every
+character, talent, spell and skill row for that GUID, including custom fields.
+Setup creates a new archive. Preparation snapshots those complete original rows
+without modifying source data. Inspect its manifest, selection and status.
+Archived spell fields in status are hex encoded so binary custom columns can
+be reported without losing bytes or breaking UTF-8 output.
+
+This version intentionally supports only explicitly selected warrior talent
+`12284` on a different class, with source flags `active=1, disabled=0`, a verified
+DBC talent rank and the reviewed dummy effect shape. It does not infer a general
+spell-history deletion policy. It rejects unknown, own-class, additional enabled
+foreign talents or unsupported foreign selections, changed talent counts,
+conflicting talent ranks, a nonempty inactive build and missing enabled selected
+talent state. The manifest reports the selected build's actual DBC point cost;
+a large count does not authorize automatic normalization of other characters.
+
+Apply **preserves all active talent ownership** so the native reset can unlearn
+its spells and dependencies correctly. It removes only the reviewed foreign
+spell row and sets `at_login | 4`, preserving other flags. The complete original
+spell row, including custom columns, remains archived. The native class reset
+would skip the foreign-class talent, which is why its explicit removal is a
+separate part of this approved preparation policy.
+
+**APPLIED means FREE NATIVE RESET PENDING LOGIN.** The selected talent rows and
+point allocation remain in the stopped source until native reset runs. A clean
+talent audit or successful SQL apply does not prove the reset finished. Both
+reviewed cores reset the active build; the empty-inactive-build guard avoids
+leaving another selected build behind. Free points use native realm settings
+(71 at level 80 with `Rate.Talent=1`). No GM/RBAC permission or rate setting is
+changed. Verify an empty build and the expected free points after isolated
+native login, then save/relog and switch both specs.
+
+Pending reset does not bypass migration blockers; source spell-history,
+rank-chain, skill and dependency issues still require their own review. It
+introduces no additional spell grants and does not remove ordinary spells,
+recipes, professions, glyphs, action bars, items or mail through SQL.
+
+For an exact inverse **before native login or further changes**, run:
+
+```bash
+python3 console restore --batch BATCH_ID
+```
+
+Restore reinstates the original foreign spell and login flags only after all
+preserved character/talent/spell/skill state matches. It refuses native-reset
+or other drift, and retains the archive. Interrupted operations roll back their
+source changes and checkpoint together; inspect `status` before retrying.
+After a fresh import, start a new session and generate a new plan; old archives
+are not replayed. An updated toolkit needs its complete `console`, `lib` and
+`tools` files; retain the private INI and existing workspace.
 
 ## Clamp explicitly reviewed over-cap skills
 
