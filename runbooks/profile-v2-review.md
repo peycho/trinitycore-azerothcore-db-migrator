@@ -409,3 +409,51 @@ the supplied DBCs also passed and reproduced both previous-converter blockers.
 All 90 frozen runtime/profile/test files matched the final implementation and
 all 14 supplied DBC assets remained unchanged. These are fixture and consumer
 results; operator preflight and native gameplay acceptance remain untested.
+
+## Remaining callback review, 2026-10-16
+
+TC's template registrations for `spell_wotf_shared_cd` and
+`spell_warl_t4_2p_bonus_shadow` were missing from the generated alias inventory.
+The reader now resolves only reviewed implementation/argument pairs, including
+the corresponding trinket and fire aliases from those same two implementations.
+Exact triggered IDs are `72752`/`72757` and `37378`/`37379`. Unknown templates,
+changed reviewed arguments/implementations, and mutating classes remain blocked.
+These callbacks cast cooldown/proc spells and do not learn spellbook rows.
+
+Only AC's `spell_black_template_free_friend` is accepted from
+`instance_black_temple.cpp`. Its hit callback removes control-impairing auras;
+other instance handlers are not approved. The complete new protected file has
+SHA-256 `d198a684dffa04fbf886f2c3b1d0c818010d37681a568903de8071b49b4b1954`
+and matches both AC pin `1cd97629...` and staging `f089543d...` byte for byte.
+The relevant configured TC/AC consumers match their retained pins. v2 now has
+96 TC and 98 AC semantic files; v1 and revision pins are unchanged.
+
+Native TC rank-learning and AC talent-consumer harnesses also demonstrate the
+remaining Primal Fury incompatibility: TC requests predecessor `16958` for
+learned child `16961`; AC adds only exact temporary child `16961`. The supplied
+DBC catalogs confirm that children `16961`, `52286`, `51986` and `50111` are
+non-talent spells, taught by talents `37117`, `50150`, `51267` and `61158`.
+TC's non-talent predecessor branch therefore applies. Persisting missing
+predecessors would evade native temporary-only removal, so the block remains.
+No rank relationship, talent selection, skill or core implementation is changed.
+
+Observed enabled Nurturing helpers without selected owners, enabled/unowned
+talent spells and disabled history remain separate unresolved source states.
+The first-failure report is not an exhaustive cleanup selection. No automatic
+spell deletion, zero-mask override, source repair or talent reset is introduced.
+Release approval remains **UNREVIEWED**; native gameplay and production-sized
+acceptance are still required. Install changed metadata/toolkit only with fresh
+migration target/control schemas and a new run, retaining the cleaned source
+and its matching cleanup evidence.
+
+Final callback validation passed: 88 unit tests, ShellCheck, profile/schema
+checks and the complete MySQL 8.4.10 disposable bidirectional rehearsal. Both
+directions reached database `READY` with zero failed ERROR checks; rollback,
+interruption/resume, completed reruns, malformed/cyclic relationships,
+same-count drift and source/world/unrelated-data preservation passed. The three
+stored script spells remain exact known rows; no triggered cooldown/proc spells
+are granted. Compiled protected callbacks and rank-consumer controls passed,
+as did 23 supplied-DBC checks including all three old-profile regressions.
+All 92 frozen runtime/profile/test files matched after the final run and all
+14 supplied DBC assets remained unchanged. Native gameplay, updated operator
+preflight and production-sized acceptance remain untested; approval is unchanged.

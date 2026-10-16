@@ -396,6 +396,9 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=60893',3)
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=674',3)
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=119 AND specMask=3',len(SPELL_FIXTURES.RUNEFORGING)-1)
+    for guid,spell in [(120,7744),(112,37377),(113,40081)]:
+        equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid={guid} AND spell={spell}',3)
+    equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE spell IN (72752,72757,37378,37379)',0)
     equal(f'SELECT value,max FROM `{AC_CHARS}`.character_skills WHERE guid=119 AND skill=776','1\t1')
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=119 AND spell IN (53341,53343)',0)
     for child,derived in [(53341,1),(53343,0)]:
@@ -449,7 +452,7 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
                   'pet_spell', 'pet_aura'):
         sql(f'DELETE FROM {table}', AC_CHARS)
     sql((ROOT / 'tests/fixtures/azerothcore-reverse-data.sql').read_text(), AC_CHARS)
-    sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (113,674,3)',AC_CHARS)
+    sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (113,674,3),(120,7744,3),(112,37377,3),(113,40081,3)',AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES '+','.join(
         f'(119,{spell},3)' for spell in [*SPELL_FIXTURES.RUNEFORGING,53428]),AC_CHARS)
     sql('INSERT INTO character_talent (guid,spell,specMask) VALUES (115,33872,1),(115,33873,2)',AC_CHARS)
@@ -506,6 +509,9 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     assert_ready(rv)
     equal(f'SELECT active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid=113 AND spell=674','1\t0')
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=119 AND active=1 AND disabled=0',len(SPELL_FIXTURES.RUNEFORGING)-1)
+    for guid,spell in [(120,7744),(112,37377),(113,40081)]:
+        equal(f'SELECT active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid={guid} AND spell={spell}','1\t0')
+    equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE spell IN (72752,72757,37378,37379)',0)
     equal(f'SELECT value,max FROM `{TC_CHARS}`.character_skills WHERE guid=119 AND skill=776','1\t1')
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=119 AND spell IN (53341,53343)',0)
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=115 AND spell IN (47179,47180)',0)

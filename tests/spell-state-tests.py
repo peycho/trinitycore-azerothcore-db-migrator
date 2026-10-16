@@ -34,6 +34,9 @@ class World:
         }
     def table(self,world,table,columns):
         rows=list(self.tables.get(table,[]))
+        if table=='spell_script_names':
+            rows += ([['7744','spell_wotf_shared_cd'],['37377','spell_warl_t4_2p_bonus_shadow']]
+                     if world=='tc' else [['40081','spell_black_template_free_friend']])
         if world=='ac' and table=='spell_ranks':
             rows += [['44440','44440','1'],['44440','44441','2']]
         return sorted(rows,key=lambda row:int(row[0]))
@@ -77,6 +80,29 @@ new spell_safe<123>("spell_unreviewed_legacy");
         self.assertEqual(policies['spell_legacy_unsafe'], 'UNSUPPORTED_SPELLBOOK_MUTATION')
         self.assertNotIn('spell_legacy_unknown', policies)
         self.assertNotIn('spell_unreviewed_legacy', policies)
+
+    def test_reviewed_template_aliases_require_exact_implementation_and_arguments(self):
+        content = """
+template <uint32 Id> class spell_safe : public SpellScript { void Hit() { CastSpell(Id); } };
+template <uint32 Id> class spell_bad : public SpellScript { void Hit() { LearnSpell(Id); } };
+RegisterSpellScriptWithArgs(spell_safe<CONST>, "spell_safe_alias");
+RegisterAuraScriptWithArgs(spell_bad<CONST>, "spell_bad_alias");
+RegisterSpellScriptWithArgs(spell_safe<OTHER>, "spell_wrong_argument");
+RegisterSpellScriptWithArgs(spell_bad<CONST>, "spell_wrong_implementation");
+RegisterSpellScriptWithArgs(spell_unknown<CONST>, "spell_unknown_impl");
+RegisterSpellScriptWithArgs(spell_safe<CONST>, "spell_unreviewed_template");
+"""
+        aliases={name:('spell_safe',('CONST',)) for name in
+                 ('spell_safe_alias','spell_wrong_argument','spell_wrong_implementation','spell_unknown_impl')}
+        aliases['spell_bad_alias']=('spell_bad',('CONST',))
+        policies=spell_profile.script_policies(content,template_aliases=aliases)
+        self.assertEqual(policies['spell_safe_alias'],'NO_SPELLBOOK_MUTATION')
+        for name in aliases.keys()-{'spell_safe_alias'}:
+            self.assertEqual(policies[name],'UNSUPPORTED_SPELLBOOK_MUTATION')
+        self.assertNotIn('spell_unreviewed_template',policies)
+        duplicate=content+'RegisterSpellScriptWithArgs(spell_safe<OTHER>, "spell_safe_alias");'
+        self.assertEqual(spell_profile.script_policies(duplicate,template_aliases=aliases)['spell_safe_alias'],
+                         'UNSUPPORTED_SPELLBOOK_MUTATION')
 
     def test_blocker_summary_is_sorted_and_omits_character_identifiers(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -173,15 +199,34 @@ class SpellTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.temporary.cleanup()
-    def convert(self,stored,talents=None,skills=None,cls=2,active=0,reverse=False,tc=None,ac=None):
+    def convert(self,stored,talents=None,skills=None,cls=2,active=0,reverse=False,tc=None,ac=None,race=1):
         tc,ac = tc or self.tc,ac or self.ac
-        return reconstruct((1,cls,active,2),stored,talents or {},fixtures.CLASS_SKILLS if skills is None else skills,
+        return reconstruct((race,cls,active,2),stored,talents or {},fixtures.CLASS_SKILLS if skills is None else skills,
                            ac if reverse else tc,tc if reverse else ac,
                            'ac-to-tc' if reverse else 'tc-to-ac')
     def fails(self,reason,call):
         with self.assertRaises(Unsupported) as error:
             call()
         self.assertEqual(error.exception.reason,reason)
+
+    def test_remaining_nonlearning_script_bindings_preserve_only_known_spells(self):
+        for spell in (7744,37377,40081):
+            skills={220:(1,1)} if spell==7744 else {}
+            for reverse in (False,True):
+                result=self.convert({spell:(3,) if reverse else (1,0)},skills=skills,cls=1,race=5,reverse=reverse)
+                self.assertEqual(set(result),{spell})
+                self.assertEqual(result[spell]['disposition'],'PERSISTENT')
+                self.assertEqual(result[spell]['mask'],3)
+        self.fails('SPELL_WOULD_ADD_SKILL',lambda:self.convert({7744:(1,0)},skills={},cls=1,race=5))
+        self.fails('AC_WOULD_DELETE_SPELL',lambda:self.convert({7744:(1,0)},skills={220:(1,1)},cls=1,race=1))
+        for metadata,spell,name in [(self.tc,7744,'spell_wotf_shared_cd'),
+                                    (self.tc,37377,'spell_warl_t4_2p_bonus_shadow'),
+                                    (self.ac,40081,'spell_black_template_free_friend')]:
+            self.assertEqual(metadata.script_policy[name],'NO_SPELLBOOK_MUTATION')
+            altered=copy.deepcopy(metadata)
+            altered.scripts[spell].add('spell_unreviewed_template')
+            self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:altered.check_spell(spell))
+        self.assertNotIn('spell_black_template_harpooners_mark_aura',self.ac.script_policy)
 
     def test_highest_only_regression_and_no_higher_grant(self):
         for index,chain in enumerate(fixtures.CHAINS[:7]):

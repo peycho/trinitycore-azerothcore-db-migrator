@@ -33,11 +33,23 @@ REVIEWED_ENCOUNTER_SCRIPTS = {
 REVIEWED_CORE_SCRIPTS = {
     'tc': {'src/server/scripts/EasternKingdoms/ScarletEnclave/chapter1.cpp': {
         'spell_chapter1_runeforging_credit'}},
+    'ac': {'src/server/scripts/Outland/BlackTemple/instance_black_temple.cpp': {
+        'spell_black_template_free_friend'}},
 }
 # Constructor template arguments can change the spells an implementation casts.
 # Resolve only aliases whose actual registration arguments were reviewed.
 REVIEWED_LEGACY_ALIASES = {
     'spell_pal_seal_of_corruption':'spell_pal_seal_of_vengeance',
+}
+# Match the reviewed implementation AND actual template arguments. Unknown
+# instantiations must not inherit a safe policy merely from a class name.
+REVIEWED_TEMPLATE_ALIASES = {
+    'spell_wotf_shared_cd': ('spell_pvp_trinket_wotf_shared_cd',
+                           ('SPELL_WILL_OF_THE_FORSAKEN_COOLDOWN_TRIGGER_WOTF',)),
+    'spell_pvp_trinket_shared_cd': ('spell_pvp_trinket_wotf_shared_cd',
+                                  ('SPELL_WILL_OF_THE_FORSAKEN_COOLDOWN_TRIGGER',)),
+    'spell_warl_t4_2p_bonus_shadow': ('spell_warl_t4_2p_bonus', ('SPELL_WARLOCK_FLAMESHADOW',)),
+    'spell_warl_t4_2p_bonus_fire': ('spell_warl_t4_2p_bonus', ('SPELL_WARLOCK_SHADOWFLAME',)),
 }
 # These protected SpellScript handlers mutate recipes only when explicitly
 # cast. Do not relabel them as non-mutating or accept other attached spell IDs.
@@ -114,10 +126,11 @@ def indexed_family_corrections(body, constants):
     return changes,guarded
 
 
-def script_policies(content, reviewed=None, legacy_aliases=None):
+def script_policies(content, reviewed=None, legacy_aliases=None, template_aliases=None):
     """Follow native named registrations without weakening mutation guards."""
     classes, scripts = {}, {}
     legacy_aliases = REVIEWED_LEGACY_ALIASES if legacy_aliases is None else legacy_aliases
+    template_aliases = REVIEWED_TEMPLATE_ALIASES if template_aliases is None else template_aliases
     def store(name, policy):
         if scripts.get(name) != 'UNSUPPORTED_SPELLBOOK_MUTATION':
             scripts[name] = policy
@@ -139,6 +152,14 @@ def script_policies(content, reviewed=None, legacy_aliases=None):
             r'\bRegister(?:Spell|Aura)ScriptWithArgs\(\s*(spell_\w+)\s*,\s*"(spell_\w+)"', content):
         if implementation in classes:
             store(alias, classes[implementation])
+    for implementation, arguments, alias in re.findall(
+            r'\bRegister(?:Spell|Aura)ScriptWithArgs\(\s*(spell_\w+)\s*<([^;{}()<>]+)>\s*,\s*"(spell_\w+)"', content):
+        if alias not in template_aliases:
+            continue
+        actual = (implementation, tuple(value.strip() for value in arguments.split(',')))
+        policy = (classes.get(implementation, 'UNSUPPORTED_SPELLBOOK_MUTATION')
+                  if actual == template_aliases[alias] else 'UNSUPPORTED_SPELLBOOK_MUTATION')
+        store(alias, policy)
     # TC also registers legacy loaders with new Class<T1,T2>("alias").
     # Follow only resolved implementations, preserving any mutation rejection.
     for implementation, alias in re.findall(

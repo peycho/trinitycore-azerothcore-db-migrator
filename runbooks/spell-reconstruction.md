@@ -160,6 +160,31 @@ The migrator changes no talent selections, skill rows, skill caps or profession
 slots. Profession/riding spell effects are checked against existing skills;
 native runtime slot/tier behavior must also pass the gameplay gate below.
 
+## Reviewed cooldown, proc and encounter callbacks
+
+The metadata reader resolves TC's reviewed template registrations by exact
+implementation and argument tokens: PvP trinket/WotF shared cooldown aliases
+use `72752`/`72757`; the two T4 warlock aliases use `37378`/`37379`.
+These callbacks cast cooldown/proc spells rather than learning spellbook rows.
+Unknown template aliases stay blocked; mismatched reviewed arguments or
+implementations and mutating implementations stay unsupported. The general
+legacy-constructor and ordinary registration policies are unchanged.
+
+AC's `spell_black_template_free_friend` is reviewed separately. It prevents
+the default hit effect and removes control-impairing auras from a present target.
+Only this handler is approved from the newly protected Black Temple instance
+file. Other handlers in that file remain unreviewed. The complete file matches
+the retained pin and AC staging reference; the pins are unchanged.
+
+The supplied DBCs make known WotF non-passive, the T4 set bonus a passive dummy
+aura with a proc callback, and Free Friend non-passive. Native loading does not
+execute the WotF/Free Friend cast callbacks or a T4 combat proc. Migration
+preserves the legitimate stored spells and existing racial skill; it grants no
+cooldown/proc spells, talents or encounter abilities from these callbacks.
+Existing race/class, missing-skill and disabled-state guards still apply.
+This is spell ownership/load compatibility, not full gameplay parity of cooldown
+or set-bonus mechanics. Compiled callbacks use recording sinks, not a worldserver.
+
 ## Native aura and skill representations (`spell-state-v4`)
 
 Nurturing Instinct (`33872`/`33873`) has a reviewed contract for the
@@ -306,6 +331,23 @@ awk -F '\t' 'NR==1 {print; next} n[$3]++ < 3 {print}' \
 | Incompatible or temporary rank chains, learned-spell dependencies | Compare both worlds, DBC relationships and native runtime ownership. Block unsupported representations; never copy a source-only dependency blindly. |
 | Missing/incompatible skills, skill-step teaching spells | Check native loader behavior, profession slots, recipes and existing skill values/caps. Block any unproved skill change. |
 | Inactive/disabled spell states | Compare stored anchors, flags, selected talents and both cores' visibility rules. Block when representability is not established. |
+
+A clean `audit --scope talents` does not validate `character_spell` ownership.
+These stored-spell blockers do not mean the earlier invalid `character_talent`
+cleanup failed. An unowned-talent reason must be split by the original `disabled` flag. Disabled
+history is unavailable in TC; enabled unowned rows may affect current abilities.
+A different stored direct rank than the selected rank is also a separate conflict.
+None authorizes assigning new talent points or masks. Enabled stored Nurturing
+helpers without selected owners remain unsupported; they are not the legitimate
+omitted lower ranks addressed by this migration.
+
+The first-failure report is not an exhaustive source cleanup selection. The
+source audit reviews direct talent rows, but does not replace a complete semantic
+review of indirect talent children and their rank chains. The current cleanup
+console has no blanket spell-history deletion policy. Any such repair needs
+its own exact selection, full-row archives, ownership/skill preservation evidence,
+reviewed apply/restore and current source fingerprints. The migrator keeps its
+blocking policy and performs no source cleanup.
 
 Resolving one blocker can expose another for the same character. A successful
 focused regression does not clear every record in a production-sized source.

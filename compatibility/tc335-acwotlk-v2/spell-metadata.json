@@ -5455,6 +5455,7 @@
       "src/server/game/Spells/SpellInfoCorrections.cpp": "d2864343af4683fff898da118bc77b520aa51dba9981f65a4e762933cf4531b2",
       "src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp": "ad456fd8ccf14368cb5132ce05b84e2a763ee0040a24ba79113ce6b54cbbf126",
       "src/server/scripts/Outland/BlackTemple/boss_teron_gorefiend.cpp": "0b288aedb817304ea88708dd67c6cf3c8d1cee6ecf7101b46e788401ebb55f56",
+      "src/server/scripts/Outland/BlackTemple/instance_black_temple.cpp": "d198a684dffa04fbf886f2c3b1d0c818010d37681a568903de8071b49b4b1954",
       "src/server/scripts/Spells/spell_dk.cpp": "a0be1b684171cd8525cfe360de44d7559f781d3ed7ad281bf16a9dd2d9d1d2ad",
       "src/server/scripts/Spells/spell_druid.cpp": "83bba92baa154ea9893a5f8b3bff63a329f2c1bf79f2183d41947bee39109d8d",
       "src/server/scripts/Spells/spell_generic.cpp": "6f570fa512364a97f4a59e5e8b361a0dc9613d517bf697c2ab6ce147aafbceb7",
@@ -5503,6 +5504,7 @@
     "ac": {
       "spell_big_blizzard_bear": "NO_SPELLBOOK_MUTATION",
       "spell_big_love_rocket": "NO_SPELLBOOK_MUTATION",
+      "spell_black_template_free_friend": "NO_SPELLBOOK_MUTATION",
       "spell_blazing_hippogryph": "NO_SPELLBOOK_MUTATION",
       "spell_celestial_steed": "NO_SPELLBOOK_MUTATION",
       "spell_cenarion_scout_lifebloom": "NO_SPELLBOOK_MUTATION",
@@ -7019,6 +7021,7 @@
       "spell_pri_t5_heal_2p_bonus": "NO_SPELLBOOK_MUTATION",
       "spell_pri_vampiric_embrace": "NO_SPELLBOOK_MUTATION",
       "spell_pri_vampiric_touch": "NO_SPELLBOOK_MUTATION",
+      "spell_pvp_trinket_shared_cd": "NO_SPELLBOOK_MUTATION",
       "spell_pvp_trinket_wotf_shared_cd": "NO_SPELLBOOK_MUTATION",
       "spell_quest_make_player_destroy_totems": "NO_SPELLBOOK_MUTATION",
       "spell_quest_portal_with_condition": "NO_SPELLBOOK_MUTATION",
@@ -7164,6 +7167,8 @@
       "spell_warl_soul_leech": "NO_SPELLBOOK_MUTATION",
       "spell_warl_soulshatter": "NO_SPELLBOOK_MUTATION",
       "spell_warl_t4_2p_bonus": "NO_SPELLBOOK_MUTATION",
+      "spell_warl_t4_2p_bonus_fire": "NO_SPELLBOOK_MUTATION",
+      "spell_warl_t4_2p_bonus_shadow": "NO_SPELLBOOK_MUTATION",
       "spell_warl_unstable_affliction": "NO_SPELLBOOK_MUTATION",
       "spell_warr_bloodthirst": "NO_SPELLBOOK_MUTATION",
       "spell_warr_bloodthirst_heal": "NO_SPELLBOOK_MUTATION",
@@ -7195,6 +7200,7 @@
       "spell_warr_vigilance_trigger": "NO_SPELLBOOK_MUTATION",
       "spell_warr_warriors_wrath": "NO_SPELLBOOK_MUTATION",
       "spell_winged_steed_of_the_ebon_blade": "NO_SPELLBOOK_MUTATION",
+      "spell_wotf_shared_cd": "NO_SPELLBOOK_MUTATION",
       "spell_wyrmrest_defender_whisper_to_controller_random": "NO_SPELLBOOK_MUTATION",
       "spell_x53_touring_rocket": "NO_SPELLBOOK_MUTATION"
     }

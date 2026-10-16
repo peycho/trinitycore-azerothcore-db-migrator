@@ -39,9 +39,20 @@ def stores(profile):
                   51466,51470,54347,54348,54349,20911,25899,900000,900010,900011,900012,
                   38796,53736,40251,51726,64353,64357,44440,44441,64350,64349,
                   37116,37117,16958,16961,12308,12810,12811,60893,61177,61288,674,30798,
-                  53428,33872,33873,47179,47180]:
+                  53428,33872,33873,47179,47180,7744,37377,40081]:
         row = record('Spell', spell)
         row[71] = 3
+    for spell,flags,effects,auras in [(7744,16,[6,6,6],[77,77,77]),
+                                      (37377,192,[6,0,0],[4,0,0]),
+                                      (40081,536936448,[77,6,0],[0,147,0])]:
+        data['Spell'][spell][4]=flags
+        data['Spell'][spell][71:74]=effects
+        data['Spell'][spell][95:98]=auras
+    record('SkillLine',220)[1]=9
+    info=record('SkillRaceClassInfo',72)
+    info[1:7]=[220,16,1535,1170,0,0]
+    ability=record('SkillLineAbility',4350)
+    ability[1:10]=[220,7744,16,0,0,0,1,0,2]
     # Match the stock class skill associations and relevant effect/family
     # fields. Devotion is non-stackable; mana-based healing/damage ranks are
     # separately available. Holy Light / Shadow Bolt rank 1 learn class skills.
@@ -204,4 +215,6 @@ def seed_worlds(sql, tc, ac, tc_world, ac_world, profile):
     sql('INSERT INTO spell_script_names VALUES '+','.join(
         f"({spell},'spell_chapter1_runeforging_credit')" for spell in RUNEFORGING),tc_world)
     sql('INSERT INTO spell_ranks VALUES (44440,44440,1),(44440,44441,2)',ac_world)
-    sql("INSERT INTO spell_script_names VALUES (38796,'spell_murmur_sonic_boom')",tc_world)
+    sql("INSERT INTO spell_script_names VALUES (38796,'spell_murmur_sonic_boom'),"
+        "(7744,'spell_wotf_shared_cd'),(37377,'spell_warl_t4_2p_bonus_shadow')",tc_world)
+    sql("INSERT INTO spell_script_names VALUES (40081,'spell_black_template_free_friend')",ac_world)

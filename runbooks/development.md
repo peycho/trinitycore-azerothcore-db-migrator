@@ -158,6 +158,28 @@ python3 tests/nurturing-instinct-tests.py /srv/src/TrinityCore /srv/src/azerothc
 python3 tests/skill-reward-tests.py /srv/src/TrinityCore /srv/src/azerothcore-wotlk
 ```
 
+The callback inventory regressions additionally cover exact reviewed template
+arguments, changed implementations/arguments, unsafe duplicate registrations,
+mutating callbacks and unknown-template rejection. Fixtures preserve WotF for
+an undead warrior with existing racial skill `220`, a known T4 set bonus and
+Free Friend in both directions. They grant no triggered cooldown/proc spells;
+wrong-race, missing-skill and unexplained disabled states still block.
+
+Two more compiled consumer checks run in the manual rehearsal:
+
+```bash
+python3 tests/reviewed-script-tests.py /srv/src/TrinityCore /srv/src/azerothcore-wotlk
+python3 tests/temporary-rank-tests.py /srv/src/TrinityCore /srv/src/azerothcore-wotlk
+```
+
+The first executes the protected cooldown/proc/Free Friend callbacks with
+recording sinks, including a null target. The second executes TC's protected
+rank-learning branch and AC's protected talent consumer: a learned Primal Fury
+child requests its predecessor in TC while AC adds only its exact temporary ID.
+A direct-talent control requests no lower rank. These demonstrate the continuing
+compatibility block; they do not add persistent temporary predecessors or
+certify full gameplay. Both compiled harnesses remain outside routine push/PR CI.
+
 Nonstandard Runeforging values/caps and tier overrides also block; native mono
 normalization is not treated as an approved migration repair. Synthetic recipe
 metadata uses the supplied DBC acquisition methods and trivial-skill fields.
