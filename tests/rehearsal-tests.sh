@@ -31,6 +31,7 @@ python3 "$ROOT/tests/talent-cleanup-mysql-tests.py"
 python3 "$ROOT/tests/native-talent-reset-tests.py" "$TRINITYCORE_DIR"
 python3 "$ROOT/tests/character-talent-reset-mysql-tests.py"
 python3 "$ROOT/tests/active-talent-reset-mysql-tests.py"
+python3 "$ROOT/tests/disabled-history-mysql-tests.py"
 python3 "$ROOT/tests/cleanup-console-mysql-tests.py"
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT

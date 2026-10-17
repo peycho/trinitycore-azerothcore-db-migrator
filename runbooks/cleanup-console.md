@@ -5,12 +5,13 @@ restore workflow for a **stopped restored TrinityCore preparation copy**. Use
 Python 3.10 or later and MySQL 8 client tools against MySQL 8.4.x. It uses the
 standard library; no Python database package is required.
 
-The console supports five reviewed policies: remove verified non-rank talent
+The console supports six reviewed policies: remove verified non-rank talent
 records; archive an unavailable second group and queue a single character's
 free native talent reset; recover existing item instances from reviewed
 zero-entry containers into mail; and explicitly clamp reviewed over-cap skill
 values to their existing stored caps; and queue a native active-build reset
-while archiving/removing an explicitly reviewed foreign-class talent spell. It never treats every audit finding as a
+while archiving/removing an explicitly reviewed foreign-class talent spell;
+and archive eligible disabled direct talent history under the policy below. It never treats every audit finding as a
 removal instruction. Missing custom item templates, spell history, skill caps,
 other talent conflicts and migration compatibility blockers need separate
 review. World schemas, DBC assets and core source checkouts receive no writes.
@@ -99,6 +100,7 @@ never added automatically. The source privileges are:
 | Scoped pending talent reset | DELETE on character_talent and UPDATE(at_login) on characters | INSERT on character_talent and UPDATE(at_login) on characters |
 | Item recovery | DELETE on character_inventory; INSERT on mail and mail_items | INSERT on character_inventory; DELETE on mail and mail_items |
 | Active-build pending reset with reviewed foreign spell | DELETE on character_spell and UPDATE(at_login) on characters | INSERT on character_spell and UPDATE(at_login) on characters |
+| Disabled unselected direct talent history | DELETE on character_spell | INSERT on character_spell |
 | Reviewed skill clamp | UPDATE(value) on character_skills | UPDATE(value) on character_skills |
 
 Do not give source item_instance UPDATE/DELETE or auth/world writes for these
@@ -172,6 +174,81 @@ all direct-history keys/flags must match the sealed audit; ownership and current
 character state are read again in one read-only consistent snapshot. Schema,
 DBC or report drift blocks inspection. Unrelated same-count data changes are
 not detected as a replay of the earlier audit. No profile approval changes.
+
+## Archive eligible disabled direct talent history
+
+After reviewing the inspection totals, use its exact disabled/no-selected-family
+count and inspection ID:
+
+```bash
+python3 console plan disabled-talent-history \
+  --inspection INSPECTION_ID --expect-review-rows 1000
+```
+
+Replace the example ID/count. This reuses the retained full audit and inspection;
+no new session, database import or migration preflight is required when inputs
+are unchanged. Planning performs SELECT only. It recomputes ownership, checks
+live direct spell/character/talent state against the inspection, and constructs
+effective TC metadata using all seven source DBC assets and these read-only world
+tables: `spell_dbc`, `spell_ranks`, `spell_required`, `spell_learn_spell`,
+`spell_script_names`, `spell_custom_attr` and `playercreateinfo_spell_custom`.
+Missing, malformed, non-InnoDB or incompatible metadata blocks the plan.
+
+Policy `tc-disabled-unselected-direct-talent-history-v1` is a source preparation
+decision to discard archived unselected history. It does not declare disabled
+records corrupt. It selects only unambiguous class-correct **direct talent**
+ranks with `disabled=1`, no selected rank in the family in either group, and no
+pending native reset or online character. It excludes whole families with an
+enabled stored rank, an alternate learned/skill/default route, teaching or
+prerequisite dependants, scripts, mixed ordinary/talent chains, or skill effects.
+Selected talent and enabled-spell script bindings must pass the existing source
+metadata review. Other ranks of selected talents, enabled history, indirect
+children and queued resets remain separate cases. Exclusions appear in
+`excluded-rows.tsv` and the candidate's manifest/console totals. The reviewed
+population count can therefore exceed the selected deletion count.
+
+Review the generated candidate's `README.md`, `manifest.json`, exact
+`selected-rows.tsv`, exclusions and `metadata.json`. Only then use the existing
+batch workflow:
+
+```bash
+python3 console prepare
+python3 console status --batch BATCH_ID
+python3 console apply
+python3 console status --batch BATCH_ID
+```
+
+Prepare creates a new archive schema and saves full original affected character,
+spell, talent and skill rows, including custom fields. It does not change source
+data. This can archive substantially more rows than it removes; the manifest's
+`archived_rows` gives the exact counts before prepare. Apply deletes only exact
+reviewed `(guid,spell)` pairs. Talents, enabled spells, lower ordinary ranks,
+spec counts, skill values/caps, profession slots, login flags, items and quests
+receive no writes. All work in each prepare/apply/restore phase is transactional;
+incomplete phases roll back, while successful reruns verify committed state.
+
+Full affected rows are hashed in primary-key order, with bounded per-character
+digests rather than a single concatenation of millions of source rows. Limits:
+500000 reviewed history rows, 40000 affected characters, 10000 original rows per
+character/table, 1 MiB of field data per row and 5000000 total archived rows. Exceeding a bound blocks instead
+of truncating. Both old/new spell sets, complete archive data, world content,
+DBC assets, column layouts and profile fingerprints are guarded. Same-count
+changes, online/pending-reset transitions and edited archives block execution.
+
+For exact reversal **before gameplay or further preparation changes**:
+
+```bash
+python3 console restore --batch BATCH_ID
+```
+
+Restore inserts only the removed full spell rows, verifies the complete original
+affected state and retains the archive. It refuses changes to affected
+character/spell/talent/skill rows, and apply-after-restore is refused. Restore multiple
+cleanup batches in reverse order. After applying a batch, run a new full audit
+and inspection before planning any further history batch. Source changes require
+a fresh migration into new target/control schemas. This policy changes no
+migrator rejection rule or release approval; native load/save, spec switching,
+relearning and trainer acceptance still need isolated gameplay checks.
 
 ## Recover items without replacing them
 

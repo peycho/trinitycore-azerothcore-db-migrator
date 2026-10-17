@@ -24,6 +24,11 @@ review of direct talent history against both talent groups, using the existing
 config and retained audit. It separates other selected ranks, disabled history,
 enabled conflicts and pending native resets. It creates no deletion batch;
 see the [console history review](cleanup-console.md#review-direct-talent-spell-history).
+The subsequent [disabled-history archive policy](cleanup-console.md#archive-eligible-disabled-direct-talent-history)
+can generate a candidate for eligible disabled direct ranks. It excludes selected
+families, enabled conflicts and alternate/dependent learning routes, archives
+complete affected state and supports exact restoration. It does not delete every
+history finding or change migration reconstruction rules.
 
 ## Run a standalone read-only audit
 

@@ -86,6 +86,7 @@ def ranks(settings):
 def readme(manifest):
     policy=manifest['policy']
     details={
+        'tc-disabled-unselected-direct-talent-history-v1':'Archives/removes only exact disabled direct talent history with no selected family in either specialization and no enabled family conflict or alternate metadata learning route. Full affected spell/talent/skill/character originals are archived. No activation, reset, grants, caps, profession slots or login flags change. Deferred rows are listed in excluded-rows.tsv. Exact restore requires unchanged affected state and matching metadata.',
         'tc-active-build-native-reset-v1':'Queues a FREE NATIVE ACTIVE RESET PENDING LOGIN and archives/removes only explicitly selected foreign talent 12284. Every active talent row is preserved until native unlearning. All inactive builds must already be empty. Skill values/caps, profession slots, recipes, spec count and other spells are unchanged by SQL. Restore is exact only before native login or further changes.',
         'tc-invalid-talent-rank-v1':'Removes only verified non-rank talent records. No replacement rank or talent points are guessed.',
         'tc-single-character-native-talent-reset-v1':'Archives/removes the reviewed unavailable group and sets only at_login bit 4. APPLIED means FREE NATIVE RESET PENDING NEXT LOGIN. Active ownership stays until the core unlearns its spells and dependencies. Other login flags are preserved.',
@@ -337,6 +338,9 @@ def plan_items(settings,work,args,output):
 
 
 def plan(settings,work,args,output):
+    if args.kind=='disabled-talent-history':
+        from cleanup_disabled_history import plan_history
+        return plan_history(settings,work,args,output)
     if args.kind=='reset-active-talents':
         from cleanup_active_reset import plan_active_reset
         return plan_active_reset(settings,work,args,output)

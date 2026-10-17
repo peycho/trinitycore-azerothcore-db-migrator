@@ -386,6 +386,15 @@ its own exact selection, full-row archives, ownership/skill preservation evidenc
 reviewed apply/restore and current source fingerprints. The migrator keeps its
 blocking policy and performs no source cleanup.
 
+A separate source-preparation policy now implements those safeguards for a
+conservative subset of disabled, unselected **direct** talent ranks. See
+[disabled-history archives](cleanup-console.md#archive-eligible-disabled-direct-talent-history).
+It defers selected families, enabled conflicts, indirect/runtime dependencies,
+alternate routes, scripts and pending native resets. It changes no migration
+rejection rule and never activates a disabled spell. Use the retained original
+source plus these archives for rollback; migrate edited preparation data only
+into fresh target/control schemas.
+
 Resolving one blocker can expose another for the same character. A successful
 focused regression does not clear every record in a production-sized source.
 

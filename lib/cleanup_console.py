@@ -54,7 +54,7 @@ def toolkit_hashes():
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
-           'lib/cleanup_spell_history.py')
+           'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','tools/disabled-talent-history.sql.in')
     hashes={}
     for name in names:
         path=ROOT/name
@@ -549,6 +549,9 @@ def command_plan(settings, work, args):
 def command_action(settings, work, args):
     path,manifest=work.batch(args.batch)
     settings.safety()
+    if manifest.get('policy')=='tc-disabled-unselected-direct-talent-history-v1':
+        from cleanup_disabled_history import check_metadata
+        check_metadata(settings,manifest)
     for name,expected_hash in manifest.get('dbc_sha256',{}).items():
         if not re.fullmatch(r'[A-Za-z0-9]+\.dbc',name) or sha(settings.paths['tc_dbc']/name)!=expected_hash:
             fail('DBC_DRIFT','DBC assets differ from the reviewed batch','Keep the original metadata or generate a new audit and batch.')
@@ -585,6 +588,10 @@ def command_action(settings, work, args):
     try:
         result=settings.sql(f"SET @{ack}='STOPPED_PREPARATION_COPY_ONLY';\n"+scripts[action],'write',headers=True)
     except CleanupError as error:
+        if manifest.get('policy')=='tc-disabled-unselected-direct-talent-history-v1' and any(
+                text in str(error) for text in ('DELETE command denied','INSERT command denied')):
+            error.hint=('This history policy needs DELETE on character_spell for apply and INSERT for exact restore. '
+                'Have the preparation administrator grant only those source privileges to the configured writer, then retry; no source grants were added automatically.')
         if manifest.get('policy')=='tc-active-build-native-reset-v1' and any(
                 text in str(error) for text in ('DELETE command denied','INSERT command denied','UPDATE command denied')):
             error.hint=('This reviewed reset needs DELETE/INSERT on character_spell and UPDATE(at_login) on characters. '
@@ -642,6 +649,9 @@ def parser():
     skills=types.add_parser('skills',help='Clamp exact audited over-cap values to their existing positive stored maximum')
     skills.add_argument('--audit',help='Full audit ID in this session; defaults to latest completed audit')
     skills.add_argument('--expect-rows',type=int,required=True)
+    history=types.add_parser('disabled-talent-history',help='Archive eligible disabled direct talent history; selected families and enabled spells excluded')
+    history.add_argument('--inspection',required=True,help='Retained spell-history inspection ID in this session')
+    history.add_argument('--expect-review-rows',type=int,required=True,help='Exact disabled/no-selected-family inspection total; additional exclusions reported')
     reset=types.add_parser('reset-talents',help='One character: archive unavailable group 1 and queue free native reset')
     reset.add_argument('--guid',type=int,required=True)
     active_reset=types.add_parser('reset-active-talents',help='Queue one native active reset; inactive builds must be empty; archive explicit foreign talent 12284')

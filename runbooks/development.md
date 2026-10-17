@@ -85,6 +85,25 @@ credentials, checks deterministic repeated output, unchanged source/auth/world
 checksums and preservation of the active cleanup batch selection. These reports
 do not establish a safe deletion policy or indirect-spell compatibility.
 
+Disabled-history policy tests separately verify exact direct-rank selection,
+family-wide enabled/learned/skill/custom-default/script/dependency exclusions,
+unchanged selected builds, pending resets, and the protected TC new-disabled
+load path and known-spell predicate. The MySQL suite executes the real console
+with restricted reader/writer roles, custom binary/timestamp fields, same-count
+state and metadata drift, late-error and connection-interruption rollback,
+commit/rerun, exact restore and archive retention. To add a bulk scale case on
+the dedicated disposable endpoint, run:
+
+```bash
+MIGRATOR_DISPOSABLE_MYSQL=1 REHEARSAL_MYSQL_PORT=33317 HISTORY_SCALE_ROWS=151806 \
+  python3 tests/disabled-history-mysql-tests.py
+```
+
+The scale case adds that many synthetic direct history rows across thousands
+of characters, then plans, prepares, applies, reruns and restores them exactly.
+It is opt-in; regular push/PR CI continues to run only static checks. A passing
+SQL rehearsal does not establish native login, relearning or gameplay acceptance.
+
 ## Disposable MySQL fixture rehearsals
 
 Python 3, g++ (C++17), MySQL 8 client tools, and a dedicated disposable MySQL **8.4.x** server
