@@ -19,6 +19,12 @@ talent/item/skill policies and scoped pending native resets with one private con
 originals, execution/error reports and guarded apply/restore commands. The raw
 audit command below remains available for standalone inspection.
 
+After a full audit, `python3 console inspect-spell-history` produces a read-only
+review of direct talent history against both talent groups, using the existing
+config and retained audit. It separates other selected ranks, disabled history,
+enabled conflicts and pending native resets. It creates no deletion batch;
+see the [console history review](cleanup-console.md#review-direct-talent-spell-history).
+
 ## Run a standalone read-only audit
 
 Use `tools/audit-tc-source.py` from the repository checkout. It does not require

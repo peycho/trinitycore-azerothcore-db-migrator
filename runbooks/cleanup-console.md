@@ -136,6 +136,43 @@ that recovery is safe. Choose exact container IDs only after reviewing ownership
 and contents. Full audits can take minutes on large databases; a clean talent
 scope alone does not establish source or migration readiness.
 
+## Review direct talent spell history
+
+After a complete full audit, reuse that audit without another migration preflight:
+
+```bash
+python3 console inspect-spell-history
+```
+
+The latest completed audit in this session is selected automatically; use
+`--audit AUDIT_ID` for an explicit retained audit. Existing configuration,
+sessions and batches remain usable after installing the updated toolkit. This
+command needs only the audit reader's SELECT permissions and creates no archive
+schema or executable cleanup batch. It does not change the active batch.
+
+Reports are sealed under the session's `inspections/*-spell-history-*/` directory:
+`inspection.json` contains totals, fingerprints and limitations; `summary.tsv`
+groups dispositions by spell/class; `spell-history.tsv` lists exact keys, flags
+and selected ranks in either group. `input-state.json` retains the read-only
+snapshot. Keep these reports private.
+
+The audit's unowned findings mean the exact rank spell is absent from
+`character_talent`; another rank of that talent may still be selected. Inspection
+separates those cases, disabled spells without a selected family, enabled cases
+and foreign-class talents. It defers online characters, pending native resets,
+invalid ownership and ambiguous metadata. Neither REVIEW nor DEFER authorizes
+deletion, activation or guessed ownership. In particular, a character queued
+for native talent reset remains pending until the core executes that reset.
+
+This is a bounded direct `Talent.dbc` rank review, not a semantic migration or
+an indirect talent-unlocked spell audit. World overlays, scripts, shared normal
+learning routes and runtime dependencies require separate review before an
+exact-row archive/apply/restore policy can be prepared. Input table counts and
+all direct-history keys/flags must match the sealed audit; ownership and current
+character state are read again in one read-only consistent snapshot. Schema,
+DBC or report drift blocks inspection. Unrelated same-count data changes are
+not detected as a replay of the earlier audit. No profile approval changes.
+
 ## Recover items without replacing them
 
 For example, after reviewing containers 100 and 200:

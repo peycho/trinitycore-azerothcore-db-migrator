@@ -77,6 +77,14 @@ grants, rollback/interruption, drift rejection, exact restoration and preservati
 of ownership, skills/caps, glyphs/actions, items/mail, other characters and worlds.
 This policy queues native login reset; SQL tests do not establish gameplay reset.
 
+Direct spell-history inspection tests cover selected different talent ranks in
+either spec, enabled/disabled and foreign-class states, pending resets, invalid
+ownership, ambiguous metadata, sealed evidence, exact keys/flags and same-count
+replacement drift. The console MySQL rehearsal runs inspection with SELECT-only
+credentials, checks deterministic repeated output, unchanged source/auth/world
+checksums and preservation of the active cleanup batch selection. These reports
+do not establish a safe deletion policy or indirect-spell compatibility.
+
 ## Disposable MySQL fixture rehearsals
 
 Python 3, g++ (C++17), MySQL 8 client tools, and a dedicated disposable MySQL **8.4.x** server

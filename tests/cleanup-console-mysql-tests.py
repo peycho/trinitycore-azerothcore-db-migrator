@@ -178,8 +178,52 @@ backup_reference=synthetic-fixture-baseline
             run('audit','--scope','all',code=1)
             assert checksum()==baseline
             passed('private configured session; real read-only full audit; finding exit 1; source/auth/world unchanged')
+            audit_pointer=(session()/'latest-audit.json').read_text()
+            # Exhaustive direct-rank review is separate from migration's first
+            # failing spell. The audit reader has SELECT only on all inputs.
+            sql(f'''INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,online,
+                activeTalentGroup,talentGroupsCount,at_login) VALUES
+                (11,1,'OtherRank','',1,1,80,0,0,2,0),(12,1,'History','',1,1,80,0,0,1,0),
+                (13,1,'PendingReset','',1,1,80,0,0,1,4),(14,1,'ForeignRank','',1,9,80,0,0,1,0);
+                INSERT INTO `{source}`.character_talent VALUES(11,12664,1);
+                INSERT INTO `{source}`.character_spell VALUES
+                (11,12282,1,1),(11,12300,1,0),(12,12296,1,1),(13,12296,1,1),(14,12296,1,0);''')
+            review_baseline=checksum()
+            run('audit','--scope','all',code=1)
+            reviewed=run('inspect-spell-history')
+            inspection=Path(reviewed.stdout.split('Reports: ',1)[1].strip())
+            review=json.loads((inspection/'inspection.json').read_text())
+            assert review['rows_reviewed']==5,review
+            assert review['dispositions']=={
+                'DEFER_PENDING_NATIVE_RESET':1,'REVIEW_DISABLED_NO_SELECTED_FAMILY':1,
+                'REVIEW_DISABLED_OTHER_SELECTED_RANK':1,'REVIEW_ENABLED_NO_SELECTED_FAMILY':1,
+                'REVIEW_FOREIGN_CLASS_TALENT':1},review
+            assert review['status']=='COMPLETE_REVIEW_ONLY' and review['cleanup_approval']=='NOT_GRANTED'
+            assert review['migration_approval']=='UNREVIEWED'
+            assert not (session()/'active-batch.json').exists()
+            assert checksum()==review_baseline
+            repeated=run('inspect-spell-history')
+            again=Path(repeated.stdout.split('Reports: ',1)[1].strip())
+            for name in ('input-state.json','spell-history.tsv','summary.tsv'):
+                assert (inspection/name).read_bytes()==(again/name).read_bytes(),name
+            # A different history spell with the same total row count is drift.
+            sql(f'UPDATE `{source}`.character_spell SET spell=12300 WHERE guid=12 AND spell=12296;')
+            drift_baseline=checksum()
+            refused=run('inspect-spell-history',code=2)
+            assert 'HISTORY_INPUT_DRIFT' in refused.stderr
+            assert checksum()==drift_baseline
+            sql(f'''DELETE FROM `{source}`.character_spell WHERE guid IN (11,12,13,14);
+                DELETE FROM `{source}`.character_talent WHERE guid=11;
+                DELETE FROM `{source}`.characters WHERE guid IN (11,12,13,14);''')
+            (session()/'latest-audit.json').write_text(audit_pointer)
+            assert checksum()==baseline
+            passed('spell history SELECT-only inspection; both specs; deferred pending reset; deterministic rerun; same-count drift; no batch selection or input changes')
             run('plan','skills','--expect-rows','4',code=2)
             run('plan','skills','--expect-rows','5')
+            selected_batch=(session()/'active-batch.json').read_bytes()
+            run('inspect-spell-history')
+            assert (session()/'active-batch.json').read_bytes()==selected_batch
+            assert checksum()==baseline
             skill_archive=manifest()['archive_schema']
             assert manifest()['selected_rows']==5 and manifest()['affected_characters']==2
             run('prepare')

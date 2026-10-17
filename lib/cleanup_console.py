@@ -53,7 +53,8 @@ def toolkit_hashes():
     names=('console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
-           'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in')
+           'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
+           'lib/cleanup_spell_history.py')
     hashes={}
     for name in names:
         path=ROOT/name
@@ -631,6 +632,8 @@ def parser():
     audit=commands.add_parser('audit',help='Run read-only source audit; exit 1 means findings, not a failed audit')
     audit.add_argument('--scope',choices=('talents','all'),default='all')
     inspect=commands.add_parser('inspect-items',help='Report zero-entry containers and their contents; no item deletion')
+    history=commands.add_parser('inspect-spell-history',help='Review direct talent history against both talent groups; no cleanup or preflight')
+    history.add_argument('--audit',help='Full audit ID in this session; defaults to latest completed audit')
     plans=commands.add_parser('plan',help='Generate private SQL and a reviewable manifest; no source writes')
     types=plans.add_subparsers(dest='kind',required=True)
     talents=types.add_parser('talents',help='Only verified TALENT_VALUE_IS_NOT_RANK_SPELL rows')
@@ -686,6 +689,9 @@ def main(argv=None):
                 elif args.command=='inspect-items':
                     from cleanup_plans import inspect_items
                     inspect_items(settings,work)
+                elif args.command=='inspect-spell-history':
+                    from cleanup_spell_history import inspect_history
+                    inspect_history(settings,work,args)
                 elif args.command=='status':
                     command_status(settings,work,args)
                 else:
