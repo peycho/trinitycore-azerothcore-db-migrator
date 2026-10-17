@@ -650,12 +650,16 @@ def parser():
     skills.add_argument('--audit',help='Full audit ID in this session; defaults to latest completed audit')
     skills.add_argument('--expect-rows',type=int,required=True)
     history=types.add_parser('disabled-talent-history',help='Archive eligible disabled direct talent history; selected families and enabled spells excluded')
-    history.add_argument('--inspection',required=True,help='Retained spell-history inspection ID in this session')
+    evidence=history.add_mutually_exclusive_group(required=True)
+    evidence.add_argument('--inspection',help='Retained spell-history inspection ID in this session')
+    evidence.add_argument('--audit',help='Full audit ID in this session; create a fresh read-only spell-history inspection before planning')
     history.add_argument('--expect-review-rows',type=int,required=True,help='Exact disabled/no-selected-family inspection total; additional exclusions reported')
     history.add_argument('--include-reviewed-scripts',action='store_true',
         help='Use v2 policy for families whose every binding has the protected NO_SPELLBOOK_MUTATION contract; other exclusions remain')
     history.add_argument('--include-inert-relations',action='store_true',
         help='Use v3 policy to archive isolated wholly disabled direct talent/rank/dependency groups, including exact related rows; implies reviewed scripts')
+    history.add_argument('--include-reviewed-routes',action='store_true',
+        help='Use v4 exact Berserk/Blast Wave teacher rules and inert shaman 30798 root-only rule preserving 674/skill 118; implies v3 review')
     reset=types.add_parser('reset-talents',help='One character: archive unavailable group 1 and queue free native reset')
     reset.add_argument('--guid',type=int,required=True)
     active_reset=types.add_parser('reset-active-talents',help='Queue one native active reset; inactive builds must be empty; archive explicit foreign talent 12284')

@@ -399,7 +399,11 @@ and preserve talent ownership, skills and login flags. Separate v3
 dependent groups, with no enabled related spell, selected talent, conflicting
 incoming route, profession/skill effect or unsupported metadata. It records
 direct and related removals separately; it does not resolve enabled unowned
-spells or pending resets. This changes no migration
+spells or pending resets. Explicit v4 `--include-reviewed-routes` adds exact
+Berserk/Blast Wave teaching wrappers and the inert shaman `30798` root-only
+exception. It preserves shared spell `674` and skill `118` in every state;
+remaining shared availability is still subject to normal migration ownership
+and skill guards. This changes no migration
 rejection rule and never activates a disabled spell. Use the retained original
 source plus these archives for rollback; migrate edited preparation data only
 into fresh target/control schemas.

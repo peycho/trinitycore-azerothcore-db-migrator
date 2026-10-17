@@ -5,6 +5,9 @@ from cleanup_console import fail
 from spells import Unsupported
 
 POLICY = 'tc-disabled-unselected-talent-closure-v3'
+ROUTE_POLICY = 'tc-disabled-reviewed-talent-routes-v4'
+TEACHERS = {1927:(50334,51266,1024,(36,36,0),(50321,50334,0)),
+            32:(11113,1831,128,(36,0,0),(11113,0,0))}
 MAX_CLOSURE = 4096
 MAX_ROWS = 5000000
 
@@ -77,8 +80,62 @@ class Relations:
         self.profession_spells = {spell for spell,abilities in meta.abilities.items()
             if any(row[1]==762 or skills.get(row[1],[0,0])[1] in (9,11) for row in abilities)}
 
-    def family(self, family):
+    def direct_contract(self, family, root, class_mask):
+        if self.families[family]!={root} or self.meta.talents.get(root)!=(family,1):
+            return False
+        talent = self.meta.talent_rows[root]
+        tab = self.meta.stores['TalentTab'].get(talent[1],[])
+        return len(tab)>20 and tab[20]==class_mask
+
+    def teacher(self, family):
+        root,teacher,cls,effects,children = TEACHERS[family]
+        row = self.meta.spells.get(teacher,[])
+        if (not self.direct_contract(family,root,cls) or teacher in self.meta.talents
+                or not row or tuple(row[71:74])!=effects or tuple(row[116:119])!=children
+                or row[4]&0x40 or row[12] or self.meta.chain(teacher)!=(teacher,)):
+            return None
+        return teacher
+
+    def dual_wield_contract(self):
+        """Only the inert single-rank shaman root; never remove shared 674/118."""
+        root,child = 30798,674
+        if not self.direct_contract(1690,root,64):
+            return False
+        parent = self.meta.spells[root]
+        shared = self.meta.spells.get(child,[])
+        if (not shared or child in self.meta.talents or self.meta.chain(root)!=(root,)
+                or self.meta.chain(child)!=(child,)
+                or parent[71:74]!=[36,0,0] or parent[116:119]!=[child,0,0]
+                or shared[71:74]!=[40,0,0] or shared[116:119]!=[0,0,0]
+                or self.incoming[self.component[root]]
+                or self.next[self.component[root]]!={self.component[child]}
+                or root in self.skill_rewards or root in self.unknown_skill_spells
+                or root in self.profession_spells or root in self.meta.invalid_talents or root in self.unsupported
+                or root in getattr(self.meta,'history_default_spells',set())):
+            return False
+        for spell in (root,child):
+            if any(self.meta.script_policy.get(name)!='NO_SPELLBOOK_MUTATION' for name in self.meta.scripts[spell]):
+                return False
+            try:
+                self.meta.check_spell(spell)
+            except Unsupported:
+                return False
+        return True
+
+    def family(self, family, reviewed_routes=False):
         roots = {self.component[s] for s in self.families[family]}
+        ignored = set()
+        if reviewed_routes and family in TEACHERS:
+            teacher = self.teacher(family)
+            if teacher is None:
+                return set(self.families[family]),'DEFER_REVIEWED_TEACHER_CONTRACT'
+            if family==1927 and 50321 not in self.meta.spells:
+                # Exact legacy 51266 has a missing LEARN target. Pinned TC
+                # IsSpellValid rejects the WHOLE teacher, not just this effect.
+                # Per-character selection additionally requires it absent.
+                ignored.add(self.component[teacher])
+            else:
+                roots.add(self.component[teacher])
         queue,components = deque(sorted(roots)),set()
         nodes = set()
         while queue:
@@ -102,7 +159,7 @@ class Relations:
                     ready.append(child)
         if visited != len(components):
             return nodes,'DEFER_RELATION_CYCLE'
-        if any(self.incoming[c]-components for c in components):
+        if any(self.incoming[c]-components-ignored for c in components):
             return nodes,'DEFER_INDEPENDENT_LEARN_ROUTE'
         if any(s in self.meta.talents and self.meta.talents[s][0]!=family for s in nodes):
             return nodes,'DEFER_SHARED_TALENT_RELATION'
@@ -130,7 +187,7 @@ class Relations:
         return nodes,''
 
 
-def select(rows, state, meta, stored, expected):
+def select(rows, state, meta, stored, expected, reviewed_routes=False):
     candidates = [r for r in rows if r[9]=='REVIEW_DISABLED_NO_SELECTED_FAMILY']
     if not 1<=expected<=500000 or len(candidates)!=expected:
         fail('HISTORY_SELECTION_MISMATCH','--expect-review-rows must equal the inspection disabled/no-selected-family total')
@@ -146,7 +203,10 @@ def select(rows, state, meta, stored, expected):
     by_family = {}
     node_count = 0
     for family in sorted({r[10] for r in candidates}):
-        by_family[family] = graph.family(family)
+        if reviewed_routes and family==1690:
+            by_family[family] = ({30798,674},'' if graph.dual_wield_contract() else 'DEFER_REVIEWED_DUAL_WIELD_CONTRACT')
+        else:
+            by_family[family] = graph.family(family,reviewed_routes)
         node_count += len(by_family[family][0])
         if node_count>MAX_ROWS:
             fail('HISTORY_RELATION_BOUND','Relationship catalog review exceeds 5000000 node visits')
@@ -162,12 +222,19 @@ def select(rows, state, meta, stored, expected):
     selected,excluded,proof,accepted = {},[],[],[]
     for (guid,family),root_rows in sorted(roots.items()):
         nodes,reason = by_family[family]
+        dual_root_only = reviewed_routes and family==1690 and not reason
+        invalid_teacher = reviewed_routes and family==1927 and 50321 not in meta.spells and not reason
+        if invalid_teacher and any(spell in stored_by_guid[guid] for spell in (51266,50321)):
+            reason = 'DEFER_INVALID_TEACHER_STORED'
+        removal_nodes = {30798} if dual_root_only else nodes
+        if dual_root_only and any(r[4]!=7 for r in root_rows):
+            reason = 'DEFER_REVIEWED_DUAL_WIELD_CONTRACT'
         if not reason and selected_talents[guid]&nodes:
             reason = 'DEFER_SELECTED_RELATED_TALENT'
         present = {s:flags for s,flags in stored_by_guid[guid].items() if s in nodes}
         if not reason and any(flags[0] not in (0,1) or flags[1] not in (0,1) for flags in present.values()):
             reason = 'DEFER_INVALID_RELATED_FLAGS'
-        if not reason and any(flags[1]!=1 for flags in present.values()):
+        if not reason and any(flags[1]!=1 for spell,flags in present.items() if spell in removal_nodes):
             reason = 'DEFER_ENABLED_RELATED_SPELL'
         if not reason and any(r[1] not in meta.talents or meta.talents[r[1]]!=(r[10],r[11])
                               or (r[2],r[3])!=live.get((guid,r[1])) or r[3]!=1 for r in root_rows):
@@ -175,20 +242,25 @@ def select(rows, state, meta, stored, expected):
         if reason:
             excluded.extend((guid,r[1],reason) for r in root_rows)
             continue
-        if len(proof)+len(nodes)>MAX_ROWS:
+        if len(proof)+len(nodes)+(2 if invalid_teacher else 0)>MAX_ROWS:
             fail('HISTORY_RELATION_BOUND','Relationship evidence exceeds 5000000 per-character node rows')
         accepted.extend((guid,r[1]) for r in root_rows)
+        if invalid_teacher:
+            proof.extend([(guid,family,51266,'REJECTED_NATIVE_TEACHER','ABSENT_INVALID_TEACHER','',''),
+                          (guid,family,50321,'MISSING_LEARN_TARGET','ABSENT_METADATA_NO_GRANT','','')])
         for spell in sorted(nodes):
             flags = present.get(spell)
             direct_rank = spell in graph.families[family]
-            role = 'DIRECT_TALENT' if direct_rank else 'RANK_OR_DEPENDENT'
-            disposition = 'SELECTED_DISABLED' if flags else 'ABSENT_NO_GRANT'
+            teacher = TEACHERS[family][1] if reviewed_routes and family in TEACHERS else None
+            role = 'DIRECT_TALENT' if direct_rank else 'REVIEWED_TEACHER' if spell==teacher else 'RANK_OR_DEPENDENT'
+            disposition = ('PRESERVED_SHARED_SKILL_ROUTE' if dual_root_only and spell==674 and flags
+                           else 'SELECTED_DISABLED' if flags else 'ABSENT_NO_GRANT')
             proof.append((guid,family,spell,role,disposition,*(flags if flags else ('',''))))
-            if flags:
+            if flags and spell in removal_nodes:
                 selected[guid,spell] = (guid,spell,*flags)
     if not selected:
         counts = ', '.join(f'{reason}={count}' for reason,count in sorted(Counter(r[2] for r in excluded).items()))
-        fail('HISTORY_NO_ELIGIBLE_ROWS','No isolated wholly disabled talent/dependency groups satisfy v3 policy: '+counts)
+        fail('HISTORY_NO_ELIGIBLE_ROWS','No reviewed talent history groups satisfy the selected policy: '+counts)
     if len(selected)>500000:
         fail('HISTORY_RELATION_BOUND','More than 500000 exact spell removals; no truncation was performed')
     root_keys = {tuple(key) for key in accepted}
@@ -198,4 +270,13 @@ def select(rows, state, meta, stored, expected):
                'selected_groups':len({(row[0],row[1]) for row in proof}),
                'max_group_spells':MAX_CLOSURE,
                'native_policy':'Archive isolated wholly disabled direct talent/rank/dependency groups; no selected ownership or enabled related spells; no grants, skill changes or resets'}
-    return result,sorted(excluded),proof,summary,sorted(graph.edges)
+    if reviewed_routes:
+        summary.update(reviewed_teacher_pairs=[(root,teacher) for family,(root,teacher,*_) in sorted(TEACHERS.items())
+                                                if any(row[1]==family for row in proof)],
+                       preserved_shared_route_rows=sum(row[4]=='PRESERVED_SHARED_SKILL_ROUTE' for row in proof),
+                       rejected_missing_target_teachers=[(50334,51266,50321)] if any(row[4]=='ABSENT_INVALID_TEACHER' for row in proof) else [],
+                       native_policy='Reviewed teacher groups remain wholly disabled; only inert shaman talent 30798 may be removed with shared 674/skill 118 preserved; no ownership, activation, grants, skills or resets change')
+    edges = set(graph.edges)
+    if any(row[4]=='ABSENT_INVALID_TEACHER' for row in proof):
+        edges.add((51266,50321,'REJECTED_MISSING_LEARN_TARGET'))
+    return result,sorted(excluded),proof,summary,sorted(edges)

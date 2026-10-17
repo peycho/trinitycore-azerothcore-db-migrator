@@ -123,6 +123,20 @@ rollback, reruns, full custom-field restoration, and unchanged enabled spells,
 talents, skills, auth/world and unrelated character tables. V1/v2 still run in
 the same suite. These tests remain separate from native gameplay acceptance.
 
+V4 units verify exact Berserk/Blast Wave wrapper effects and class/family
+identity, preservation of enabled teachers, outside routes, selected shamans,
+other classes and every shared `674` flag combination. SQL tests use actual
+talent/wrapper IDs, preserve enabled and disabled `674` custom fields plus
+skill `118` values/caps, reject same-count preserved-state drift, and exercise
+late rollback, reruns and complete restoration. The one-command `--audit`
+planning flow creates a new sealed inspection and is exercised by this cycle.
+An additional SQL cycle exercises the stock missing-50321 path, preserving a
+stored invalid teacher while cleaning only the root with an absent teacher.
+`tests/talent-route-runtime-tests.py` compiles the protected TC `IsSpellValid`
+function with mocked catalog/item getters: a missing LEARN child rejects the
+whole teacher, while custom valid-child and Blast Wave controls pass. This is
+behavioral source verification, not a running worldserver or gameplay test.
+
 ## Disposable MySQL fixture rehearsals
 
 Python 3, g++ (C++17), MySQL 8 client tools, and a dedicated disposable MySQL **8.4.x** server

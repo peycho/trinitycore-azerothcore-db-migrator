@@ -235,3 +235,4 @@ native gameplay acceptance follows from this report.
     for disposition, count in sorted(totals.items()):
         print(disposition+'\t'+str(count))
     print('Reports: '+str(output))
+    return output

@@ -207,6 +207,14 @@ children and queued resets remain separate cases. Exclusions appear in
 `excluded-rows.tsv` and the candidate's manifest/console totals. The reviewed
 population count can therefore exceed the selected deletion count.
 
+Instead of supplying `--inspection`, any history planning mode can take
+`--audit FULL_AUDIT_ID`. It creates and seals a fresh read-only inspection from
+that complete audit, then uses it for the candidate. This avoids manually
+copying a new inspection ID. The source must still match the audit's guarded
+inputs; this option does not run a new full audit or bypass stale-input checks.
+The two evidence options are mutually exclusive. Planning still makes no source
+writes and retains the new inspection if a later eligibility check fails.
+
 If the first batch leaves `DEFER_SCRIPTED_TALENT_FAMILY` rows, review the exact
 script families before broadening the policy. A second, explicit mode accepts
 only effective TC bindings already protected by the compatibility profile's
@@ -290,6 +298,57 @@ checks the whole related group, preserves every enabled availability and selecte
 build, and refuses profession/skill effects even on absent rank members. It does
 not simulate login, reset builds, infer missing ownership or authorize clearing
 enabled unowned spells. Those and pending native resets remain separate work.
+
+A final explicit reviewed-route mode adds two teaching-wrapper contracts and
+one shaman-specific root-only contract:
+
+```bash
+python3 console plan disabled-talent-history \
+  --audit FULL_AUDIT_ID --expect-review-rows 1000 \
+  --include-reviewed-routes
+```
+
+Policy `tc-disabled-reviewed-talent-routes-v4` implies v3 and keeps its general
+guards. Earlier policies and archived batches keep their original behavior.
+It validates the direct talent family, class and exact effective teaching
+effects before adding Berserk's wrapper `51266` for talent `50334`, or Blast
+Wave's wrapper `1831` for talent `11113`, to the related group. Both are
+single-rank direct talents. The wrapper, its other learned children and every
+related trained rank must be absent or disabled; enabled teachers or children,
+unknown incoming routes, altered effects, scripts, skills and cycles still
+defer the group. Present disabled wrappers may be explicitly archived/removed.
+
+The stock local DBC catalog lacks `50321`, another LEARN target of `51266`.
+Pinned TC `SpellMgr::IsSpellValid` rejects the entire teacher when any LEARN
+target is missing. V4 can disregard only this exact invalid incoming route when
+effective metadata still lacks `50321` and neither `51266` nor `50321` is stored
+for the character. It reports `ABSENT_INVALID_TEACHER`,
+`ABSENT_METADATA_NO_GRANT` and `rejected_missing_target_teachers`; it deletes no
+teacher row and grants nothing. Stored invalid teachers defer to a separate
+review. A custom world definition of `50321` disables this shortcut and requires
+the complete teacher/child group check. Other missing targets are not ignored.
+
+The shaman exception removes **only** disabled/unselected talent `30798`, whose
+single direct rank has the exact learn effect for shared Dual Wield `674`.
+It requires shaman class ownership metadata, no selected rank in either spec,
+no incoming route/default/skill reward for the root, no additional root rank
+or outgoing child, and compatible script/correction contracts. Pinned TC's
+disabled load path has no other direct talent rank to remove and returns
+before the learn effect. Therefore this inert root row can be discarded without
+changing the shared child or skill: **spell `674` is preserved in every stored
+state, and skill `118`, its value and cap receive no writes.** An absent `674`
+is never granted. Other classes and selected shaman builds do not qualify.
+
+`relationship-review.tsv` labels retained `674` rows
+`PRESERVED_SHARED_SKILL_ROUTE`; the manifest reports
+`preserved_shared_route_rows` and `reviewed_teacher_pairs`. Other direct/related
+counts, full original archives and exact restoration are unchanged. The exception
+does not authorize Dual Wield in an unowned spec, repair a corrupt skill, or
+promise migration acceptance for the preserved shared state. Remaining enabled
+availability and skill ownership require separate migration review. All source
+spells and skills remain fingerprinted, including preserved rows, so same-count
+drift blocks apply/restore as before. Gameplay and release approval remain
+unaccepted until their existing gates pass.
 
 Review the generated candidate's `README.md`, `manifest.json`, exact
 `selected-rows.tsv`, exclusions and `metadata.json`. Only then use the existing

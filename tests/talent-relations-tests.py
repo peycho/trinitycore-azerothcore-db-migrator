@@ -140,4 +140,103 @@ class TalentRelationsTests(unittest.TestCase):
         self.assertEqual(caught.exception.code,'HISTORY_RELATION_METADATA')
 
 
+class ReviewedRouteTests(unittest.TestCase):
+    def build(self,root,family,cls):
+        spells={s:[0]*234 for s in (root,600,51266,50334,50321,1831,11113,30798,674,900)}
+        talents={root:(family,1),600:(99,1)}
+        for spell,row in spells.items():row[0]=spell
+        spells[51266][71:74]=[36,36,0];spells[51266][116:119]=[50321,50334,0]
+        spells[1831][71]=36;spells[1831][116]=11113
+        spells[30798][71]=36;spells[30798][116]=674;spells[674][71]=40
+        tab=[0]*23;tab[20]=1<<(cls-1)
+        talent=[0]*23;talent[1]=family
+        meta=SimpleNamespace(spells=spells,talents=talents,talent_rows={root:talent},
+            stores={'SkillLine':{118:[118,7]},'TalentTab':{family:tab}},
+            invalid_talents=set(),requires=defaultdict(set),learns=defaultdict(list),effect_learns=defaultdict(list),
+            abilities=defaultdict(list),scripts=defaultdict(set),script_policy={},history_default_spells=set(),
+            chain=lambda s:(s,),check_spell=lambda s:None)
+        for parent,child in ((51266,50334),(51266,50321),(1831,11113),(30798,674)):
+            meta.effect_learns[parent].append((child,1,False))
+        ability=[0]*14;ability[1:3]=[118,674];ability[4]=109;ability[9]=2
+        meta.abilities[674]=[ability]
+        rows=[[1,root,1,1,cls,1,0,2,0,'REVIEW_DISABLED_NO_SELECTED_FAMILY',family,1,'[]'],
+              [2,600,1,1,1,1,0,1,0,'REVIEW_DISABLED_NO_SELECTED_FAMILY',99,1,'[]']]
+        state={'spells':[[r[0],r[1],r[2],r[3]] for r in rows],'talents':[]}
+        return meta,rows,state,list(state['spells'])
+
+    def test_reviewed_teachers_are_explicit_and_all_related_rows_disabled(self):
+        for root,family,cls,teacher in ((50334,1927,11,51266),(11113,32,8,1831)):
+            with self.subTest(root=root):
+                meta,rows,state,stored=self.build(root,family,cls)
+                self.assertEqual(relations.select(rows,state,meta,stored,2)[1][0][2],'DEFER_INDEPENDENT_LEARN_ROUTE')
+                stored.append([1,teacher,0,1])
+                result=relations.select(rows,state,meta,stored,2,True)
+                self.assertIn((1,teacher,0,1),result[0])
+                self.assertIn((root,teacher),result[3]['reviewed_teacher_pairs'])
+                stored[-1]=[1,teacher,1,0]
+                self.assertEqual(relations.select(rows,state,meta,stored,2,True)[1][0][2],'DEFER_ENABLED_RELATED_SPELL')
+
+    def test_unknown_teacher_route_and_altered_contract_do_not_qualify(self):
+        meta,rows,state,stored=self.build(50334,1927,11)
+        meta.effect_learns[900]=[(51266,1,False)]
+        self.assertEqual(relations.select(rows,state,meta,stored,2,True)[1][0][2],'DEFER_INDEPENDENT_LEARN_ROUTE')
+        meta.effect_learns.pop(900);meta.spells[51266][71]=6
+        self.assertEqual(relations.select(rows,state,meta,stored,2,True)[1][0][2],'DEFER_REVIEWED_TEACHER_CONTRACT')
+        meta.spells[51266][71]=36;meta.stores['TalentTab'][1927][20]=128
+        self.assertEqual(relations.select(rows,state,meta,stored,2,True)[1][0][2],'DEFER_REVIEWED_TEACHER_CONTRACT')
+
+    def test_missing_berserk_target_is_native_rejection_only_for_absent_teacher(self):
+        meta,rows,state,stored=self.build(50334,1927,11)
+        del meta.spells[50321]
+        # Metadata's LEARN edge reader excludes the missing child, exactly as
+        # pinned SpellMgr does. The raw target still makes the teacher invalid.
+        meta.effect_learns[51266]=[(50334,1,False)]
+        result=relations.select(rows,state,meta,stored,2,True)
+        self.assertIn((1,50334,1,1),result[0])
+        self.assertEqual(result[3]['rejected_missing_target_teachers'],[(50334,51266,50321)])
+        self.assertIn((1,1927,51266,'REJECTED_NATIVE_TEACHER','ABSENT_INVALID_TEACHER','',''),result[2])
+        for flags in ((1,1),(1,0)):
+            stored.append([1,51266,*flags])
+            self.assertEqual(relations.select(rows,state,meta,stored,2,True)[1][0][2],'DEFER_INVALID_TEACHER_STORED')
+            stored.pop()
+        stored.append([1,50321,1,1])
+        self.assertEqual(relations.select(rows,state,meta,stored,2,True)[1][0][2],'DEFER_INVALID_TEACHER_STORED')
+
+    def test_shaman_root_only_preserves_every_shared_spell_state(self):
+        for flags in ((1,0),(0,0),(1,1),(0,1)):
+            with self.subTest(flags=flags):
+                meta,rows,state,stored=self.build(30798,1690,7)
+                stored.append([1,674,*flags])
+                self.assertEqual(relations.select(rows,state,meta,stored,2)[1][0][2],'DEFER_SKILL_REWARD_ROUTE')
+                result=relations.select(rows,state,meta,stored,2,True)
+                self.assertEqual(result[0],[(1,30798,1,1),(2,600,1,1)])
+                self.assertEqual(result[3]['selected_related_rows'],0)
+                self.assertEqual(result[3]['preserved_shared_route_rows'],1)
+                self.assertIn((1,1690,674,'RANK_OR_DEPENDENT','PRESERVED_SHARED_SKILL_ROUTE',*flags),result[2])
+
+    def test_shaman_missing_child_is_not_granted_and_selected_root_deferred(self):
+        meta,rows,state,stored=self.build(30798,1690,7)
+        result=relations.select(rows,state,meta,stored,2,True)
+        self.assertIn((1,1690,674,'RANK_OR_DEPENDENT','ABSENT_NO_GRANT','',''),result[2])
+        state['talents']=[[1,30798,1]]
+        self.assertEqual(relations.select(rows,state,meta,stored,2,True)[1][0][2],'DEFER_SELECTED_RELATED_TALENT')
+
+    def test_shaman_exception_rejects_other_classes_ranks_or_new_routes(self):
+        meta,rows,state,stored=self.build(30798,1690,7)
+        rows[0][4]=1
+        self.assertEqual(relations.select(rows,state,meta,stored,2,True)[1][0][2],'DEFER_REVIEWED_DUAL_WIELD_CONTRACT')
+        rows[0][4]=7;meta.effect_learns[900]=[(30798,1,False)]
+        self.assertEqual(relations.select(rows,state,meta,stored,2,True)[1][0][2],'DEFER_REVIEWED_DUAL_WIELD_CONTRACT')
+        meta.effect_learns.pop(900);meta.chain=lambda s:(30798,900) if s in (30798,900) else (s,)
+        self.assertEqual(relations.select(rows,state,meta,stored,2,True)[1][0][2],'DEFER_REVIEWED_DUAL_WIELD_CONTRACT')
+
+    def test_cli_accepts_explicit_inspection_or_audit(self):
+        from cleanup_console import parser
+        for option in ('--inspection','--audit'):
+            args=parser().parse_args(['plan','disabled-talent-history',option,'evidence-id',
+                                     '--expect-review-rows','438','--include-reviewed-routes'])
+            self.assertTrue(args.include_reviewed_routes)
+            self.assertEqual(getattr(args,option[2:]),'evidence-id')
+
+
 if __name__=='__main__':unittest.main()

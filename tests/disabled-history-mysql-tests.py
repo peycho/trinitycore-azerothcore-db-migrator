@@ -301,6 +301,100 @@ backup_reference=disposable-synthetic-fixture
             passed('v3 interrupted transaction rollback, apply/rerun and exact complete restore including child binary fields; enabled spells/ownership/skills/auth/world and unrelated data unchanged')
             sql(f'DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 11 AND 17; DELETE FROM `{source}`.character_talent WHERE guid=16; DELETE FROM `{source}`.characters WHERE guid BETWEEN 11 AND 17; DELETE FROM `{world}`.spell_ranks WHERE first_spell_id=20473; DELETE FROM `{world}`.spell_learn_spell WHERE entry=64357;')
             assert checksum()==baseline
+            def route_stores(profile):
+                data=history_stores(profile)
+                for spell in (50334,51266,50321,11113,1831):
+                    row=[0]*len(profile['stores']['Spell']['columns']);row[0]=spell;data['Spell'][spell]=row
+                for family,root,cls in ((1927,50334,11),(32,11113,8)):
+                    tab=[0]*len(profile['stores']['TalentTab']['columns']);tab[0]=family;tab[20]=1<<(cls-1)
+                    data['TalentTab'][family]=tab
+                    talent=[0]*len(profile['stores']['Talent']['columns']);talent[0]=family;talent[1]=family;talent[4]=root
+                    data['Talent'][family]=talent
+                data['Spell'][51266][71:74]=[36,36,0];data['Spell'][51266][116:119]=[50321,50334,0]
+                data['Spell'][1831][71]=36;data['Spell'][1831][116]=11113
+                return data
+            assets.stores=route_stores
+            for name in ('tc-dbc','ac-dbc'):shutil.rmtree(work/name)
+            assets.write_assets(work,profile)
+            sql(f'''INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,online,activeTalentGroup,talentGroupsCount,at_login)
+              VALUES(21,1,'BerserkOld','',4,11,80,0,0,2,0),(22,1,'BerserkTeach','',4,11,80,0,0,2,0),
+                    (23,1,'BlastOld','',1,8,80,0,0,2,0),(24,1,'BlastTeach','',1,8,80,0,0,2,0),
+                    (25,1,'DualEnabled','',2,7,80,0,0,2,0),(26,1,'DualSelected','',2,7,80,0,0,2,0),
+                    (27,1,'DualAbsent','',2,7,80,0,0,1,0),(28,1,'DualDisabled','',2,7,80,0,0,1,0),
+                    (29,1,'WarriorDual','',1,1,80,0,0,1,0);
+              INSERT INTO `{source}`.character_spell VALUES(21,50334,1,1,NULL),(21,51266,1,1,0x00af),(21,50321,0,1,NULL),
+                (22,50334,1,1,NULL),(22,51266,1,0,NULL),(23,11113,1,1,NULL),(23,1831,0,1,0xff00),
+                (24,11113,1,1,NULL),(24,1831,1,0,NULL),(25,30798,1,1,0xaa00),(25,674,1,0,0xbb00),
+                (26,30798,1,1,NULL),(26,674,1,0,NULL),(27,30798,0,1,NULL),
+                (28,30798,1,1,NULL),(28,674,0,1,0x00cc),(29,30798,1,1,NULL),(29,674,1,0,NULL);
+              INSERT INTO `{source}`.character_talent VALUES(26,30798,1);
+              INSERT INTO `{source}`.character_skills VALUES(25,118,1,1),(28,118,1,1),(29,118,1,1);''')
+            route_baseline=checksum()
+            other_before=sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')
+            shared_before=sql(f'SELECT guid,spell,active,disabled,HEX(custom_blob) FROM `{source}`.character_spell WHERE spell=674 ORDER BY guid')
+            run('audit','--scope','all',code=1)
+            result=run('inspect-spell-history');inspection=Path(result.stdout.split('Reports: ',1)[1].strip()).name
+            route_plan=('plan','disabled-talent-history','--inspection',inspection,'--expect-review-rows','14')
+            run(*route_plan,'--include-inert-relations')
+            old=json.loads((package()/'manifest.json').read_text())
+            assert old['selected_rows']==3 and old['excluded_rows']==11,old
+            audit_id=json.loads((session()/'inspections'/inspection/'inspection.json').read_text())['audit']
+            run('plan','disabled-talent-history','--audit',audit_id,'--expect-review-rows','14','--include-reviewed-routes')
+            data=json.loads((package()/'manifest.json').read_text());route_archive=data['archive_schema'];owned.append(route_archive)
+            assert data['inspection_id']!=inspection
+            assert data['policy']=='tc-disabled-reviewed-talent-routes-v4',data
+            assert (data['selected_root_rows'],data['selected_related_rows'],data['selected_rows'])==(8,3,11),data
+            assert data['preserved_shared_route_rows']==2,data
+            report=(package()/'relationship-review.tsv').read_text()
+            assert '25\t1690\t674\tRANK_OR_DEPENDENT\tPRESERVED_SHARED_SKILL_ROUTE\t1\t0' in report,report
+            assert '23\t32\t1831\tREVIEWED_TEACHER\tSELECTED_DISABLED' in report,report
+            assert checksum()==route_baseline
+            run('prepare');run('prepare');assert checksum()==route_baseline
+            sql(f'UPDATE `{source}`.character_spell SET active=0 WHERE guid=25 AND spell=674')
+            drift=checksum();run('apply',code=2);assert checksum()==drift
+            sql(f'UPDATE `{source}`.character_spell SET active=1 WHERE guid=25 AND spell=674')
+            sql(f'UPDATE `{source}`.character_skills SET max=2 WHERE guid=25 AND skill=118')
+            drift=checksum();run('apply',code=2);assert checksum()==drift
+            sql(f'UPDATE `{source}`.character_skills SET max=1 WHERE guid=25 AND skill=118')
+            sql(f"CREATE TRIGGER `{route_archive}`.fail_commit BEFORE UPDATE ON `{route_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='route-late-error'; END IF; END")
+            assert 'route-late-error' in run('apply',code=2).stderr
+            assert checksum()==route_baseline
+            sql(f'DROP TRIGGER `{route_archive}`.fail_commit')
+            run('apply');run('apply');run('status')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell')=='22'
+            assert sql(f'SELECT guid,spell,active,disabled,HEX(custom_blob) FROM `{source}`.character_spell WHERE spell=674 ORDER BY guid')==shared_before
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==other_before
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid IN (22,24,26,29)')=='8'
+            run('restore');run('restore');assert checksum()==route_baseline
+            passed('v4 exact teacher contracts and shaman root-only cleanup: enabled teachers, inactive selected build and other classes preserved; every 674 field/skill 118/cap retained; source drift, late rollback, rerun and exact restore')
+            sql(f'DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 21 AND 29; DELETE FROM `{source}`.character_skills WHERE guid BETWEEN 21 AND 29; DELETE FROM `{source}`.character_talent WHERE guid=26; DELETE FROM `{source}`.characters WHERE guid BETWEEN 21 AND 29;')
+            assert checksum()==baseline
+            valid_route_stores=route_stores
+            def missing_route_stores(profile):
+                data=valid_route_stores(profile);del data['Spell'][50321];return data
+            assets.stores=missing_route_stores
+            for name in ('tc-dbc','ac-dbc'):shutil.rmtree(work/name)
+            assets.write_assets(work,profile)
+            sql(f'''INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,online,activeTalentGroup,talentGroupsCount,at_login)
+              VALUES(30,1,'OldBerserk','',4,11,80,0,0,1,0),(31,1,'BadTeacher','',4,11,80,0,0,1,0);
+              INSERT INTO `{source}`.character_spell VALUES(30,50334,1,1,0xff00),(31,50334,1,1,NULL),(31,51266,0,1,NULL);''')
+            missing_baseline=checksum()
+            run('audit','--scope','all',code=1)
+            audit_id=max((session()/'audits').iterdir()).name
+            run('plan','disabled-talent-history','--audit',audit_id,'--expect-review-rows','9','--include-reviewed-routes')
+            data=json.loads((package()/'manifest.json').read_text());missing_archive=data['archive_schema'];owned.append(missing_archive)
+            assert data['selected_rows']==4 and data['selected_root_rows']==4 and data['selected_related_rows']==0,data
+            assert data['rejected_missing_target_teachers']==[[50334,51266,50321]],data
+            assert data['excluded_reason_counts']['DEFER_INVALID_TEACHER_STORED']==1,data
+            assert 'ABSENT_INVALID_TEACHER' in (package()/'relationship-review.tsv').read_text()
+            assert checksum()==missing_baseline
+            run('prepare');run('apply');run('apply')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=31')=='2'
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=30')=='0'
+            run('restore');assert checksum()==missing_baseline
+            passed('v4 stock missing-50321 branch: exact invalid wrapper/native-rejection evidence; only absent wrapper qualifies; present invalid teacher retained; no grant; prepare/apply/rerun/exact restore')
+            sql(f'DELETE FROM `{source}`.character_spell WHERE guid IN (30,31); DELETE FROM `{source}`.characters WHERE guid IN (30,31);')
+            assert checksum()==baseline
             scale=int(os.environ.get('HISTORY_SCALE_ROWS','0'))
             if scale:
                 assert 1<=scale<=200000

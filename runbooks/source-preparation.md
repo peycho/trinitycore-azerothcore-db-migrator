@@ -39,6 +39,12 @@ character/family group if any related spell is enabled, a talent is selected,
 another route reaches it, or metadata/skills/scripts cannot be reviewed safely.
 Its manifest separates direct roots from related rows and reports every absent
 rank as no grant. Review that wider exact selection before prepare/apply.
+The explicit `--include-reviewed-routes` mode adds exact Berserk/Blast Wave
+teaching-wrapper contracts and a shaman-only, single-rank `30798` history rule.
+It preserves shared Dual Wield spell `674` and all skill `118` state; preserved
+ownership problems still require separate migration review. `--audit AUDIT_ID`
+can create a fresh sealed inspection during planning, using the retained full
+audit without another full scan or migration preflight.
 
 ## Run a standalone read-only audit
 

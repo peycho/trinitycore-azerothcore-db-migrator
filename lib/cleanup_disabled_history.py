@@ -15,7 +15,7 @@ import cleanup_talent_relations as relations
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
-POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY)
+POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -269,14 +269,19 @@ def check_sets(meta, source, archive, counts):
 
 
 def plan_history(settings, work, args, output):
-    path, report, state, rows, audit = inspection(settings,work,args.inspection)
+    inspection_id = args.inspection
+    if getattr(args,'audit',None):
+        from cleanup_spell_history import inspect_history
+        inspection_id = inspect_history(settings,work,args).name
+    path, report, state, rows, audit = inspection(settings,work,inspection_id)
     inspection_sha = sha(path/'SHA256SUMS')
     print('Reviewing effective TC world/DBC learning routes (read-only)',flush=True)
     effective, world = read_world(settings)
     state['enabled_ids'] = snapshot(settings,[('ids',enabled_ids_query(settings.schemas['characters']))])['ids']
-    include_relations = getattr(args,'include_inert_relations',False)
+    include_routes = getattr(args,'include_reviewed_routes',False)
+    include_relations = getattr(args,'include_inert_relations',False) or include_routes
     include_scripts = getattr(args,'include_reviewed_scripts',False) or include_relations
-    policy = relations.POLICY if include_relations else SCRIPT_POLICY if include_scripts else POLICY
+    policy = relations.ROUTE_POLICY if include_routes else relations.POLICY if include_relations else SCRIPT_POLICY if include_scripts else POLICY
     relation_rows,relation_proof,relation_summary,relation_edges = [],[],{},[]
     if include_relations:
         review_guids = sorted({r[0] for r in rows if r[9]=='REVIEW_DISABLED_NO_SELECTED_FAMILY'})
@@ -286,7 +291,7 @@ def plan_history(settings, work, args, output):
         relation_rows = snapshot(settings,[('rows',relations.stored_query(settings.schemas['characters'],review_guids))])['rows']
         check_retained_scripts(state,effective)
         selected,excluded,relation_proof,relation_summary,relation_edges = relations.select(
-            rows,state,effective,relation_rows,args.expect_review_rows)
+            rows,state,effective,relation_rows,args.expect_review_rows,include_routes)
     else:
         selected, excluded = select(rows,state,effective,args.expect_review_rows,include_scripts)
     bindings = script_bindings(effective) if include_scripts else []
@@ -413,6 +418,8 @@ def plan_history(settings, work, args, output):
         manifest.update(relation_summary)
         manifest['relationship_state_sha256'] = sha_json(live['relation_spells'])
         manifest['script_contract'] = 'NO_SPELLBOOK_MUTATION on every related member; isolated wholly disabled group; no enabled availability, selected ownership, conflicting incoming routes or skill effects'
+        if include_routes:
+            manifest['script_contract'] = 'NO_SPELLBOOK_MUTATION; exact reviewed teaching wrappers; wholly disabled removals; shared 674 and skill 118 preserved for inert shaman 30798 root-only exception'
     status = f'''SELECT * FROM `{archive}`.batch;
 SELECT 'expected' AS object,COUNT(*) rows_found FROM `{archive}`.expected_spells
 UNION ALL SELECT 'characters_before',COUNT(*) FROM `{archive}`.characters_before
