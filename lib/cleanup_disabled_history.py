@@ -12,10 +12,11 @@ from cleanup_active_reset import TABLES, KEYS, columns, row_hash
 from cleanup_spell_history import audit_inputs, classify
 from spells import Metadata, Unsupported
 import cleanup_talent_relations as relations
+import cleanup_selected_rank_history as selected_history
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
-POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY)
+POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -269,6 +270,9 @@ def check_sets(meta, source, archive, counts):
 
 
 def plan_history(settings, work, args, output):
+    selected_mode = getattr(args,'selected_rank_history',False)
+    if selected_mode and any(getattr(args,field,False) for field in ('include_reviewed_scripts','include_inert_relations','include_reviewed_routes')):
+        fail('HISTORY_POLICY_CONFLICT','--selected-rank-history cannot be combined with another history mode')
     inspection_id = args.inspection
     if getattr(args,'audit',None):
         from cleanup_spell_history import inspect_history
@@ -280,10 +284,14 @@ def plan_history(settings, work, args, output):
     state['enabled_ids'] = snapshot(settings,[('ids',enabled_ids_query(settings.schemas['characters']))])['ids']
     include_routes = getattr(args,'include_reviewed_routes',False)
     include_relations = getattr(args,'include_inert_relations',False) or include_routes
-    include_scripts = getattr(args,'include_reviewed_scripts',False) or include_relations
-    policy = relations.ROUTE_POLICY if include_routes else relations.POLICY if include_relations else SCRIPT_POLICY if include_scripts else POLICY
+    include_scripts = getattr(args,'include_reviewed_scripts',False) or include_relations or selected_mode
+    policy = selected_history.POLICY if selected_mode else relations.ROUTE_POLICY if include_routes else relations.POLICY if include_relations else SCRIPT_POLICY if include_scripts else POLICY
     relation_rows,relation_proof,relation_summary,relation_edges = [],[],{},[]
-    if include_relations:
+    rank_proof = []
+    if selected_mode:
+        check_retained_scripts(state,effective)
+        selected,excluded,rank_proof = selected_history.select(rows,state,effective,args.expect_review_rows)
+    elif include_relations:
         review_guids = sorted({r[0] for r in rows if r[9]=='REVIEW_DISABLED_NO_SELECTED_FAMILY'})
         if not review_guids or len(review_guids)>MAX_GUIDS:
             fail('HISTORY_RELATION_BOUND','No review characters or more than 40000 characters')
@@ -414,6 +422,10 @@ def plan_history(settings, work, args, output):
         manifest.update(reviewed_script_bindings=reviewed,
             scripted_selected_rows=sum(row[1] in effective.talents and effective.talents[row[1]][0] in scripted_families for row in selected),
             script_contract='NO_SPELLBOOK_MUTATION; pinned TC AddSpell disabled path; no alternate routes/dependencies/skill effects')
+    if selected_mode:
+        manifest.update(review_disposition=selected_history.DISPOSITION,selected_rank_rows=len(selected),
+            native_policy='Archive only disabled direct ranks selected by neither spec; preserve exact existing character_talent selections in both groups and every selected spell row/flag, skills and login flags; no highest-rank inference, activation or reset',
+            script_contract='NO_SPELLBOOK_MUTATION; no mixed ranks, teaching/prerequisite/skill/default routes or enabled unselected sibling')
     if include_relations:
         manifest.update(relation_summary)
         manifest['relationship_state_sha256'] = sha_json(live['relation_spells'])
@@ -446,6 +458,9 @@ FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.g
         selected_nodes = {r[2] for r in relation_proof}
         (output/'relationship-edges.tsv').write_text('parent\tchild\trelationship\n'+''.join(
             '\t'.join(map(str,r))+'\n' for r in relation_edges if r[0] in selected_nodes and r[1] in selected_nodes))
+    if selected_mode:
+        (output/'selected-rank-review.tsv').write_text('guid\tspell\ttalent_rank\tactive\tdisabled\ttalent_entry\tselected_spell_group_rank\tselected_spell_flags\tdecision\n'+
+            ''.join('\t'.join(map(str,r))+'\n' for r in rank_proof))
     write_json(output/'metadata.json',world)
     from cleanup_console import seal
     seal(output)

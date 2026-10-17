@@ -395,6 +395,59 @@ backup_reference=disposable-synthetic-fixture
             passed('v4 stock missing-50321 branch: exact invalid wrapper/native-rejection evidence; only absent wrapper qualifies; present invalid teacher retained; no grant; prepare/apply/rerun/exact restore')
             sql(f'DELETE FROM `{source}`.character_spell WHERE guid IN (30,31); DELETE FROM `{source}`.characters WHERE guid IN (30,31);')
             assert checksum()==baseline
+            sql(f'''INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,online,activeTalentGroup,talentGroupsCount,at_login)
+              VALUES(40,1,'BothRanks','',1,1,80,0,0,2,0),(41,1,'LowerOld','',1,1,80,0,1,2,0),
+                    (42,1,'HigherOld','',1,1,80,0,0,1,0),(43,1,'EnabledOld','',1,1,80,0,0,1,0),
+                    (44,1,'ResetRanks','',1,1,80,0,0,2,4),(45,1,'BadRankMap','',1,1,80,0,0,1,0),
+                    (46,1,'ForeignRank','',1,9,80,0,0,1,0);
+              INSERT INTO `{source}`.character_talent VALUES(40,12282,0),(40,12664,1),(41,12664,1),(42,12282,0),
+                    (43,12282,0),(44,12663,1),(45,12282,0),(45,12664,0),(46,17877,0);
+              INSERT INTO `{source}`.character_spell VALUES(40,12282,1,0,0x00aa),(40,12663,1,1,0x00bb),(40,12664,1,1,0x00cc),
+                (41,12282,1,1,NULL),(41,12663,0,1,NULL),(41,12664,1,0,NULL),(42,12664,1,1,NULL),
+                (43,12663,1,1,NULL),(43,12664,1,0,0xaaee),(44,12282,1,1,NULL),(44,12663,1,1,NULL),
+                (45,12663,1,1,NULL),(46,12663,1,1,NULL);
+              INSERT INTO `{source}`.character_skills VALUES(40,171,450,450);''')
+            rank_baseline=checksum()
+            other_before=sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')
+            owned_sql=f'SELECT s.guid,s.spell,s.active,s.disabled,HEX(s.custom_blob) FROM `{source}`.character_spell s JOIN `{source}`.character_talent t ON t.guid=s.guid AND t.spell=s.spell ORDER BY s.guid,s.spell,t.talentGroup'
+            selected_before=sql(owned_sql)
+            run('audit','--scope','all',code=1);audit_id=max((session()/'audits').iterdir()).name
+            conflict=run('plan','disabled-talent-history','--audit',audit_id,'--expect-review-rows','6','--selected-rank-history','--include-reviewed-routes',code=2)
+            assert 'HISTORY_POLICY_CONFLICT' in conflict.stderr
+            run('plan','disabled-talent-history','--audit',audit_id,'--expect-review-rows','6','--selected-rank-history')
+            data=json.loads((package()/'manifest.json').read_text());rank_archive=data['archive_schema'];owned.append(rank_archive)
+            assert data['policy']=='tc-disabled-other-selected-talent-rank-v5',data
+            assert data['selected_rows']==5 and data['excluded_rows']==1,data
+            assert data['excluded_reason_counts']=={'DEFER_ENABLED_UNSELECTED_FAMILY_RANK':1},data
+            report=(package()/'selected-rank-review.tsv').read_text()
+            assert '[[12282,0,1],[12664,1,3]]' in report,report
+            assert '[[12282,null,null]]' in report,report
+            assert checksum()==rank_baseline
+            run('prepare');run('prepare');assert checksum()==rank_baseline
+            for update,restore in (
+                (f'UPDATE `{source}`.character_spell SET disabled=0 WHERE guid=40 AND spell=12664',f'UPDATE `{source}`.character_spell SET disabled=1 WHERE guid=40 AND spell=12664'),
+                (f'UPDATE `{source}`.character_talent SET talentGroup=0 WHERE guid=40 AND spell=12664',f'UPDATE `{source}`.character_talent SET talentGroup=1 WHERE guid=40 AND spell=12664')):
+                sql(update);drift=checksum();run('apply',code=2);assert checksum()==drift;sql(restore)
+            sql(f"INSERT INTO `{world}`.spell_script_names VALUES(12663,'spell_dk_mark_of_blood');")
+            drift=checksum();assert 'HISTORY_METADATA_DRIFT' in run('apply',code=2).stderr;assert checksum()==drift
+            sql(f'DELETE FROM `{world}`.spell_script_names WHERE spell_id=12663')
+            sql(f"CREATE TRIGGER `{rank_archive}`.fail_commit BEFORE UPDATE ON `{rank_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='rank-late-error'; END IF; END")
+            assert 'rank-late-error' in run('apply',code=2).stderr;assert checksum()==rank_baseline
+            sql(f'DROP TRIGGER `{rank_archive}`.fail_commit')
+            run('apply');run('apply');run('status')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell')=='23'
+            assert sql(owned_sql)==selected_before
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==other_before
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=43')=='2'
+            run('audit','--scope','all',code=1)
+            reviewed=run('inspect-spell-history');assert 'REVIEW_DISABLED_OTHER_SELECTED_RANK\t1' in reviewed.stdout,reviewed.stdout
+            sql(f'UPDATE `{source}`.character_spell SET custom_blob=0x9999 WHERE guid=40 AND spell=12282')
+            drift=checksum();run('restore',code=2);assert checksum()==drift
+            sql(f'UPDATE `{source}`.character_spell SET custom_blob=0x00aa WHERE guid=40 AND spell=12282')
+            run('restore');run('restore');assert checksum()==rank_baseline
+            passed('v5 selected-rank authority: both specs/different ranks and flags retained, lower/higher stale disabled rows only; enabled conflicts/pending/foreign/invalid owners excluded; source/world drift, late rollback, rerun, fresh audit and exact restore')
+            sql(f'DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 40 AND 46; DELETE FROM `{source}`.character_skills WHERE guid=40; DELETE FROM `{source}`.character_talent WHERE guid BETWEEN 40 AND 46; DELETE FROM `{source}`.characters WHERE guid BETWEEN 40 AND 46;')
+            assert checksum()==baseline
             scale=int(os.environ.get('HISTORY_SCALE_ROWS','0'))
             if scale:
                 assert 1<=scale<=200000

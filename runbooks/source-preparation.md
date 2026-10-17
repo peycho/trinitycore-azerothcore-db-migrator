@@ -45,6 +45,14 @@ It preserves shared Dual Wield spell `674` and all skill `118` state; preserved
 ownership problems still require separate migration review. `--audit AUDIT_ID`
 can create a fresh sealed inspection during planning, using the retained full
 audit without another full scan or migration preflight.
+For disabled direct ranks where another rank is selected, the separate
+`--selected-rank-history` v5 policy uses existing selections in both groups as
+authority. It removes only eligible unselected disabled ranks, preserves selected
+spell flags and all ownership/point/skill state, and records missing counterparts
+without granting them. Enabled unselected siblings, learning/skill dependencies,
+ambiguous metadata and pending resets defer cleanup. Review
+`selected-rank-review.tsv` and exclusions; do not combine this mode with the
+earlier policy flags. Native loading of retained builds still needs acceptance.
 
 ## Run a standalone read-only audit
 

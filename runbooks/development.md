@@ -137,6 +137,25 @@ function with mocked catalog/item getters: a missing LEARN child rejects the
 whole teacher, while custom valid-child and Blast Wave controls pass. This is
 behavioral source verification, not a running worldserver or gameplay test.
 
+V5 selected-rank history units cover stale ranks above/below selections, different
+choices in both specs, unchanged counterpart flags, absent counterparts with no
+grant, enabled unselected siblings, invalid ownership, pending resets and route,
+script, correction and skill guards. Its MySQL cycle uses restricted roles and
+custom fields to exercise read-only planning, conflicting mode flags, exact
+selection/proof, selected ownership/flag drift, metadata drift, late-error
+rollback, apply/rerun, retained enabled conflicts and exact restore. All other
+source/auth/world tables must remain unchanged. The earlier policy cycles still
+run in the same suite.
+
+`tests/selected-rank-runtime-tests.py` extracts the pinned TC `AddTalent` function
+and the sibling-removal branch of `AddSpell`, compiling them with mocked spell
+catalog/map/removal sinks. It verifies separate per-spec talent ownership and the
+removal of selected spellbook siblings by a stale new-disabled direct rank. It
+does not execute the complete loader, aura system, save path or worldserver;
+native login, both-spec switching, points, spells and save/relog remain gameplay
+acceptance checks. The compiled harness runs in the manual rehearsal, while the
+Python policy units run in static CI.
+
 ## Disposable MySQL fixture rehearsals
 
 Python 3, g++ (C++17), MySQL 8 client tools, and a dedicated disposable MySQL **8.4.x** server

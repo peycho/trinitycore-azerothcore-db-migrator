@@ -408,6 +408,16 @@ rejection rule and never activates a disabled spell. Use the retained original
 source plus these archives for rollback; migrate edited preparation data only
 into fresh target/control schemas.
 
+Separate preparation policy v5 `--selected-rank-history` can archive disabled
+direct ranks selected by neither group when another rank of that family is
+selected. It treats existing talent ownership as authority, preserving selected
+spell flags, talent points and skills. It never chooses the highest rank or
+inserts missing selected counterparts. Enabled unselected siblings, dependencies,
+skill effects and ambiguous metadata defer the family. TC's direct-rank removal
+before the disabled return makes this an explicit ownership-based repair;
+identical behavior to the conflicting source spellbook is not asserted. It is
+not ordinary lower-rank reconstruction and does not relax migration checks.
+
 Resolving one blocker can expose another for the same character. A successful
 focused regression does not clear every record in a production-sized source.
 

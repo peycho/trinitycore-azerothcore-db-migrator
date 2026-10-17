@@ -20,6 +20,7 @@ fi
 source "$ROOT/tests/test-support.sh"
 python3 "$ROOT/tests/talent-runtime-tests.py" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/talent-route-runtime-tests.py" "$TRINITYCORE_DIR"
+python3 "$ROOT/tests/selected-rank-runtime-tests.py" "$TRINITYCORE_DIR"
 python3 "$ROOT/tests/research-load-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/runeforging-script-tests.py" "$TRINITYCORE_DIR"
 python3 "$ROOT/tests/nurturing-instinct-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"

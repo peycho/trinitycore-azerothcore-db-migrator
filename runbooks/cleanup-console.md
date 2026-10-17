@@ -299,7 +299,7 @@ build, and refuses profession/skill effects even on absent rank members. It does
 not simulate login, reset builds, infer missing ownership or authorize clearing
 enabled unowned spells. Those and pending native resets remain separate work.
 
-A final explicit reviewed-route mode adds two teaching-wrapper contracts and
+An explicit reviewed-route mode adds two teaching-wrapper contracts and
 one shaman-specific root-only contract:
 
 ```bash
@@ -350,6 +350,45 @@ spells and skills remain fingerprinted, including preserved rows, so same-count
 drift blocks apply/restore as before. Gameplay and release approval remain
 unaccepted until their existing gates pass.
 
+For disabled ranks whose family **does have a selected rank**, use a separate
+mode and the exact `REVIEW_DISABLED_OTHER_SELECTED_RANK` inspection count:
+
+```bash
+python3 console plan disabled-talent-history \
+  --audit FULL_AUDIT_ID --expect-review-rows 100 \
+  --selected-rank-history
+```
+
+Policy `tc-disabled-other-selected-talent-rank-v5` removes only disabled direct
+ranks selected by neither talent group. Existing `character_talent` selections
+are the authority: a stale rank can be below or above the selected rank. It never
+chooses a highest rank, merges the two builds, changes selected ownership or
+enables a spell. This mode cannot be combined with the v2/v3/v4 flags; earlier
+policies and batches retain their original behavior.
+
+Pinned TC `AddSpell` removes other direct ranks in a talent family before its
+new-disabled return. A stale disabled row can therefore interfere with a selected
+rank during loading. V5 is an explicit repair against retained talent ownership;
+it does not promise identical behavior to the old conflicting spellbook state.
+`AddTalent` tracks choices separately in each specialization. Selected spell rows,
+their original flags, talent points and both talent groups receive no writes.
+
+Review `selected-rank-review.tsv` for each deleted rank, the selected
+`[spell,group,rank]` choices and their stored `[spell,active,disabled]` flags.
+A missing selected spell row is recorded with null flags; apply does not grant
+it. Native talent loading and specialization switching still require gameplay
+acceptance. Full affected character, spell, talent and skill originals are
+archived and guarded exactly as in the earlier policies.
+
+V5 defers mixed ordinary/talent chains, independent learning/default/skill routes,
+teaching or prerequisite dependants, profession/riding/skill effects, unknown
+scripts or corrections, invalid ownership, online characters and pending resets.
+An enabled unselected sibling defers the whole candidate family; enabled selected
+ranks remain untouched. All enabled-history findings require separate review.
+`excluded-rows.tsv` records precise deferral reasons, so the selected count may be
+smaller than the reviewed population. This policy is separate from the migrator's
+legitimate missing-lower-rank reconstruction and changes no migration blocker rule.
+
 Review the generated candidate's `README.md`, `manifest.json`, exact
 `selected-rows.tsv`, exclusions and `metadata.json`. Only then use the existing
 batch workflow:
@@ -369,8 +408,8 @@ reviewed `(guid,spell)` pairs. Talents, enabled spells,
 spec counts, skill values/caps, profession slots, login flags, items and quests
 receive no writes. All work in each prepare/apply/restore phase is transactional;
 incomplete phases roll back, while successful reruns verify committed state.
-V1/v2 preserve all ordinary rank rows; v3 can remove only the exact disabled
-ordinary ranks/dependants listed in its isolated related group selection.
+V1/v2/v5 preserve all ordinary rank rows; v3/v4 can remove only the exact disabled
+ordinary ranks/dependants listed in their isolated related group selection.
 
 Full affected rows are hashed in primary-key order, with bounded per-character
 digests rather than a single concatenation of millions of source rows. Limits:
