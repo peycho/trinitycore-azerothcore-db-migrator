@@ -549,8 +549,8 @@ def command_plan(settings, work, args):
 def command_action(settings, work, args):
     path,manifest=work.batch(args.batch)
     settings.safety()
-    if manifest.get('policy')=='tc-disabled-unselected-direct-talent-history-v1':
-        from cleanup_disabled_history import check_metadata
+    from cleanup_disabled_history import POLICIES, check_metadata
+    if manifest.get('policy') in POLICIES:
         check_metadata(settings,manifest)
     for name,expected_hash in manifest.get('dbc_sha256',{}).items():
         if not re.fullmatch(r'[A-Za-z0-9]+\.dbc',name) or sha(settings.paths['tc_dbc']/name)!=expected_hash:
@@ -588,7 +588,7 @@ def command_action(settings, work, args):
     try:
         result=settings.sql(f"SET @{ack}='STOPPED_PREPARATION_COPY_ONLY';\n"+scripts[action],'write',headers=True)
     except CleanupError as error:
-        if manifest.get('policy')=='tc-disabled-unselected-direct-talent-history-v1' and any(
+        if manifest.get('policy') in POLICIES and any(
                 text in str(error) for text in ('DELETE command denied','INSERT command denied')):
             error.hint=('This history policy needs DELETE on character_spell for apply and INSERT for exact restore. '
                 'Have the preparation administrator grant only those source privileges to the configured writer, then retry; no source grants were added automatically.')
@@ -652,6 +652,8 @@ def parser():
     history=types.add_parser('disabled-talent-history',help='Archive eligible disabled direct talent history; selected families and enabled spells excluded')
     history.add_argument('--inspection',required=True,help='Retained spell-history inspection ID in this session')
     history.add_argument('--expect-review-rows',type=int,required=True,help='Exact disabled/no-selected-family inspection total; additional exclusions reported')
+    history.add_argument('--include-reviewed-scripts',action='store_true',
+        help='Use v2 policy for families whose every binding has the protected NO_SPELLBOOK_MUTATION contract; other exclusions remain')
     reset=types.add_parser('reset-talents',help='One character: archive unavailable group 1 and queue free native reset')
     reset.add_argument('--guid',type=int,required=True)
     active_reset=types.add_parser('reset-active-talents',help='Queue one native active reset; inactive builds must be empty; archive explicit foreign talent 12284')

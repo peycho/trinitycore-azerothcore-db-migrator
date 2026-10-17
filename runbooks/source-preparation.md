@@ -29,6 +29,10 @@ can generate a candidate for eligible disabled direct ranks. It excludes selecte
 families, enabled conflicts and alternate/dependent learning routes, archives
 complete affected state and supports exact restoration. It does not delete every
 history finding or change migration reconstruction rules.
+Its explicit `--include-reviewed-scripts` mode accepts only families whose every
+effective TC binding has the protected `NO_SPELLBOOK_MUTATION` contract. Other
+learning-route, dependency, skill and ownership exclusions still apply. After
+an earlier cleanup, use a new audit/inspection and retain the earlier archives.
 
 ## Run a standalone read-only audit
 

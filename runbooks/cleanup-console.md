@@ -207,6 +207,43 @@ children and queued resets remain separate cases. Exclusions appear in
 `excluded-rows.tsv` and the candidate's manifest/console totals. The reviewed
 population count can therefore exceed the selected deletion count.
 
+If the first batch leaves `DEFER_SCRIPTED_TALENT_FAMILY` rows, review the exact
+script families before broadening the policy. A second, explicit mode accepts
+only effective TC bindings already protected by the compatibility profile's
+`NO_SPELLBOOK_MUTATION` contract:
+
+```bash
+python3 console plan disabled-talent-history \
+  --inspection NEW_INSPECTION_ID --expect-review-rows 1000 \
+  --include-reviewed-scripts
+```
+
+After applying an earlier batch, run a new full audit and
+`inspect-spell-history` first, then use that new inspection's exact
+`REVIEW_DISABLED_NO_SELECTED_FAMILY` count. Do not reuse an inspection of the
+pre-cleanup spell set. Starting over on a fresh database import requires a new
+session, audit and inspection; do not reuse old archive schemas or generated SQL.
+
+This option selects policy `tc-disabled-reviewed-script-talent-history-v2`;
+the default remains v1. Every binding on every rank of the direct talent family
+must pass the reviewed contract. Unknown scripts, runtime talent-aura helper
+contracts and cast-only research contracts are insufficient. Independent
+learning routes, teaching/prerequisite dependants, mixed chains, skill effects,
+selected families, enabled family conflicts and pending resets remain excluded.
+Pinned TC `AddSpell` returns for a newly loaded disabled spell before passive
+casts, learned-spell effects and skill/profession updates. The alternate-route
+guards also exclude earlier runtime entries that could take a different path.
+No server login, aura removal, C++ change or migration blocker override is used.
+
+The candidate records accepted selected-family bindings in the manifest,
+`scripted_selected_rows`, and all direct-family binding reviews in
+`scripted-family-review.tsv`. A reviewed binding is a script-contract result,
+not permission to delete a family excluded by another guard; the exact deletion
+set is still `selected-rows.tsv`. V1 and v2 use the same complete archives,
+transactional apply/restore and source/world/DBC drift guards. Existing v1
+batches remain usable under their original policy. Migration approval remains
+`UNREVIEWED`.
+
 Review the generated candidate's `README.md`, `manifest.json`, exact
 `selected-rows.tsv`, exclusions and `metadata.json`. Only then use the existing
 batch workflow:

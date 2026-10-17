@@ -13,6 +13,8 @@ from cleanup_spell_history import audit_inputs, classify
 from spells import Metadata, Unsupported
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
+SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
+POLICIES = (POLICY, SCRIPT_POLICY)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -129,7 +131,29 @@ def check_metadata(settings, manifest):
         fail('HISTORY_METADATA_DRIFT','Effective TC world/DBC metadata differs from this reviewed history batch')
 
 
-def select(rows, state, effective, expected_review_rows):
+def script_bindings(effective):
+    """Review every direct-family binding against the protected TC contract.
+
+    The broader reconstruction checker also supports runtime aura helpers and
+    cast-only research spells. Neither contract authorizes history cleanup.
+    Only the existing NO_SPELLBOOK_MUTATION contract is eligible here.
+    """
+    bindings = []
+    for spell, (family, _) in sorted(effective.talents.items()):
+        for name in sorted(effective.scripts[spell]):
+            reason = ''
+            if effective.script_policy.get(name) != 'NO_SPELLBOOK_MUTATION':
+                reason = 'UNREVIEWED_HISTORY_SCRIPT'
+            else:
+                try:
+                    effective.check_script(spell, name)
+                except Unsupported as error:
+                    reason = error.reason
+            bindings.append((family, spell, name, reason))
+    return bindings
+
+
+def select(rows, state, effective, expected_review_rows, include_reviewed_scripts=False):
     candidates = [row for row in rows if row[9] == 'REVIEW_DISABLED_NO_SELECTED_FAMILY']
     if not 1 <= expected_review_rows <= MAX_SELECTED or len(candidates) != expected_review_rows:
         fail('HISTORY_SELECTION_MISMATCH','--expect-review-rows must equal the inspection disabled/no-selected-family total')
@@ -156,6 +180,8 @@ def select(rows, state, effective, expected_review_rows):
     families = defaultdict(set)
     for spell,(family,_) in effective.talents.items():
         families[family].add(spell)
+    bindings = script_bindings(effective) if include_reviewed_scripts else []
+    rejected_scripts = {family for family, _, _, reason in bindings if reason}
     required_parents = {parent for parents in getattr(effective,'requires',{}).values() for parent in parents}
     family_exclusions = {}
     for family,members in families.items():
@@ -167,7 +193,7 @@ def select(rows, state, effective, expected_review_rows):
             family_exclusions[family] = 'DEFER_CUSTOM_DEFAULT_ROUTE'
         elif (members & required_parents or any(effective.learns[spell] or effective.effect_learns[spell] for spell in members)):
             family_exclusions[family] = 'DEFER_TALENT_DEPENDENCIES'
-        elif any(effective.scripts[spell] for spell in members):
+        elif any(effective.scripts[spell] for spell in members) and (not include_reviewed_scripts or family in rejected_scripts):
             family_exclusions[family] = 'DEFER_SCRIPTED_TALENT_FAMILY'
         elif hasattr(effective,'spells') and any(set(effective.spells[spell][71:74]) & {44,47,118} for spell in members):
             family_exclusions[family] = 'DEFER_TALENT_SKILL_EFFECT'
@@ -243,7 +269,13 @@ def plan_history(settings, work, args, output):
     print('Reviewing effective TC world/DBC learning routes (read-only)',flush=True)
     effective, world = read_world(settings)
     state['enabled_ids'] = snapshot(settings,[('ids',enabled_ids_query(settings.schemas['characters']))])['ids']
-    selected, excluded = select(rows,state,effective,args.expect_review_rows)
+    include_scripts = getattr(args,'include_reviewed_scripts',False)
+    policy = SCRIPT_POLICY if include_scripts else POLICY
+    selected, excluded = select(rows,state,effective,args.expect_review_rows,include_scripts)
+    bindings = script_bindings(effective) if include_scripts else []
+    selected_families = {effective.talents[row[1]][0] for row in selected}
+    reviewed = [row[:3] for row in bindings if row[0] in selected_families]
+    scripted_families = {entry[0] for entry in reviewed}
     guids = sorted({row[0] for row in selected})
     print(f'Fingerprinting complete spell/talent/skill/character state for {len(guids)} characters (read-only)',flush=True)
     selector = ','.join(map(str,guids))
@@ -304,7 +336,7 @@ def plan_history(settings, work, args, output):
     if counts['characters'] != len(guids) or sum(counts.values())>5_000_000:
         fail('HISTORY_SNAPSHOT_BOUND','Missing affected characters or more than 5000000 archived rows')
     template = ROOT/'tools/disabled-talent-history.sql.in'
-    batch = sha_json({'inspection':sha(path/'SHA256SUMS'),'snapshot':cells,'after':after,
+    batch = sha_json({'policy':policy,'inspection':sha(path/'SHA256SUMS'),'snapshot':cells,'after':after,
                      'selection':selected,'world':world,'meta':meta,'template':sha(template),'id':output.name})
     archive = 'tc_disabled_history_'+uuid.uuid4().hex[:20]
     blocks = check_sets(meta,source,archive,counts)
@@ -338,7 +370,7 @@ def plan_history(settings, work, args, output):
         fail('HISTORY_INSPECTION_INVALID','Retained inspection changed during planning')
     if any(sha(settings.paths['tc_dbc']/name)!=checksum for name,checksum in audit['dbc_sha256'].items()):
         fail('DBC_DRIFT','DBC files changed while planning')
-    manifest = {'policy':POLICY,'archive_schema':archive,'batch_key':batch,'selected_rows':len(selected),
+    manifest = {'policy':policy,'archive_schema':archive,'batch_key':batch,'selected_rows':len(selected),
         'affected_characters':len(guids),'character_guids':guids,'inspection_id':path.name,
         'inspection_sha256':inspection_sha,'audit_id':report['audit'],
         'audit_sha256':audit['audited_results_sha256'],'dbc_sha256':audit['dbc_sha256'],
@@ -348,6 +380,10 @@ def plan_history(settings, work, args, output):
         'excluded_reason_counts':dict(Counter(row[2] for row in excluded)),
         'template_sha256':sha(template),
         'native_policy':'Disabled direct talent ranks only; no selected family in either spec; no activation, talent reset or grants'}
+    if include_scripts:
+        manifest.update(reviewed_script_bindings=reviewed,
+            scripted_selected_rows=sum(effective.talents[row[1]][0] in scripted_families for row in selected),
+            script_contract='NO_SPELLBOOK_MUTATION; pinned TC AddSpell disabled path; no alternate routes/dependencies/skill effects')
     status = f'''SELECT * FROM `{archive}`.batch;
 SELECT 'expected' AS object,COUNT(*) rows_found FROM `{archive}`.expected_spells
 UNION ALL SELECT 'characters_before',COUNT(*) FROM `{archive}`.characters_before
@@ -364,12 +400,18 @@ FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.g
     finish(settings,work,output,manifest,render_text(template,values),
            'guid\tspell\tactive\tdisabled\n'+''.join('\t'.join(map(str,row))+'\n' for row in selected),status)
     (output/'excluded-rows.tsv').write_text('guid\tspell\treason\n'+''.join('\t'.join(map(str,row))+'\n' for row in excluded))
+    if include_scripts:
+        (output/'scripted-family-review.tsv').write_text('talent_entry\tspell\tscript\tstatus\treason\n'+''.join(
+            '\t'.join(map(str,(family,spell,name,'DEFERRED' if reason else 'REVIEWED_NO_SPELLBOOK_MUTATION',reason)))+'\n'
+            for family,spell,name,reason in bindings))
     write_json(output/'metadata.json',world)
     from cleanup_console import seal
     seal(output)
     print(f'Reviewed {len(selected)+len(excluded)} disabled rows; selected {len(selected)}; deferred {len(excluded)}; no source changes')
     for reason,count in sorted(Counter(row[2] for row in excluded).items()):
         print(reason+'\t'+str(count))
+    if include_scripts:
+        print('SELECTED_REVIEWED_SCRIPT_HISTORY\t'+str(manifest['scripted_selected_rows']))
 
 
 def render_text(template, values):

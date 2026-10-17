@@ -25,6 +25,7 @@ class DisabledHistoryTests(unittest.TestCase):
         self.meta=SimpleNamespace(talents={12296:(137,1),12300:(2,1),12301:(2,2)},
             invalid_talents=set(),learns=defaultdict(list),effect_learns=defaultdict(list),
             abilities=defaultdict(list),scripts=defaultdict(set),chain=lambda spell:(spell,),check_script=lambda spell,name:None)
+        self.meta.script_policy={}
 
     def call(self, expected=2):
         return history.select(self.rows,self.state,self.meta,expected)
@@ -87,6 +88,59 @@ class DisabledHistoryTests(unittest.TestCase):
         self.meta.check_script=reject
         with self.assertRaises(CleanupError) as caught:self.call()
         self.assertEqual(caught.exception.code,'UNSUPPORTED_LEARNING_SCRIPT')
+
+    def test_reviewed_scripts_require_explicit_v2_and_every_family_binding(self):
+        self.meta.scripts[12301].add('combat_script')
+        self.meta.script_policy['combat_script']='NO_SPELLBOOK_MUTATION'
+        self.assertEqual(self.call()[1],[(2,12300,'DEFER_SCRIPTED_TALENT_FAMILY')])
+        selected,excluded=history.select(self.rows,self.state,self.meta,2,True)
+        self.assertEqual(selected,[(1,12296,1,1),(2,12300,0,1)])
+        self.assertEqual(excluded,[])
+        self.assertEqual(history.script_bindings(self.meta),[(2,12301,'combat_script','')])
+        self.meta.scripts[12300].add('unknown_script')
+        self.assertEqual(history.select(self.rows,self.state,self.meta,2,True)[1],
+                         [(2,12300,'DEFER_SCRIPTED_TALENT_FAMILY')])
+
+    def test_runtime_aura_contract_does_not_authorize_history_cleanup(self):
+        self.meta.scripts[12301].add('runtime_aura_script')
+        # The reconstruction checker accepts special aura rules, but the
+        # cleanup must still reject them without NO_SPELLBOOK_MUTATION.
+        self.assertEqual(history.select(self.rows,self.state,self.meta,2,True)[1],
+                         [(2,12300,'DEFER_SCRIPTED_TALENT_FAMILY')])
+        self.assertEqual(history.script_bindings(self.meta)[0][-1],'UNREVIEWED_HISTORY_SCRIPT')
+
+    def test_failed_review_contract_is_deferred_and_reported(self):
+        from spells import Unsupported
+        self.meta.scripts[12301].add('combat_script')
+        self.meta.script_policy['combat_script']='NO_SPELLBOOK_MUTATION'
+        def reject(spell,name):raise Unsupported('UNSUPPORTED_LEARNING_SCRIPT','changed binding')
+        self.meta.check_script=reject
+        self.assertEqual(history.select(self.rows,self.state,self.meta,2,True)[1],
+                         [(2,12300,'DEFER_SCRIPTED_TALENT_FAMILY')])
+        self.assertEqual(history.script_bindings(self.meta)[0][-1],'UNSUPPORTED_LEARNING_SCRIPT')
+
+    def test_reviewed_script_does_not_bypass_other_family_exclusions(self):
+        self.meta.scripts[12301].add('combat_script')
+        self.meta.script_policy['combat_script']='NO_SPELLBOOK_MUTATION'
+        cases=[('DEFER_INDEPENDENT_LEARN_ROUTE',lambda:self.meta.learns[900001].append((12301,1,True))),
+               ('DEFER_TALENT_DEPENDENCIES',lambda:self.meta.learns[12301].append((900001,1,True))),
+               ('DEFER_ENABLED_FAMILY_SPELL',lambda:self.state['spells'].append([2,12301,1,0]))]
+        for reason,mutate in cases:
+            with self.subTest(reason=reason):
+                saved=copy.deepcopy((self.meta,self.state));mutate()
+                self.assertEqual(history.select(self.rows,self.state,self.meta,2,True)[1],[(2,12300,reason)])
+                self.meta,self.state=saved
+        self.meta.spells={spell:[0]*234 for spell in self.meta.talents}
+        self.meta.spells[12301][71]=118
+        self.assertEqual(history.select(self.rows,self.state,self.meta,2,True)[1],[(2,12300,'DEFER_TALENT_SKILL_EFFECT')])
+
+    def test_protected_operator_script_examples_have_nonmutating_contracts(self):
+        import json
+        profile=json.loads((history.PROFILE/'spell-metadata.json').read_text())
+        for name in ('spell_dk_mark_of_blood','spell_dk_dancing_rune_weapon',
+                     'spell_dk_hysteria','spell_dk_improved_blood_presence','spell_pal_eye_for_an_eye'):
+            with self.subTest(script=name):
+                self.assertEqual(profile['scripts']['tc'].get(name),'NO_SPELLBOOK_MUTATION')
 
     def test_native_core_disabled_path_stops_before_learning_and_skill_effects(self):
         core=Path(os.environ.get('TRINITYCORE_DIR',ROOT.parent/'TrinityCore'))

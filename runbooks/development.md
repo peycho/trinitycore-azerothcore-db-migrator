@@ -104,6 +104,14 @@ of characters, then plans, prepares, applies, reruns and restores them exactly.
 It is opt-in; regular push/PR CI continues to run only static checks. A passing
 SQL rehearsal does not establish native login, relearning or gameplay acceptance.
 
+The explicit reviewed-script v2 mode has a separate SQL cycle in the same suite:
+v1 still defers scripted families, v2 records the accepted protected binding,
+same-count script changes block both console and direct SQL calls, late errors
+roll back deletion/checkpoint together, and apply/rerun/restore preserve all
+other source/auth/world checksums. Units also reject unreviewed sibling bindings,
+special runtime-aura contracts, failed script contracts and skill/dependency/
+independent-route conflicts despite an otherwise accepted script.
+
 ## Disposable MySQL fixture rehearsals
 
 Python 3, g++ (C++17), MySQL 8 client tools, and a dedicated disposable MySQL **8.4.x** server

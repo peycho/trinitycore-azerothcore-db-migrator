@@ -390,7 +390,11 @@ A separate source-preparation policy now implements those safeguards for a
 conservative subset of disabled, unselected **direct** talent ranks. See
 [disabled-history archives](cleanup-console.md#archive-eligible-disabled-direct-talent-history).
 It defers selected families, enabled conflicts, indirect/runtime dependencies,
-alternate routes, scripts and pending native resets. It changes no migration
+alternate routes, unreviewed scripts and pending native resets. The default v1
+policy defers every scripted family; explicit v2 `--include-reviewed-scripts`
+accepts only complete families with the protected `NO_SPELLBOOK_MUTATION`
+contract and no other exclusion. Both modes record exact selected/deferred rows
+and preserve talent ownership, skills and login flags. This changes no migration
 rejection rule and never activates a disabled spell. Use the retained original
 source plus these archives for rollback; migrate edited preparation data only
 into fresh target/control schemas.

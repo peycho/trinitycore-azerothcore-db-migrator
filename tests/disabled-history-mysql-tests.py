@@ -199,6 +199,41 @@ backup_reference=disposable-synthetic-fixture
             run('restore');run('restore');assert checksum()==baseline
             run('apply',code=2)
             passed('exact restoration including custom binary fields; changed-state restore blocked; archive retained; apply-after-restore refused')
+            # V2 must require an explicit option, preserve every old exclusion,
+            # record the reviewed script contract, and use the same atomic SQL.
+            sql(f"INSERT INTO `{world}`.spell_script_names VALUES(12296,'spell_dk_mark_of_blood');")
+            scripted_baseline=checksum()
+            run('audit','--scope','all',code=1)
+            result=run('inspect-spell-history');inspection=Path(result.stdout.split('Reports: ',1)[1].strip()).name
+            scripted_plan=('plan','disabled-talent-history','--inspection',inspection,'--expect-review-rows','7')
+            assert 'HISTORY_NO_ELIGIBLE_ROWS' in run(*scripted_plan,code=2).stderr
+            run(*scripted_plan,'--include-reviewed-scripts')
+            data=json.loads((package()/'manifest.json').read_text());scripted_archive=data['archive_schema'];owned.append(scripted_archive)
+            assert data['policy']=='tc-disabled-reviewed-script-talent-history-v2',data
+            assert data['selected_rows']==3 and data['scripted_selected_rows']==3,data
+            assert data['reviewed_script_bindings']==[[137,12296,'spell_dk_mark_of_blood']],data
+            assert 'REVIEWED_NO_SPELLBOOK_MUTATION' in (package()/'scripted-family-review.tsv').read_text()
+            assert checksum()==scripted_baseline
+            run('prepare');assert checksum()==scripted_baseline
+            sql(f"UPDATE `{world}`.spell_script_names SET ScriptName='unknown_script' WHERE spell_id=12296")
+            drift=checksum();assert 'HISTORY_METADATA_DRIFT' in run('apply',code=2).stderr
+            assert checksum()==drift
+            direct=subprocess.run(['mysql',*base,'--user='+writer],input=
+                f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'; CALL `{scripted_archive}`.apply_batch();",
+                text=True,capture_output=True)
+            assert direct.returncode!=0 and 'World metadata content changed' in direct.stderr,direct.stderr
+            sql(f"UPDATE `{world}`.spell_script_names SET ScriptName='spell_dk_mark_of_blood' WHERE spell_id=12296")
+            assert checksum()==scripted_baseline
+            sql(f"CREATE TRIGGER `{scripted_archive}`.fail_commit BEFORE UPDATE ON `{scripted_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='scripted-late-error'; END IF; END")
+            assert 'scripted-late-error' in run('apply',code=2).stderr
+            assert checksum()==scripted_baseline
+            sql(f'DROP TRIGGER `{scripted_archive}`.fail_commit')
+            run('apply');run('apply');run('status')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell')=='12'
+            run('restore');run('restore');assert checksum()==scripted_baseline
+            passed('explicit reviewed-script v2: binding provenance, v1 exclusion, metadata drift (console/direct SQL), late rollback, apply/rerun/exact restore; unrelated source/world state retained')
+            sql(f'DELETE FROM `{world}`.spell_script_names WHERE spell_id=12296')
+            assert checksum()==baseline
             scale=int(os.environ.get('HISTORY_SCALE_ROWS','0'))
             if scale:
                 assert 1<=scale<=200000
