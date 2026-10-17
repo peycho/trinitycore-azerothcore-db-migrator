@@ -33,6 +33,12 @@ Its explicit `--include-reviewed-scripts` mode accepts only families whose every
 effective TC binding has the protected `NO_SPELLBOOK_MUTATION` contract. Other
 learning-route, dependency, skill and ownership exclusions still apply. After
 an earlier cleanup, use a new audit/inspection and retain the earlier archives.
+The separate `--include-inert-relations` v3 mode can also archive disabled trained
+ranks and learned/prerequisite dependants in an isolated group. It defers a whole
+character/family group if any related spell is enabled, a talent is selected,
+another route reaches it, or metadata/skills/scripts cannot be reviewed safely.
+Its manifest separates direct roots from related rows and reports every absent
+rank as no grant. Review that wider exact selection before prepare/apply.
 
 ## Run a standalone read-only audit
 

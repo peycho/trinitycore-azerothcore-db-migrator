@@ -112,6 +112,17 @@ other source/auth/world checksums. Units also reject unreviewed sibling bindings
 special runtime-aura contracts, failed script contracts and skill/dependency/
 independent-route conflicts despite an otherwise accepted script.
 
+V3 relationship units cover rank-component expansion, deterministic merged
+learning/prerequisite edges, cycles, shared owners, incoming routes, every spec,
+enabled and inactive-but-enabled children, missing-rank no-grant provenance,
+skill/profession/riding guards, script/correction failures, malformed metadata
+and traversal bounds. Its MySQL cycle uses Fiery Payback roots/hidden children
+and Holy Shock direct/trained ranks. It tests exact root/related counts, child
+and same-count world drift (console and direct SQL), late-error and disconnect
+rollback, reruns, full custom-field restoration, and unchanged enabled spells,
+talents, skills, auth/world and unrelated character tables. V1/v2 still run in
+the same suite. These tests remain separate from native gameplay acceptance.
+
 ## Disposable MySQL fixture rehearsals
 
 Python 3, g++ (C++17), MySQL 8 client tools, and a dedicated disposable MySQL **8.4.x** server

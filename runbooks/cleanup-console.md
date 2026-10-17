@@ -244,6 +244,53 @@ transactional apply/restore and source/world/DBC drift guards. Existing v1
 batches remain usable under their original policy. Migration approval remains
 `UNREVIEWED`.
 
+For remaining teaching/prerequisite dependencies or mixed direct/trained rank
+chains, a separate explicit policy can review a complete related group:
+
+```bash
+python3 console plan disabled-talent-history \
+  --inspection NEW_INSPECTION_ID --expect-review-rows 1000 \
+  --include-inert-relations
+```
+
+**This v3 option can remove related disabled spell rows as well as direct talent
+rows.** Review both counts before preparing or applying. It implies the reviewed
+script checks; the default and `--include-reviewed-scripts` modes keep their
+original v1/v2 behavior. Policy `tc-disabled-unselected-talent-closure-v3`
+starts only from the inspection's disabled/no-selected-family direct ranks.
+It expands verified rank membership, TC world/DBC learned-spell edges and
+`spell_required` dependants. It selects only isolated groups whose present rows
+are all disabled, with no selected talent in either spec and no outside incoming
+learning/dependency edge. A single enabled related spell defers the entire
+character/family group, including inactive (`active=0, disabled=0`) spells.
+
+Shared talent owners, unknown script contracts, skill rewards, custom starting
+spells, profession/secondary/riding recipes or tiers, skill/dual-wield effects,
+unsupported corrections, pet learning and malformed relationships remain
+deferred. Rank groups are collapsed before iterative cycle detection; cycles,
+groups above 4096 spells and review evidence above 5000000 nodes are rejected
+or deferred without truncation. At most 500000 exact rows can be selected.
+This uses a fresh read-only complete spell-state supplement for reviewed GUIDs,
+then rechecks it in the same snapshot as the full original-row fingerprints.
+
+The manifest distinguishes `selected_root_rows` and `selected_related_rows`;
+`selected_rows` is their total. `excluded-rows.tsv` continues to list deferred
+direct inspection rows. `relationship-review.tsv` records each accepted group's
+GUID, talent family, spell, direct/related role and original flags. Absent nodes
+are explicitly `ABSENT_NO_GRANT`; no spell is inserted or activated by apply.
+`relationship-edges.tsv` records the verified dependency edges; rank membership
+is protected by the retained world/DBC fingerprints. These reports and the exact
+selection are sealed with the candidate. SQL prepare/apply/restore, checkpoints,
+complete original archives and metadata drift guards are shared with v1/v2.
+
+Native source rationale: new disabled `AddSpell` returns before cast/learn/skill
+effects, but it first removes other direct talent ranks. `RemoveSpell` can recurse
+through higher ranks, prerequisites and learned children. Therefore this policy
+checks the whole related group, preserves every enabled availability and selected
+build, and refuses profession/skill effects even on absent rank members. It does
+not simulate login, reset builds, infer missing ownership or authorize clearing
+enabled unowned spells. Those and pending native resets remain separate work.
+
 Review the generated candidate's `README.md`, `manifest.json`, exact
 `selected-rows.tsv`, exclusions and `metadata.json`. Only then use the existing
 batch workflow:
@@ -259,10 +306,12 @@ Prepare creates a new archive schema and saves full original affected character,
 spell, talent and skill rows, including custom fields. It does not change source
 data. This can archive substantially more rows than it removes; the manifest's
 `archived_rows` gives the exact counts before prepare. Apply deletes only exact
-reviewed `(guid,spell)` pairs. Talents, enabled spells, lower ordinary ranks,
+reviewed `(guid,spell)` pairs. Talents, enabled spells,
 spec counts, skill values/caps, profession slots, login flags, items and quests
 receive no writes. All work in each prepare/apply/restore phase is transactional;
 incomplete phases roll back, while successful reruns verify committed state.
+V1/v2 preserve all ordinary rank rows; v3 can remove only the exact disabled
+ordinary ranks/dependants listed in its isolated related group selection.
 
 Full affected rows are hashed in primary-key order, with bounded per-character
 digests rather than a single concatenation of millions of source rows. Limits:

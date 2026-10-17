@@ -54,7 +54,7 @@ def toolkit_hashes():
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
-           'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','tools/disabled-talent-history.sql.in')
+           'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','lib/cleanup_talent_relations.py','tools/disabled-talent-history.sql.in')
     hashes={}
     for name in names:
         path=ROOT/name
@@ -654,6 +654,8 @@ def parser():
     history.add_argument('--expect-review-rows',type=int,required=True,help='Exact disabled/no-selected-family inspection total; additional exclusions reported')
     history.add_argument('--include-reviewed-scripts',action='store_true',
         help='Use v2 policy for families whose every binding has the protected NO_SPELLBOOK_MUTATION contract; other exclusions remain')
+    history.add_argument('--include-inert-relations',action='store_true',
+        help='Use v3 policy to archive isolated wholly disabled direct talent/rank/dependency groups, including exact related rows; implies reviewed scripts')
     reset=types.add_parser('reset-talents',help='One character: archive unavailable group 1 and queue free native reset')
     reset.add_argument('--guid',type=int,required=True)
     active_reset=types.add_parser('reset-active-talents',help='Queue one native active reset; inactive builds must be empty; archive explicit foreign talent 12284')

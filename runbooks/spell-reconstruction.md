@@ -394,7 +394,12 @@ alternate routes, unreviewed scripts and pending native resets. The default v1
 policy defers every scripted family; explicit v2 `--include-reviewed-scripts`
 accepts only complete families with the protected `NO_SPELLBOOK_MUTATION`
 contract and no other exclusion. Both modes record exact selected/deferred rows
-and preserve talent ownership, skills and login flags. This changes no migration
+and preserve talent ownership, skills and login flags. Separate v3
+`--include-inert-relations` can archive isolated wholly disabled direct/rank/
+dependent groups, with no enabled related spell, selected talent, conflicting
+incoming route, profession/skill effect or unsupported metadata. It records
+direct and related removals separately; it does not resolve enabled unowned
+spells or pending resets. This changes no migration
 rejection rule and never activates a disabled spell. Use the retained original
 source plus these archives for rollback; migrate edited preparation data only
 into fresh target/control schemas.

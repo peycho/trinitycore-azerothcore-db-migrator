@@ -234,6 +234,73 @@ backup_reference=disposable-synthetic-fixture
             passed('explicit reviewed-script v2: binding provenance, v1 exclusion, metadata drift (console/direct SQL), late rollback, apply/rerun/exact restore; unrelated source/world state retained')
             sql(f'DELETE FROM `{world}`.spell_script_names WHERE spell_id=12296')
             assert checksum()==baseline
+            # Real Fiery Payback roots/children and Holy Shock trained ranks.
+            # Enabled children, inactive-but-enabled ranks, inactive selected
+            # ownership and pending resets must survive the wider v3 policy.
+            sql(f'''INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,online,activeTalentGroup,talentGroupsCount,at_login)
+              VALUES(11,1,'FieryHistory','',1,8,80,0,0,2,0),(12,1,'FieryEnabled','',1,8,80,0,0,2,0),
+                    (13,1,'ShockHistory','',1,2,80,0,0,2,0),(14,1,'ShockEnabled','',1,2,80,0,0,2,0),
+                    (15,1,'FieryLower','',1,8,80,0,0,1,0),(16,1,'FSelected','',1,8,80,0,0,2,0),
+                    (17,1,'FieryPending','',1,8,80,0,0,1,4);
+              INSERT INTO `{source}`.character_spell VALUES(11,64357,1,1,NULL),(11,44441,0,1,0x00af),(11,64349,1,1,NULL),
+                (12,64357,1,1,NULL),(12,44441,1,0,NULL),(13,20473,1,1,NULL),(13,48825,0,1,0xaabb),
+                (14,20473,1,1,NULL),(14,48825,0,0,NULL),(15,64353,1,1,NULL),(15,64350,0,1,NULL),
+                (16,64357,1,1,NULL),(16,44441,1,1,NULL),(17,64357,1,1,NULL);
+              INSERT INTO `{source}`.character_talent VALUES(16,64357,1);
+              INSERT INTO `{world}`.spell_learn_spell VALUES(64357,44441,1);''')
+            sql(f'INSERT INTO `{world}`.spell_ranks VALUES '+','.join(f'(20473,{s},{i+1})' for i,s in enumerate(assets.CHAINS[7])))
+            relation_baseline=checksum()
+            other_tables=[t for t in tables if t!=f'`{source}`.`character_spell`']
+            other_before=sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')
+            run('audit','--scope','all',code=1)
+            result=run('inspect-spell-history');inspection=Path(result.stdout.split('Reports: ',1)[1].strip()).name
+            relation_plan=('plan','disabled-talent-history','--inspection',inspection,'--expect-review-rows','12')
+            run(*relation_plan,'--include-inert-relations')
+            data=json.loads((package()/'manifest.json').read_text());relation_archive=data['archive_schema'];owned.append(relation_archive)
+            assert data['policy']=='tc-disabled-unselected-talent-closure-v3',data
+            assert (data['selected_root_rows'],data['selected_related_rows'],data['selected_rows'])==(6,4,10),data
+            assert data['excluded_reason_counts']['DEFER_ENABLED_RELATED_SPELL']==3,data
+            report=(package()/'relationship-review.tsv').read_text()
+            assert '11\t2001\t44440\tRANK_OR_DEPENDENT\tABSENT_NO_GRANT' in report,report
+            assert '13\t3\t48825\tRANK_OR_DEPENDENT\tSELECTED_DISABLED\t0\t1' in report,report
+            assert checksum()==relation_baseline
+            run('prepare');run('prepare');assert checksum()==relation_baseline
+            sql(f'UPDATE `{source}`.character_spell SET disabled=0 WHERE guid=11 AND spell=44441')
+            drift=checksum();run('apply',code=2);assert checksum()==drift
+            sql(f'UPDATE `{source}`.character_spell SET disabled=1 WHERE guid=11 AND spell=44441')
+            sql(f'UPDATE `{world}`.spell_learn_spell SET entry=900002 WHERE entry=64357')
+            drift=checksum();assert 'HISTORY_METADATA_DRIFT' in run('apply',code=2).stderr;assert checksum()==drift
+            direct=subprocess.run(['mysql',*base,'--user='+writer],input=
+                f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'; CALL `{relation_archive}`.apply_batch();",text=True,capture_output=True)
+            assert direct.returncode!=0 and 'World metadata content changed' in direct.stderr,direct.stderr
+            sql(f'UPDATE `{world}`.spell_learn_spell SET entry=64357 WHERE entry=900002')
+            sql(f"CREATE TRIGGER `{relation_archive}`.fail_commit BEFORE UPDATE ON `{relation_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='relation-late-error'; END IF; END")
+            assert 'relation-late-error' in run('apply',code=2).stderr
+            assert checksum()==relation_baseline
+            sql(f'DROP TRIGGER `{relation_archive}`.fail_commit')
+            passed('v3 full related-state review: real Fiery Payback children/Holy Shock ranks, enabled and inactive-spec preservation, absent ranks never granted, child/world drift and late rollback')
+            sql(f"CREATE TRIGGER `{relation_archive}`.pause_commit BEFORE UPDATE ON `{relation_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN DO SLEEP(30); END IF; END")
+            worker=subprocess.Popen(command+['apply'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            connection='';deadline=time.monotonic()+25
+            while time.monotonic()<deadline:
+                if worker.poll() is not None:
+                    stdout,stderr=worker.communicate();raise AssertionError(stdout+stderr)
+                connection=sql("SELECT ID FROM information_schema.PROCESSLIST WHERE DB='"+relation_archive+"' AND STATE='User sleep' LIMIT 1")
+                if connection:break
+                time.sleep(0.2)
+            assert connection,'Timed out waiting for v3 disposable transaction pause'
+            sql('KILL CONNECTION '+connection);worker.communicate(timeout=10);assert worker.returncode!=0;worker=None
+            assert checksum()==relation_baseline and sql(f'SELECT state FROM `{relation_archive}`.batch')=='PREPARED'
+            sql(f'DROP TRIGGER `{relation_archive}`.pause_commit')
+            run('apply');run('apply');run('status')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell')=='19'
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==other_before
+            assert sql(f'SELECT disabled FROM `{source}`.character_spell WHERE guid=14 AND spell=48825')=='0'
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid IN (12,14,16,17)')=='7'
+            run('restore');run('restore');assert checksum()==relation_baseline
+            passed('v3 interrupted transaction rollback, apply/rerun and exact complete restore including child binary fields; enabled spells/ownership/skills/auth/world and unrelated data unchanged')
+            sql(f'DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 11 AND 17; DELETE FROM `{source}`.character_talent WHERE guid=16; DELETE FROM `{source}`.characters WHERE guid BETWEEN 11 AND 17; DELETE FROM `{world}`.spell_ranks WHERE first_spell_id=20473; DELETE FROM `{world}`.spell_learn_spell WHERE entry=64357;')
+            assert checksum()==baseline
             scale=int(os.environ.get('HISTORY_SCALE_ROWS','0'))
             if scale:
                 assert 1<=scale<=200000

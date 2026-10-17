@@ -11,10 +11,11 @@ from cleanup_plans import finish, metadata, planner, ranks, require_shape, sha_j
 from cleanup_active_reset import TABLES, KEYS, columns, row_hash
 from cleanup_spell_history import audit_inputs, classify
 from spells import Metadata, Unsupported
+import cleanup_talent_relations as relations
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
-POLICIES = (POLICY, SCRIPT_POLICY)
+POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -153,14 +154,7 @@ def script_bindings(effective):
     return bindings
 
 
-def select(rows, state, effective, expected_review_rows, include_reviewed_scripts=False):
-    candidates = [row for row in rows if row[9] == 'REVIEW_DISABLED_NO_SELECTED_FAMILY']
-    if not 1 <= expected_review_rows <= MAX_SELECTED or len(candidates) != expected_review_rows:
-        fail('HISTORY_SELECTION_MISMATCH','--expect-review-rows must equal the inspection disabled/no-selected-family total')
-    enabled_families = set()
-    for guid, spell, _, disabled in state['spells']:
-        if not disabled and spell in effective.talents:
-            enabled_families.add((guid,effective.talents[spell][0]))
+def check_retained_scripts(state, effective):
     # Review the passive/direct talent parents which TC can cast while loading.
     # The same protected script checker is used by semantic reconstruction.
     parents = {spell for _,spell,_ in state['talents']}
@@ -171,6 +165,17 @@ def select(rows, state, effective, expected_review_rows, include_reviewed_script
                 effective.check_script(spell,name)
         except Unsupported as error:
             fail(error.reason,'Selected talent script needs review before history cleanup: '+str(error))
+
+
+def select(rows, state, effective, expected_review_rows, include_reviewed_scripts=False):
+    candidates = [row for row in rows if row[9] == 'REVIEW_DISABLED_NO_SELECTED_FAMILY']
+    if not 1 <= expected_review_rows <= MAX_SELECTED or len(candidates) != expected_review_rows:
+        fail('HISTORY_SELECTION_MISMATCH','--expect-review-rows must equal the inspection disabled/no-selected-family total')
+    enabled_families = set()
+    for guid, spell, _, disabled in state['spells']:
+        if not disabled and spell in effective.talents:
+            enabled_families.add((guid,effective.talents[spell][0]))
+    check_retained_scripts(state,effective)
     incoming = {child for links in (effective.learns,effective.effect_learns) for values in links.values()
                 for child,_,_ in values}
     # An alternate skill/default learning route needs a separate representation
@@ -269,14 +274,30 @@ def plan_history(settings, work, args, output):
     print('Reviewing effective TC world/DBC learning routes (read-only)',flush=True)
     effective, world = read_world(settings)
     state['enabled_ids'] = snapshot(settings,[('ids',enabled_ids_query(settings.schemas['characters']))])['ids']
-    include_scripts = getattr(args,'include_reviewed_scripts',False)
-    policy = SCRIPT_POLICY if include_scripts else POLICY
-    selected, excluded = select(rows,state,effective,args.expect_review_rows,include_scripts)
+    include_relations = getattr(args,'include_inert_relations',False)
+    include_scripts = getattr(args,'include_reviewed_scripts',False) or include_relations
+    policy = relations.POLICY if include_relations else SCRIPT_POLICY if include_scripts else POLICY
+    relation_rows,relation_proof,relation_summary,relation_edges = [],[],{},[]
+    if include_relations:
+        review_guids = sorted({r[0] for r in rows if r[9]=='REVIEW_DISABLED_NO_SELECTED_FAMILY'})
+        if not review_guids or len(review_guids)>MAX_GUIDS:
+            fail('HISTORY_RELATION_BOUND','No review characters or more than 40000 characters')
+        print('Reviewing complete related spell state per character (read-only)',flush=True)
+        relation_rows = snapshot(settings,[('rows',relations.stored_query(settings.schemas['characters'],review_guids))])['rows']
+        check_retained_scripts(state,effective)
+        selected,excluded,relation_proof,relation_summary,relation_edges = relations.select(
+            rows,state,effective,relation_rows,args.expect_review_rows)
+    else:
+        selected, excluded = select(rows,state,effective,args.expect_review_rows,include_scripts)
     bindings = script_bindings(effective) if include_scripts else []
-    selected_families = {effective.talents[row[1]][0] for row in selected}
+    if include_relations:
+        bindings = sorted(set(bindings) | {(family,spell,name,'') for _,family,spell,*_ in relation_proof
+                                         for name in effective.scripts[spell]})
+    selected_families = {effective.talents[row[1]][0] for row in selected if row[1] in effective.talents}
     reviewed = [row[:3] for row in bindings if row[0] in selected_families]
     scripted_families = {entry[0] for entry in reviewed}
     guids = sorted({row[0] for row in selected})
+    guid_set = set(guids)
     print(f'Fingerprinting complete spell/talent/skill/character state for {len(guids)} characters (read-only)',flush=True)
     selector = ','.join(map(str,guids))
     source = settings.schemas['characters']
@@ -304,6 +325,8 @@ def plan_history(settings, work, args, output):
     queries.append(('spells',f'SELECT JSON_ARRAY(guid,spell,active,disabled) row_value FROM `{source}`.character_spell '
                     f'WHERE spell IN ({catalog}) ORDER BY guid,spell'))
     queries.append(('enabled_ids',enabled_ids_query(source)))
+    if include_relations:
+        queries.append(('relation_spells',relations.stored_query(source,guids)))
     # Generate the post-delete digest by excluding exact selected pairs using
     # bounded row-valued IN lists grouped by GUID, never a spell-wide DELETE.
     by_guid = defaultdict(list)
@@ -326,6 +349,8 @@ def plan_history(settings, work, args, output):
     if any(live[label] != state[label] for label in ('characters','talents','spells','enabled_ids')):
         fail('HISTORY_INPUT_DRIFT','Live ownership/character state/direct spell flags differ from inspection',
              'Retain this inspection. After source edits, run a new full audit and inspection; no preflight is needed.')
+    if include_relations and live['relation_spells'] != [r for r in relation_rows if r[0] in guid_set]:
+        fail('HISTORY_INPUT_DRIFT','Related spell keys/flags changed between relationship review and full-row fingerprinting')
     cells = sorted(tuple(row) for row in live['sets'])
     after = sorted(tuple(row) for row in live['after'])
     if (any(row[2] > MAX_PER_GUID or not isinstance(row[3],str)
@@ -382,8 +407,12 @@ def plan_history(settings, work, args, output):
         'native_policy':'Disabled direct talent ranks only; no selected family in either spec; no activation, talent reset or grants'}
     if include_scripts:
         manifest.update(reviewed_script_bindings=reviewed,
-            scripted_selected_rows=sum(effective.talents[row[1]][0] in scripted_families for row in selected),
+            scripted_selected_rows=sum(row[1] in effective.talents and effective.talents[row[1]][0] in scripted_families for row in selected),
             script_contract='NO_SPELLBOOK_MUTATION; pinned TC AddSpell disabled path; no alternate routes/dependencies/skill effects')
+    if include_relations:
+        manifest.update(relation_summary)
+        manifest['relationship_state_sha256'] = sha_json(live['relation_spells'])
+        manifest['script_contract'] = 'NO_SPELLBOOK_MUTATION on every related member; isolated wholly disabled group; no enabled availability, selected ownership, conflicting incoming routes or skill effects'
     status = f'''SELECT * FROM `{archive}`.batch;
 SELECT 'expected' AS object,COUNT(*) rows_found FROM `{archive}`.expected_spells
 UNION ALL SELECT 'characters_before',COUNT(*) FROM `{archive}`.characters_before
@@ -404,10 +433,20 @@ FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.g
         (output/'scripted-family-review.tsv').write_text('talent_entry\tspell\tscript\tstatus\treason\n'+''.join(
             '\t'.join(map(str,(family,spell,name,'DEFERRED' if reason else 'REVIEWED_NO_SPELLBOOK_MUTATION',reason)))+'\n'
             for family,spell,name,reason in bindings))
+    if include_relations:
+        (output/'relationship-review.tsv').write_text('guid\ttalent_entry\tspell\trole\tdisposition\tactive\tdisabled\n'+
+            ''.join('\t'.join(map(str,r))+'\n' for r in relation_proof))
+        selected_nodes = {r[2] for r in relation_proof}
+        (output/'relationship-edges.tsv').write_text('parent\tchild\trelationship\n'+''.join(
+            '\t'.join(map(str,r))+'\n' for r in relation_edges if r[0] in selected_nodes and r[1] in selected_nodes))
     write_json(output/'metadata.json',world)
     from cleanup_console import seal
     seal(output)
-    print(f'Reviewed {len(selected)+len(excluded)} disabled rows; selected {len(selected)}; deferred {len(excluded)}; no source changes')
+    if include_relations:
+        print(f'Reviewed {args.expect_review_rows} disabled direct rows; selected {relation_summary["selected_root_rows"]} direct and '
+              f'{relation_summary["selected_related_rows"]} related rows; deferred {len(excluded)} direct rows; no source changes')
+    else:
+        print(f'Reviewed {len(selected)+len(excluded)} disabled rows; selected {len(selected)}; deferred {len(excluded)}; no source changes')
     for reason,count in sorted(Counter(row[2] for row in excluded).items()):
         print(reason+'\t'+str(count))
     if include_scripts:
