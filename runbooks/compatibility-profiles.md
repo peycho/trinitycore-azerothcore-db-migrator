@@ -34,6 +34,14 @@ policy change also invalidates earlier run/checkpoint identities.
 
 ## Reviewing a candidate
 
+`spell-state-v11` separates ordinary training prerequisites from known-spell
+loading and talent authorization. Protected TC/AC player and trainer consumers
+already cover the behavior; no pins, manifests or v1 files change. The metadata
+profile is unchanged, while policy/checkpoint identity changes. Ordinary known
+rows retain both specs without granting missing parents; talent-linked ancestry
+keeps the strict path. Use fresh target/control schemas and retain UNREVIEWED
+approval. See the [contract](spell-reconstruction.md#ordinary-training-prerequisites-spell-state-v11).
+
 `spell-state-v10` adds the exact dual-spec teaching-wrapper contract and control
 disposition `TEACHER`. The two derived buttons must already be justified by TC's
 load map and existing two-spec/skill state; no effect is executed. AC gossip and

@@ -448,6 +448,10 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     assert old_known < len(ids), 'Regression must fail under stored-row-only conversion'
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=114',13)
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=115 AND spell IN (5209,5487,9634) AND specMask=3',3)
+    for guid in (128,129):
+        equal(f'SELECT spell,specMask FROM `{AC_CHARS}`.character_spell WHERE guid={guid}', '5209\t3')
+        equal(f"SELECT JSON_UNQUOTE(JSON_EXTRACT(provenance,'$.authorization.training_prerequisites.policy')) FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid={guid} AND spell=5209",'NATIVE_ORDINARY_KNOWN_STATE')
+        equal(f"SELECT JSON_EXTRACT(provenance,'$.authorization.training_prerequisites.prerequisites_granted') FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid={guid} AND spell=5209",'false')
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=38795',3)
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=60893',3)
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=674',3)
@@ -567,7 +571,7 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
         sql(f'DELETE FROM {table}', AC_CHARS)
     sql((ROOT / 'tests/fixtures/azerothcore-reverse-data.sql').read_text(), AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (113,674,3),(120,7744,3),(112,37377,3),(113,40081,3),(112,40326,3)',AC_CHARS)
-    sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (126,63644,3),(126,63645,3),(127,63644,3),(127,63645,3)',AC_CHARS)
+    sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (128,5209,3),(129,5209,3),(126,63644,3),(126,63645,3),(127,63644,3),(127,63645,3)',AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES '+','.join(
         f'(119,{spell},3)' for spell in [*SPELL_FIXTURES.RUNEFORGING,53428]),AC_CHARS)
     sql('INSERT INTO character_talent (guid,spell,specMask) VALUES (115,33872,1),(115,33873,2),(125,33872,1),(125,33873,2)',AC_CHARS)
@@ -633,6 +637,8 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     equal(f'SELECT value,max FROM `{TC_CHARS}`.character_skills WHERE guid=119 AND skill=776','1\t1')
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=119 AND spell IN (53341,53343)',0)
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=115 AND spell IN (47179,47180)',0)
+    for guid in (128,129):
+        equal(f'SELECT spell,active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid={guid}', '5209\t1\t0')
     for guid in (126,127):
         equal(f'SELECT GROUP_CONCAT(CONCAT(spell,":",active,":",disabled) ORDER BY spell) FROM `{TC_CHARS}`.character_spell WHERE guid={guid}',
               '63644:1:0,63645:1:0')

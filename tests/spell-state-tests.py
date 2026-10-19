@@ -419,7 +419,10 @@ class SpellTests(unittest.TestCase):
         self.assertTrue(result[5487]['derived'])
         self.assertEqual(result[5487]['proofs'], [[9634,[9634,5487],'LOWER_RANK']])
         self.assertTrue(all(row['mask']==3 for row in result.values()))
-        self.fails('MISSING_SPELL_PREREQUISITE',lambda:self.convert({5209:(1,0)},cls=11))
+        ordinary=self.convert({5209:(1,0)},cls=11)
+        self.assertEqual(set(ordinary),{5209})
+        self.assertEqual(ordinary[5209]['mask'],3)
+        self.assertEqual(ordinary[5209]['authorization']['training_prerequisites']['missing_from_known_state'],[5487])
         self.fails('UNREPRESENTABLE_DISABLED_SPELL',lambda:self.convert({5209:(1,0),9634:(1,1)},cls=11))
         ac = copy.deepcopy(self.ac)
         ac.position[9634] = (9634,0)
@@ -428,6 +431,45 @@ class SpellTests(unittest.TestCase):
         self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:reconstruct((1,1,0,1),{12296:(1,1)}, {}, {},
                    self.tc,self.ac,'tc-to-ac'))
         self.fails('INVALID_TALENT_OWNERSHIP',lambda:self.convert({12296:(1,0)},{130:1},cls=1))
+
+    def test_ordinary_training_requirements_do_not_grant_missing_spells(self):
+        for active in (0,1):
+            for spell,cls in ((48782,2),(48125,5),(47813,9)):
+                tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+                for metadata in (tc,ac):metadata.requires[spell].add(6603)
+                result=self.convert({spell:(1,0)},cls=cls,active=active,tc=tc,ac=ac)
+                self.assertNotIn(6603,result)
+                self.assertTrue(all(row['mask']==3 for row in result.values()))
+                proof=result[spell]['authorization']['training_prerequisites']
+                self.assertEqual(proof['missing_from_known_state'],[6603]);self.assertFalse(proof['prerequisites_granted'])
+                canonical={s:(row['mask'],) for s,row in result.items() if row['disposition']=='PERSISTENT'}
+                reverse=self.convert(canonical,cls=cls,active=active,tc=tc,ac=ac,reverse=True)
+                self.assertEqual(set(reverse),set(result));self.assertNotIn(6603,reverse)
+    def test_training_only_requirements_never_authorize_talent_ancestry(self):
+        tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+        for metadata in (tc,ac):
+            metadata.requires[5209].add(6603)
+            metadata.requires[6603].add(20911)
+        self.fails('MISSING_SPELL_PREREQUISITE',lambda:self.convert({5209:(1,0)},cls=11,tc=tc,ac=ac))
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({25899:(1,0),6603:(1,0)},tc=tc,ac=ac))
+    def test_training_requirements_merge_worlds_without_granting_ancestry(self):
+        tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+        tc.requires[5209].add(6603)
+        ac.requires[6603].add(17)
+        result=self.convert({5209:(1,0)},cls=11,tc=tc,ac=ac)
+        self.assertEqual(set(result),{5209})
+        proof=result[5209]['authorization']['training_prerequisites']
+        self.assertEqual(proof['tc_required_spells'],[5487,6603])
+        self.assertEqual(proof['ac_required_spells'],[5487])
+        self.assertEqual(proof['ordinary_ancestry'],[17,5487,6603])
+        self.assertEqual(result,self.convert({5209:(1,0)},cls=11,tc=tc,ac=ac))
+        ac.requires[17].add(5209)
+        self.fails('CYCLIC_SPELL_RELATIONSHIP',lambda:self.convert({5209:(1,0)},cls=11,tc=tc,ac=ac))
+
+    def test_ordinary_missing_requirements_keep_flag_guards(self):
+        for flags,reason in (((1,1),'UNREPRESENTABLE_DISABLED_SPELL'),((0,0),'UNREPRESENTABLE_INACTIVE_SPELL')):
+            self.fails(reason,lambda:self.convert({5209:flags},cls=11))
+        self.fails('UNREPRESENTABLE_AC_SPELL_MASK',lambda:self.convert({5209:(1,)},cls=11,reverse=True))
 
     def test_reviewed_encounter_script_and_unknown_script_boundary(self):
         tc,ac = copy.deepcopy(self.tc),copy.deepcopy(self.ac)

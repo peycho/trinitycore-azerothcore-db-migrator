@@ -15,7 +15,7 @@ import struct
 import subprocess
 import sys
 
-POLICY = 'spell-state-v10'
+POLICY = 'spell-state-v11'
 LEARN, SKILL, SKILL_STEP, DUAL_WIELD = 36, 118, 44, 40
 PASSIVE, HIDDEN = 0x40, 0x80
 
@@ -923,6 +923,48 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
                    or (include_requirements and (spell in metadata.additional
                                                 or metadata.first(spell) in metadata.additional))
                    for metadata in (tc,ac))
+    ordinary_training_requirements = {}
+    def training_only_requirements(spell):
+        """Native loaders preserve known ordinary spells without learning prerequisites.
+
+        AC GetLearnSpellSpecMask returns BOTH before inspecting requirements for
+        ordinary spells. Keep every talent-linked relationship on the existing
+        strict authorization path, including indirect prerequisite ancestry.
+        """
+        if spell in ordinary_training_requirements:
+            return ordinary_training_requirements[spell]
+        requirements = tc.requires[spell] | ac.requires[spell]
+        ordinary_training_requirements[spell] = None
+        if not requirements or talent_restricted(spell):
+            return None
+        pending = [(required,False) for required in sorted(requirements)]
+        visited, visiting = set(), set()
+        while pending:
+            required, leaving = pending.pop()
+            if leaving:
+                visiting.discard(required)
+                visited.add(required)
+                continue
+            if required in visiting:
+                reject('CYCLIC_SPELL_RELATIONSHIP',str(required))
+            if required in visited:
+                continue
+            if talent_restricted(required):
+                return None
+            visiting.add(required)
+            pending.append((required,True))
+            pending.extend((parent,False) for parent in sorted(tc.requires[required] | ac.requires[required]))
+            if len(visiting) > max(len(tc.spells),len(ac.spells)):
+                reject('SPELL_TRAVERSAL_BOUND',str(spell))
+        proof = {'policy':'NATIVE_ORDINARY_KNOWN_STATE',
+                 'tc_required_spells':sorted(tc.requires[spell]),
+                 'ac_required_spells':sorted(ac.requires[spell]),
+                 'ordinary_ancestry':sorted(visited),
+                 'missing_from_known_state':sorted(requirements - known_rank_prefix),
+                 'prerequisites_granted':False}
+        ordinary_training_requirements[spell] = proof
+        return proof
+
     def eligible(spell):
         if spell in aura_helpers or spell in native_passive_catalog:
             # Native ownership follows the exact selected child, not another
@@ -934,6 +976,8 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
             return owners.get(spell,0)
         mask = authorization.get(root, 0) or authorization.get(spell, 0)
         dependencies = tc.requires[spell] | ac.requires[spell]
+        if training_only_requirements(spell):
+            return 3
         if dependencies:
             required_mask = 3
             for prerequisite in dependencies:
@@ -1261,6 +1305,10 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
             'rank_root': tc.first(spell), 'owner_masks': sorted(authorized_by.items()),
             'required_spells': requirements,
         }
+        training = training_only_requirements(spell)
+        if training:
+            row['authorization']['policy'] = 'ORDINARY_TRAINING_PREREQUISITES'
+            row['authorization']['training_prerequisites'] = training
         routes = independent_skill_routes(spell)
         if routes:
             row['authorization']['policy'] = 'ORDINARY_SKILL_AUTHORIZATION'

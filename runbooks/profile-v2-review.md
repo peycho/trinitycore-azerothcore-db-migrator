@@ -1,5 +1,18 @@
 # Profile v2 review and acceptance record
 
+The 2026-10-19 `spell-state-v11` amendment corrects an overstrict requirement
+check: the reviewed native loaders retain existing ordinary known spells, and
+both trainers return Known before consulting ordinary training requirements.
+AC's ordinary spec-mask branch also returns both specs before reading them.
+V11 preserves those verified rows, records missing parents and grants none.
+Any talent-linked prerequisite ancestry retains strict selected ownership and
+mask intersection. Existing flag/rank/skill/teacher/script guards remain.
+Per-core and combined requirement cycles reject. Protected consumers are already
+in the 99 TC / 103 AC semantic manifests; no pins, manifests, v1 or metadata
+profile change. Policy hashes change, requiring fresh target/control schemas.
+Release stays UNREVIEWED; gameplay remains separate. See the
+[contract](spell-reconstruction.md#ordinary-training-prerequisites-spell-state-v11).
+
 The 2026-10-19 `spell-state-v10` amendment normalizes only hidden dual-spec
 teacher `63680` to its exact TC load-derived switch buttons `63644`/`63645`.
 Both existing specs and Generic skill are required. Conversion also requires

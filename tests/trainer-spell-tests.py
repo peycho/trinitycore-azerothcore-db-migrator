@@ -44,9 +44,10 @@ struct SpellInfo {
 struct SpellMgr {
     std::map<uint32,SpellInfo> spells;
     std::map<uint32,uint32> previous;
+    std::map<uint32,std::vector<std::pair<uint32,uint32>>> required;
     SpellInfo const* AssertSpellInfo(uint32 id) { return &spells[id]; }
     uint32 GetPrevSpellInChain(uint32 id) { return previous[id]; }
-    std::vector<std::pair<uint32,uint32>> GetSpellsRequiredForSpellBounds(uint32) { return {}; }
+    std::vector<std::pair<uint32,uint32>> GetSpellsRequiredForSpellBounds(uint32 id) { return required[id]; }
 };
 SpellMgr manager; SpellMgr* sSpellMgr=&manager;
 struct Player {
@@ -92,6 +93,20 @@ for (auto const& original : players) {
             assert(known==player.HasSpell(learned));
         }
     }
+}
+// Known ordinary spells remain known without training prerequisites. Unknown
+// spells stay unavailable; neither direct nor wrapped checks grant their parent.
+manager.required[5209]={{5209,5487}};
+manager.spells[1005209].effects={{36,5209}};manager.required[1005209]={{1005209,5487}};
+for(uint32 guid:{128,129})for(uint32 spec:{0,1}){
+ Player player=players[guid];player.spec=spec;
+ Trainer::Spell direct{5209},wrapped{1005209};
+ assert(player.HasSpell(5209)&&!player.HasSpell(5487)&&!player.HasSpell(9634));
+ assert(trainer.GetDefaultSpellState(&player,&direct)==SpellState::Known);
+ assert(trainer.GetDefaultSpellState(&player,&wrapped)==SpellState::Known);
+ player.spells.erase(5209);
+ assert(trainer.GetDefaultSpellState(&player,&direct)==SpellState::Unavailable);
+ assert(trainer.GetDefaultSpellState(&player,&wrapped)==SpellState::Unavailable);
 }
 // Regression: the old highest-only copy offers rank 1 again.
 Player old; old.spells[48942]=3;

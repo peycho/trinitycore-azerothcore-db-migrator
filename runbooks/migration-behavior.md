@@ -75,6 +75,11 @@ the selected mapping registries.
   `TEACHER`; no teaching or spec-count effect is executed. Reverse conversion
   preserves buttons without inventing an absent wrapper. Other teaching spells
   remain blocked; see the [exact contract](spell-reconstruction.md#dual-spec-teaching-wrapper-spell-state-v10).
+  Ordinary training prerequisites do not erase source-known ordinary spells.
+  Under `spell-state-v11`, those rows retain mask 3 and record any missing
+  ordinary parents without granting them. Talent-linked requirements continue
+  to constrain selected spec ownership. See the
+  [ordinary training contract](spell-reconstruction.md#ordinary-training-prerequisites-spell-state-v11).
 - Cooldown category/end fields are consolidated with the later expiration time.
 - Instance extension enum value `EXTENDED` becomes the target boolean.
 - Item and money loot tables merge into `item_loot_storage`; money is stored as

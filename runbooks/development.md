@@ -33,6 +33,26 @@ idempotency and an actual dump/restore. See the
 [snapshot sharing guide](sharing-character-snapshot.md) for its dedicated-server
 command. It does not change migration mappings or loader behavior.
 
+## Ordinary training prerequisites v11 checks
+
+Units preserve known ordinary spells and verified predecessors without granting
+absent training parents, in both specs and migration directions. Tests cover
+multiple/per-core requirements, indirect talent ancestry, combined-graph cycles,
+unchanged talent masks and ordinary inactive/disabled/mask rejection. The old
+v10 converter is retained as a private failing regression control for replay.
+
+`ordinary-requirement-runtime-tests.py` compiles the protected AC spec-mask and
+TC/AC direct/wrapped trainer functions. It checks ordinary early return, Known
+for stored spells and Unavailable for unlearned spells with missing parents,
+plus a talent/additional negative control. Catalogs/getters are mocked; this
+is consumer verification rather than full loading, casting or gameplay.
+
+MySQL fixtures cover two ordinary druid books with missing Bear Form, both
+active specs, exact mask 3, no parent grants, committed provenance, reverse
+round trips and unchanged skills/talents. Existing interruption/resume/rerun,
+rollback, report regeneration, metadata drift and immutability checks remain
+required. Native gameplay and release gates remain unaccepted.
+
 ## Generic preparation v2 checks
 
 Native-skill units preserve insertion-only v1 and test explicit Generic-only v2,

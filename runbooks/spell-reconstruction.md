@@ -107,8 +107,10 @@ to ordinary mask `3`. Pet-target teaching does not authorize a player child.
 Ordinary prerequisites may be satisfied by a verified predecessor that TC
 would restore from a stored higher rank: for example, stored Dire Bear Form
 `9634` establishes known Bear Form `5487` for Challenging Roar `5209`. Both
-cores must agree on that rank prefix; an absent prerequisite without a known
-anchor still blocks. This check does not grant any new higher rank or talent.
+cores must agree on that rank prefix. Under v11, ordinary training requirements
+do not erase an already-known ordinary spell when the parent is absent. Talent
+authorization still constrains masks; no prerequisite, higher rank or talent is
+granted. See the ordinary training contract below.
 Pet teaching effects do not authorize player spells. Conditional learned spells
 and temporary ranked/mixed learn-effect representations that cannot be proved
 safe are rejected. Profile correction rules contain reviewed integer updates,
@@ -449,6 +451,47 @@ Use a new toolkit, fresh target/control schemas and a new run. Keep the cleaned
 source and its retained cleanup archives. An in-place staging repair remains a
 separately reviewed task.
 
+## Ordinary training prerequisites (`spell-state-v11`)
+
+The pinned TC `Trainer::GetSpellState` and AC
+`Trainer::GetDefaultSpellState` return Known for an existing direct spell, or a
+fully known wrapped learned spell, before checking `spell_required`. For an
+unlearned spell, the trainer still checks those requirements and can return
+Unavailable. Both spell loaders preserve stored ordinary known rows without
+first requiring these training parents. AC `Player::GetLearnSpellSpecMask`
+returns both specs for ordinary spells before consulting its requirement map.
+
+V11 follows that native known-state behavior. A source-known ordinary spell and
+its verified lower-rank prefix retain ordinary mask 3 even when an ordinary
+training prerequisite is absent. The source anchor must still pass all existing
+spell validity, rank compatibility, active/disabled, skill, profession/riding,
+script, teacher and representation checks. **The requirement never grants its
+parent.** An existing Challenging Roar `5209` alone does not grant Bear Form
+`5487` or Dire Bear Form `9634`; existing verified `9634` still reconstructs
+`5487` through the separate rank rule.
+
+Every source/target prerequisite ancestor must be ordinary. Direct talents,
+talent-unlocked spells, additional talents and runtime aura/passive helpers keep
+their existing selected-ownership/mask rules. Multiple talent-dependent
+requirements still intersect eligibility; ordinary parents cannot authorize an
+unowned talent. A bounded iterative traversal checks prerequisite ancestry and
+rejects cycles, including cycles formed by the combined source/target edges.
+Malformed relationships and unsupported consumers remain blocked.
+
+Committed `spell-reconstruction.tsv` provenance records
+`authorization.training_prerequisites`: per-core required IDs, the verified
+ordinary ancestry, missing known parents and `prerequisites_granted=false`.
+This distinguishes preservation of an existing known spell from a grant or a
+source-data repair. Missing parents may still warrant gameplay/data review;
+passing migration does not establish that a historical character is healthy.
+Reports regenerate from committed control rows as usual.
+
+Policy identity is now `spell-state-v11`; use a new migration run with fresh
+target/control schemas. Existing preparation sessions and APPLIED cleanup
+archives remain valid for their original guarded use. No source/world writes,
+core changes, new cleanup policy or approval override are involved. Retained
+core pins/manifests and v1 are unchanged; release remains UNREVIEWED.
+
 ## Dual-spec teaching wrapper (`spell-state-v10`)
 
 TC can retain hidden teaching wrapper `63680` in `character_spell` while omitting
@@ -597,10 +640,10 @@ row. A blanket zero-mask copy of temporary talent children can therefore
 leave a child available after talent removal. This source-review finding does
 not classify every disabled history row as corrupt or every zero-mask use as
 unsafe; trained talent abilities and runtime children need separate policies.
-`MISSING_SPELL_PREREQUISITE` distinguishes an ordinary missing prerequisite
-from talent ownership. Its detail includes required and known prerequisite
-IDs. It grants nothing and remains a blocker, including for historical GM
-spells. `RESEARCH_SKILL_MISSING` likewise blocks research without its existing
+`MISSING_SPELL_PREREQUISITE` now covers unmet requirements outside the verified
+ordinary training-only contract, including unresolved talent-linked ancestry.
+Its detail includes required and known IDs. The reason remains a blocker;
+ordinary known-spell preservation is reported separately and grants no parent. `RESEARCH_SKILL_MISSING` likewise blocks research without its existing
 profession instead of adding one.
 
 `spell-state-v3` corrects a shared-spell classification boundary: Dual Wield
