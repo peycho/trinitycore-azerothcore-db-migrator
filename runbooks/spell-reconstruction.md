@@ -378,7 +378,10 @@ Private reports include:
 - `spell-drift-fingerprints.tsv`: observed input evidence when a snapshot changes.
 
 The console prints reason counts and the full blocker-report path. The current
-audit records the first failure per character; these counts describe affected
+codes and their next investigation steps are documented in the
+[spell reason-code reference](spell-reason-codes.md), including the distinction
+between temporary runtime spells and temporary diagnostics. The current audit
+records the first failure per character; these counts describe affected
 characters, not an exhaustive list of bad rows. A script/correction guard can
 mean that compatibility has not been reviewed; it does not prove corrupt data.
 Use the script inventory to review bindings hidden behind earlier failures

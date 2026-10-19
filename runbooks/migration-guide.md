@@ -345,6 +345,7 @@ be empty before migration can proceed.
 Do not resolve a missing-rank problem by granting trainer spells or deleting talents.
 Spell failures print a full report path and counts by reason. The report records
 the first blocker per character; inspect representative rows using the
+[spell reason-code reference](spell-reason-codes.md) and
 [blocker review instructions](spell-reconstruction.md#checkpoints-evidence-and-validation)
 before another preflight attempt. Unreviewed script/correction behavior is not
 automatically corrupt source data.
