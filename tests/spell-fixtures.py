@@ -47,7 +47,8 @@ def stores(profile):
                   51466,51470,54347,54348,54349,20911,25899,900000,900010,900011,900012,
                   38796,53736,40251,51726,64353,64357,44440,44441,64350,64349,
                   37116,37117,16958,16961,12308,12810,12811,60893,61177,61288,674,30798,
-                  53428,33872,33873,47179,47180,7744,37377,40081,40326]:
+                  53428,33872,33873,47179,47180,7744,37377,40081,40326,
+                  17002,24866,24867,24864]:
         row = record('Spell', spell)
         row[71] = 3
     for spell,flags,effects,auras in [(7744,16,[6,6,6],[77,77,77]),
@@ -101,6 +102,7 @@ def stores(profile):
         (2001,8,[64353,64357],0),
         (1690,7,[30798],1),
         (1792,11,[33872,33873],0),
+        (807,11,[17002,24866],0),
     ]:
         tab = record('TalentTab', ident)
         tab[20] = 1 << (cls-1)
@@ -112,6 +114,20 @@ def stores(profile):
                 data['Spell'][spell][4] |= 0x40
                 data['Spell'][spell][71] = 6
     data['Spell'][53407][71] = 77
+    for parent,child,power,dodge in ((17002,24867,14,1),(24866,24864,29,3)):
+        p,h=data['Spell'][parent],data['Spell'][child]
+        p[4],p[12],p[80],p[86],p[95]=464,1,power,1,31
+        h[4],h[12],h[71],h[80],h[86],h[95]=128,145,6,dodge,1,49
+        p[74]=h[74]=1
+        p[68]=h[68]=0xffffffff
+        p[5]=2147483648 if parent==24866 else 0
+        h[5:12]=[1024,0,0,2097152,0,0,0]
+        h[40]=21
+    # The real Bear form auras supply the AC callback in addition to Cat's
+    # selected talent aura. No form is inferred by the migration.
+    for spell,form in ((5487,5),(9634,8)):
+        p=data['Spell'][spell]
+        p[71:74],p[95:98],p[110]=[6,6,0],[36,77,0],form
     data['Spell'][34074][71:74] = [6,6,0]
     data['Spell'][34074][95:98] = [21,79,0]
     for spell in [51466,51470]:
@@ -177,6 +193,14 @@ def stores(profile):
         data['Spell'][spell][4],data['Spell'][spell][12]=400,1
         data['Spell'][spell][71:74]=[6,0,0]
         data['Spell'][spell][95]=118
+    # Exact reviewed Nurturing mechanics, including otherwise unused effect
+    # slots, are intentional mutation guards for TC's known helper prefix.
+    for spell,base,misc in ((33872,34,1),(33873,69,1),(47179,9,127),(47180,19,127)):
+        row=data['Spell'][spell]
+        row[68],row[74],row[80],row[86],row[110],row[125],row[208]=0xffffffff,1,base,1,misc,33554432,7
+        if spell in (47179,47180):row[40]=21
+    data['Spell'][33873][7],data['Spell'][33873][87]=67108864,1
+    data['Spell'][47180][75],data['Spell'][47180][81]=1,0xffffffff
     # Dual Wield is ordinary for warriors/hunters/rogues/death knights, but
     # talent-owned for shamans. Match the supplied stock DBC relationships.
     data['Spell'][674][4],data['Spell'][674][71] = 80,40
@@ -257,6 +281,7 @@ def seed_worlds(sql, tc, ac, tc_world, ac_world, profile):
         values = ','.join(f'({chain[0]},{spell},{rank})' for chain in CHAINS+NATIVE_PASSIVE_CHAINS for rank,spell in enumerate(chain,1))
         sql('INSERT INTO spell_ranks VALUES '+values,world)
         sql('INSERT INTO spell_ranks VALUES (47179,47179,1),(47179,47180,2)',world)
+        sql('INSERT INTO spell_ranks VALUES (17002,17002,1),(17002,24866,2)',world)
         sql('INSERT INTO spell_required VALUES (25899,20911),(5209,5487)',world)
         sql("INSERT INTO spell_script_names VALUES (38795,'spell_murmur_sonic_boom_effect'),"
             "(53407,'spell_pal_judgement_of_justice'),(53736,'spell_pal_seal_of_corruption'),"
@@ -266,7 +291,10 @@ def seed_worlds(sql, tc, ac, tc_world, ac_world, profile):
         sql("INSERT INTO spell_script_names VALUES (-33872,'spell_dru_nurturing_instinct')",world)
         sql("INSERT INTO spell_script_names VALUES (-52284,'spell_dk_will_of_the_necropolis')",world)
     sql('CREATE TABLE spell_learn_spell (entry INT,SpellID INT,Active TINYINT);'
-        'INSERT INTO spell_learn_spell VALUES (900011,900012,1),(53428,53341,1),(53428,53343,1),(33943,34090,1)',tc_world)
+        'INSERT INTO spell_learn_spell VALUES (900011,900012,1),(53428,53341,1),(53428,53343,1),(33943,34090,1),'
+        '(17002,24867,0),(24866,24864,0),(33872,47179,0),(33873,47180,0)',tc_world)
+    sql("INSERT INTO spell_script_names VALUES (-17002,'spell_dru_feral_swiftness'),"
+        "(5487,'spell_dru_feral_swiftness'),(9634,'spell_dru_feral_swiftness')",ac_world)
     sql('INSERT INTO spell_script_names VALUES '+','.join(
         f"({spell},'spell_chapter1_runeforging_credit')" for spell in RUNEFORGING),tc_world)
     sql('INSERT INTO spell_ranks VALUES (44440,44440,1),(44440,44441,2)',ac_world)

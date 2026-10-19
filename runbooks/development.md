@@ -35,6 +35,29 @@ command. It does not change migration mappings or loader behavior.
 
 ## Static checks
 
+Nurturing Instinct v9 units cover realistic inactive world edges, both selected
+ranks/specs, overlapping anchors, exact masks, forward/reverse semantic round
+trips, forbidden persistent helpers and mutations of the lower known prefix.
+The prior script-only mapping is an explicit failing regression control.
+MySQL fixtures exercise both active specs, committed provenance, broadened
+owner masks, unexpected helper rows and metadata flag drift through the normal
+transaction/resume/rerun/rollback suite. The compiled Nurturing and passive
+harnesses execute protected TC dependency/prefix/stance bodies and AC exact
+temporary add/remove/save/stance gates, plus both native non-passive rank-aura
+exclusion branches. State, aura dispatch, database sinks and spec scheduling
+are mocked; this is consumer verification, not full gameplay acceptance.
+
+Feral Swiftness v8 regressions use realistic inactive TC world edges and AC
+talent/Bear-form bindings. They cover both ranks/specs, overlapping stored
+parents, exact reverse ownership, blocked persistent helpers, paired metadata
+drift, cycles and an unmapped-dependency negative control. The full rehearsal
+also executes `feral-swiftness-runtime-tests.py` against protected TC dependency
+and stance loops and AC talent/stance/apply/remove consumers. Aura dispatch,
+state stores and spec scheduling are mocked; native gameplay remains a
+separate acceptance gate. MySQL fixtures verify delegated provenance, wrong
+spec ownership, unexpected persistent helpers, transactional loading and both
+migration directions while source/world checksums remain unchanged.
+
 Install ShellCheck, Python 3 and the tools listed in the migration guide, and make both
 reviewed local core checkouts available. From the toolkit checkout:
 

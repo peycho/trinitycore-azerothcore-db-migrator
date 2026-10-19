@@ -15,7 +15,7 @@ import struct
 import subprocess
 import sys
 
-POLICY = 'spell-state-v7'
+POLICY = 'spell-state-v9'
 LEARN, SKILL, SKILL_STEP, DUAL_WIELD = 36, 118, 44, 40
 PASSIVE, HIDDEN = 0x40, 0x80
 
@@ -291,6 +291,11 @@ class Metadata:
         self.skill_reward_dependencies = profile.get('skill_reward_dependencies', {})
         self.persistent_world_dependencies = profile.get('persistent_world_dependencies', {})
         self.native_passive_ranks = profile.get('native_passive_ranks', {})
+        self.world_talent_auras = profile.get('world_talent_auras', {})
+        self.world_ranked_talent_auras = profile.get('world_ranked_talent_auras', {})
+        self.world_aura_owners = {child: owner for rule in (*self.world_talent_auras.values(),
+                                                          *self.world_ranked_talent_auras.values())
+                                  for owner,child in zip(rule['owners'],rule['children'])}
         # Trainers are exclusion evidence only, never spell-grant sources.
         self.trainer_taught = set()
         if core == 'ac':
@@ -525,6 +530,126 @@ def native_passive_rule(owner, tc, ac, cls):
     return rule
 
 
+def world_talent_aura_rule(owner, tc, ac, cls):
+    """Reviewed TC inactive known helper -> AC selected-talent aura contract.
+
+    No spell, skill or talent ownership is inferred. Verify the entire small
+    family, including Bear form callbacks and exclusion routes, before allowing
+    any exact helper to be delegated. A different world relationship blocks.
+    """
+    family = str(tc.talents[owner][0])
+    rule = tc.world_talent_auras.get(family)
+    if not rule:
+        return None
+    def blocked(detail):
+        reject('INCOMPATIBLE_WORLD_TALENT_AURA', f'{owner}: {detail}')
+    if rule != ac.world_talent_auras.get(family) or cls != rule['class'] or owner not in rule['owners']:
+        blocked('profile/class/selected owner differs')
+    expected_bindings = set(rule['owners'] + rule['forms'])
+    for metadata in (tc, ac):
+        bindings = {s for s,names in metadata.scripts.items() if rule['script'] in names}
+        if bindings != (expected_bindings if metadata.core == 'ac' else set()):
+            blocked(f'{metadata.core}: selected-talent/form script bindings differ')
+        for index,(parent,child) in enumerate(zip(rule['owners'],rule['children'])):
+            p,h = metadata.spells.get(parent,[]),metadata.spells.get(child,[])
+            if (metadata.talents.get(parent) != (int(family),index+1)
+                    or metadata.chain(parent) != tuple(rule['owners'])
+                    or not p or p[4] != rule['parent_flags'] or p[12] != rule['parent_stances']
+                    or p[20] or p[71:74] != [6,0,0] or p[95:98] != [rule['parent_aura'],0,0]
+                    or signed(p[80]) != rule['parent_basepoints'][index] or p[86:92] != [1,0,0,0,0,0]
+                    or p[116:119] != [0,0,0] or metadata.effect_learns[parent]
+                    or metadata.learns[parent] != ([(child,0,False)] if metadata.core == 'tc' else [])
+                    or metadata.requires[parent] or metadata.learn_parents[parent]
+                    or child in metadata.talents or metadata.chain(child) != (child,)
+                    or not h or h[4] != rule['helper_flags'] or h[12] != rule['helper_stances']
+                    or h[20] or h[71:74] != [6,0,0] or h[95:98] != [rule['helper_aura'],0,0]
+                    or signed(h[80]) != rule['helper_basepoints'][index] or h[86:92] != [1,0,0,0,0,0]
+                    or h[116:119] != [0,0,0] or metadata.scripts[child]
+                    or metadata.requires[child] or metadata.prerequisite_users[child]
+                    or metadata.learns[child] or metadata.effect_learns[child]
+                    or metadata.learn_parents[child] != ({parent} if metadata.core == 'tc' else set())
+                    or metadata.abilities[child] or child in metadata.trainer_taught
+                    or parent in metadata.trainer_taught):
+                blocked(f'{metadata.core}: parent={parent}, helper={child}: effects/ownership/routes differ')
+            for spell,record in ((parent,p),(child,h)):
+                metadata.check_spell(spell)
+                if (record[74:80] != [1,0,0,0,0,0] or record[81:86] != [0,0,0,0,0]
+                        or any(record[98:116]) or record[92:95] != [0,0,0]
+                        or record[5:12] != (rule['parent_attributes_ex'][index] if spell == parent else rule['helper_attributes_ex'])
+                        or any(record[13:20])
+                        or any(record[20:28]) or any(record[31:35]) or record[36] or record[49]
+                        or record[40] != rule['parent_duration' if spell == parent else 'helper_duration']
+                        or record[68:71] != [0xffffffff,0,0] or any(record[119:131])
+                        or metadata.scripts[spell] != ({rule['script']} if metadata.core == 'ac' and spell == parent else set())):
+                    blocked(f'{metadata.core}: spell={spell}: unreviewed effect magnitude, target or script')
+            # Parent skill associations are passive class associations only;
+            # they must not add a skill or profession on either core.
+            if any(row[1] != 134 or row[9] or row[8] for row in metadata.abilities[parent]):
+                blocked(f'{metadata.core}: parent={parent}: unsafe skill route')
+        for form in rule['forms']:
+            r = metadata.spells.get(form,[])
+            metadata.check_spell(form)
+            if (not r or form in metadata.talents or r[71:74] != [6,6,0]
+                    or r[95:98] != [36,77,0] or r[12] or r[20]
+                    or r[110] != (5 if form == rule['forms'][0] else 8)
+                    or metadata.skill_effect(form) or metadata.effect_learns[form]):
+                blocked(f'{metadata.core}: form={form}: native shapeshift contract differs')
+    for spell in rule['owners'] + rule['children'] + rule['forms']:
+        left,right = tc.spells[spell],ac.spells[spell]
+        if left[71:119] != right[71:119] or left[12] != right[12] or left[20] != right[20]:
+            blocked(f'{spell}: source/target effects, stance or aura state differ')
+    return rule
+
+
+def ranked_world_talent_aura_rule(owner, tc, ac, cls):
+    """Optional TC known-helper edges plus the reviewed exact AC aura script.
+
+    A script-only world retains its cast-only semantics. Once a world learning
+    route exists, verify the entire ranked family, including the TC prefix
+    that AC deliberately does not learn. Never use that prefix as AC ownership.
+    """
+    family = str(tc.talents[owner][0])
+    rule = tc.world_ranked_talent_auras.get(family)
+    if not rule or not any(tc.learns[parent] for parent in rule['owners']):
+        return None
+    def blocked(detail):
+        reject('INCOMPATIBLE_WORLD_TALENT_AURA', f'{owner}: {detail}')
+    if rule != ac.world_ranked_talent_auras.get(family) or cls != rule['class']:
+        blocked('ranked profile/class differs')
+    # Attributes, stances, aura gates, proc/interrupt state, duration, item
+    # requirements, effect values/targets/masks and family flags are protected.
+    fields = (*range(4,28), *range(31,35), 36,40,49, *range(68,131), *range(208,212))
+    for metadata in (tc,ac):
+        bindings = {s for s,names in metadata.scripts.items() if rule['script'] in names}
+        if bindings != set(rule['owners']):
+            blocked(f'{metadata.core}: ranked script bindings differ')
+        if metadata.chain(rule['children'][0]) != tuple(rule['children']):
+            blocked(f'{metadata.core}: helper chain membership/order differs')
+        for index,(parent,child) in enumerate(zip(rule['owners'],rule['children'])):
+            if (metadata.talents.get(parent) != (int(family),index+1)
+                    or metadata.chain(parent) != tuple(rule['owners'])
+                    or metadata.learns[parent] != ([(child,0,False)] if metadata.core == 'tc' else [])
+                    or metadata.effect_learns[parent] or metadata.learn_parents[parent]
+                    or metadata.requires[parent] or parent in metadata.trainer_taught):
+                blocked(f'{metadata.core}: parent={parent}: selected ownership/world route differs')
+            for spell in (parent,child):
+                metadata.check_spell(spell)
+                record = metadata.spells[spell]
+                shape = rule['mechanics'][str(spell)]
+                if any(record[field] != shape.get(str(field),0) for field in fields):
+                    blocked(f'{metadata.core}: spell={spell}: ranked aura mechanics differ')
+                if metadata.scripts[spell] != ({rule['script']} if spell == parent else set()):
+                    blocked(f'{metadata.core}: spell={spell}: unexpected script')
+            if (child in metadata.talents or child in metadata.additional
+                    or metadata.learn_parents[child] != ({parent} if metadata.core == 'tc' else set())
+                    or metadata.learns[child] or metadata.effect_learns[child]
+                    or metadata.requires[child] or metadata.prerequisite_users[child]
+                    or metadata.abilities[child] or child in metadata.trainer_taught
+                    or any(row[1] != 134 or row[9] or row[8] for row in metadata.abilities[parent])):
+                blocked(f'{metadata.core}: helper={child}: unreviewed incoming/outgoing/skill route')
+    return rule
+
+
 def reconstruct(character, stored, talents, skills, source, target, direction):
     """Return one deterministic result per spell, retaining all derivations."""
     race, cls, active_group, groups = character
@@ -554,9 +679,23 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
         assert_acyclic(metadata, seeds)
     aura_helpers = defaultdict(dict)
     for spell in stored:
-        if tc.aura_owners.get(spell) or ac.aura_owners.get(spell):
+        if (tc.aura_owners.get(spell) or ac.aura_owners.get(spell)
+                or spell in tc.world_aura_owners or spell in ac.world_aura_owners):
             reject('UNSUPPORTED_AURA_HELPER_SPELL_ROW',f'{spell}: native aura/temporary state must not be persisted')
+    world_aura_helpers = {}
     for owner,mask in sorted(owners.items()):
+        rule = world_talent_aura_rule(owner,tc,ac,cls)
+        if rule:
+            child = rule['children'][rule['owners'].index(owner)]
+            aura_helpers[child][owner] = mask
+            world_aura_helpers[child] = {'parent':owner, 'tc_active':0, 'tc_dependent':True,
+                'ac_script':rule['script'], 'form_callbacks':rule['forms'],
+                'target_representation':'AC_SELECTED_TALENT_AURA' if direction == 'tc-to-ac'
+                                        else 'TC_NATIVE_DEPENDENT_RESTORE',
+                'native_lifetime':'SELECTED_TALENT_ACTIVE_SPEC_AND_MATCHING_FORM'}
+    ranked_aura_helpers = {}
+    for owner,mask in sorted(owners.items()):
+        ranked_rule = ranked_world_talent_aura_rule(owner,tc,ac,cls)
         bindings = []
         for metadata in (tc,ac):
             metadata.check_spell(owner)
@@ -566,11 +705,19 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
             reject('INCOMPATIBLE_TALENT_AURA_SCRIPT',f'{owner}: source/target bindings differ')
         for name,entry in bindings[0].items():
             child=entry['child']
-            # TC casts the exact aura; it never learns this helper or its
-            # predecessors. AC's native aura handler owns the temporary row.
+            # A cast alone has no known-rank obligation. The optional reviewed
+            # TC world edge also learns a prefix; AC owns the exact helper only.
             if tc.predecessors(child) != ac.predecessors(child):
                 reject('INCOMPATIBLE_TALENT_AURA_SCRIPT',f'{owner}:{child}: helper ranks differ')
             aura_helpers[child][owner] = mask
+            if ranked_rule:
+                ranked_aura_helpers[child] = {
+                    'parent':owner, 'tc_active':0, 'tc_dependent':True,
+                    'tc_known_predecessors':list(tc.predecessors(child)),
+                    'ac_script':name, 'target_representation':
+                        'AC_NATIVE_EXACT_TEMPORARY' if direction == 'tc-to-ac' else 'TC_NATIVE_DEPENDENT_PREFIX_RESTORE',
+                    'native_lifetime':'SELECTED_TALENT_ACTIVE_SPEC_HELPER_CAT_FORM',
+                }
     # Determine native talent-owned runtime spells before rank compatibility.
     # AC's _addTalentAurasAndSpells uses _addSpell for the exact learned child;
     # it does not reconstruct that child's lower ranks.
@@ -967,7 +1114,9 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
             pending.append((child, mask, owner, [owner, child], 'TALENT_LEARN_EFFECT'))
     for child,helper_owners in sorted(aura_helpers.items()):
         for owner,mask in sorted(helper_owners.items()):
-            pending.append((child,mask,owner,[owner,child],'NATIVE_TALENT_AURA'))
+            pending.append((child,mask,owner,[owner,child],
+                            'TC_WORLD_RANKED_TALENT_AURA' if child in ranked_aura_helpers else
+                            'TC_WORLD_TALENT_AURA' if child in world_aura_helpers else 'NATIVE_TALENT_AURA'))
     visited = set()
     while pending:
         spell, mask, anchor, path, reason = pending.popleft()
@@ -977,8 +1126,9 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
         visited.add(key)
         add(spell, mask, anchor, path, reason)
         if spell in aura_helpers:
-            # TC casts this exact helper aura, not AddSpell: neither rank
-            # predecessors nor world learn-map entries are spellbook roots.
+            # Cast-only helpers have no TC known-rank obligation. Reviewed
+            # world helpers have verified singleton/exact-rank contracts and
+            # no outgoing routes; their TC-only prefixes remain native-owned.
             continue
         # Direct talent rank lists must never be expanded.
         if spell not in tc.talents and not (direction == 'tc-to-ac' and spell in native_passive_owners):
@@ -988,12 +1138,17 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
             if not auto:
                 skill_reward = any(r['parent'] == spell for r in skill_delegates.get(child,[]))
                 native = any(row[0] == child for row in ac.effect_learns[spell]) or child in tc.predecessors(spell) or skill_reward
+                world_aura = child in world_aura_helpers and world_aura_helpers[child]['parent'] == spell
+                ranked_aura = child in ranked_aura_helpers and ranked_aura_helpers[child]['parent'] == spell
+                native = native or world_aura or ranked_aura
                 persistent = not native and persistent_world_dependency(spell,child)
                 if not native and not persistent:
                     reject('UNSUPPORTED_DEPENDENT_LEARN', f'{spell}:{child}: no verified native AC dependency')
                 if not child_active and child not in tc.talents and not ac.spells[child][4] & HIDDEN:
                     reject('UNREPRESENTABLE_INACTIVE_DEPENDENCY', f'{spell}:{child}')
                 pending.append((child, mask, anchor, path + [child],
+                                'TC_WORLD_RANKED_TALENT_AURA' if ranked_aura else
+                                'TC_WORLD_TALENT_AURA' if world_aura else
                                 'TC_WORLD_PERSISTENT_DEPENDENCY' if persistent else 'TC_DEPENDENT_LEARN'))
         # Passive non-talent learn effects run during TC loading even when
         # its world learn map is empty. Conditional aura/stance casts cannot
@@ -1041,6 +1196,12 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
         if spell in aura_helpers:
             row['authorization']['policy'] = 'NATIVE_TALENT_AURA'
             row['authorization']['aura_owners'] = sorted(aura_helpers[spell].items())
+        if spell in world_aura_helpers:
+            row['authorization']['policy'] = 'TC_WORLD_NATIVE_TALENT_AURA'
+            row['authorization']['world_talent_aura'] = world_aura_helpers[spell]
+        if spell in ranked_aura_helpers:
+            row['authorization']['policy'] = 'TC_WORLD_NATIVE_RANKED_TALENT_AURA'
+            row['authorization']['ranked_world_talent_aura'] = ranked_aura_helpers[spell]
         if spell in persistent_dependencies:
             row['authorization']['persistent_world_dependencies'] = sorted(
                 persistent_dependencies[spell],key=lambda item:(item['parent'],item['child']))

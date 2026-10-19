@@ -34,6 +34,23 @@ policy change also invalidates earlier run/checkpoint identities.
 
 ## Reviewing a candidate
 
+`spell-state-v9` adds the bounded Nurturing Instinct ranked world-helper
+contract alongside the existing script-only representation. Existing protected
+files cover its TC dependent/prefix restoration and AC temporary lifecycle;
+no additional protected files or revision substitutions are needed. Exact
+mechanics and routes are part of the generated metadata profile and checkpoint
+identity. Pins and UNREVIEWED approval remain unchanged. See the
+[Nurturing contract](spell-reconstruction.md#nurturing-instinct-world-helpers-spell-state-v9).
+
+`spell-state-v8` adds only the bounded Feral Swiftness TC-world/AC-aura
+representation contract. Both semantic manifests add `SpellAuraEffects.cpp`
+for the native stance loops. Both configured files match the retained pins
+byte for byte; v1, revision pins and UNREVIEWED approval remain unchanged.
+This profile/policy change invalidates prior migration checkpoint identity.
+Use fresh target/control schemas and retain old preparation toolkits for the
+original guarded restoration of their batches. See the
+[Feral Swiftness contract](spell-reconstruction.md#feral-swiftness-world-helpers).
+
 Generate outside the repository, choosing a new profile ID for later revisions:
 
 ```bash

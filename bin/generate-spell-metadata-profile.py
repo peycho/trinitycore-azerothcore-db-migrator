@@ -82,6 +82,35 @@ REVIEWED_PERSISTENT_WORLD_DEPENDENCIES = {
               'child_effects':[3,118,0], 'child_visibility':192, 'ranks':[33388,33391,34090],
               'skill_states':[[225,225],[300,300]], 'higher_anchor':34091},
 }
+# TC restores hidden known helpers from inactive world edges. AC instead casts
+# the exact selected helper on Cat talent/Bear form aura application. These
+# helpers have no persistent AC spellbook representation and no lower ranks.
+REVIEWED_WORLD_TALENT_AURAS = {
+    '807': {'class':11, 'owners':[17002,24866], 'children':[24867,24864],
+            'script':'spell_dru_feral_swiftness', 'forms':[5487,9634],
+            'parent_flags':464, 'parent_stances':1, 'parent_aura':31,
+            'parent_basepoints':[14,29], 'parent_duration':0, 'helper_flags':128, 'helper_duration':21,
+            'parent_attributes_ex':[[0,0,0,0,0,0,0],[2147483648,0,0,0,0,0,0]],
+            'helper_attributes_ex':[1024,0,0,2097152,0,0,0],
+            'helper_stances':145, 'helper_aura':49, 'helper_basepoints':[1,3]},
+}
+# Nurturing Instinct can additionally restore known TC helper ranks through
+# inactive world edges. AC's script owns only the selected exact temporary
+# helper. Sparse mechanics below mean zero for every other guarded field.
+REVIEWED_WORLD_RANKED_TALENT_AURAS = {
+    '1792': {'class':11, 'owners':[33872,33873], 'children':[47179,47180],
+             'script':'spell_dru_nurturing_instinct',
+             'mechanics': {
+                 '33872': {'4':464,'68':4294967295,'71':6,'74':1,'80':34,'86':1,
+                           '95':175,'110':1,'125':33554432,'208':7},
+                 '33873': {'4':464,'7':67108864,'68':4294967295,'71':6,'74':1,'80':69,
+                           '86':1,'87':1,'95':175,'110':1,'125':33554432,'208':7},
+                 '47179': {'4':400,'12':1,'40':21,'68':4294967295,'71':6,'74':1,'80':9,
+                           '86':1,'95':118,'110':127,'125':33554432,'208':7},
+                 '47180': {'4':400,'12':1,'40':21,'68':4294967295,'71':6,'74':1,'75':1,
+                           '80':19,'81':4294967295,'86':1,'95':118,'110':127,'125':33554432,'208':7},
+             }},
+}
 # Explicitly reviewed native AC representation: selected exact passive children,
 # without persisting TC's superseded internal predecessor entries.
 REVIEWED_NATIVE_PASSIVE_RANKS = {
@@ -211,6 +240,8 @@ def generate(tc, ac):
     result = {'version': 1, 'stores': {}, 'corrections': {}, 'scripts': {}, 'inputs': {}}
     result['skill_reward_dependencies'] = REVIEWED_SKILL_REWARD_DEPENDENCIES
     result['persistent_world_dependencies'] = REVIEWED_PERSISTENT_WORLD_DEPENDENCIES
+    result['world_talent_auras'] = REVIEWED_WORLD_TALENT_AURAS
+    result['world_ranked_talent_auras'] = REVIEWED_WORLD_RANKED_TALENT_AURAS
     result['native_passive_ranks'] = REVIEWED_NATIVE_PASSIVE_RANKS
     for name, (table, fmt_name) in STORES.items():
         sql = (ac / f'data/sql/base/db_world/{table}.sql').read_text()

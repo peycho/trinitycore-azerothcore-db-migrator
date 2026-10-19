@@ -90,6 +90,7 @@ schemas and run ID; do not replace code underneath an existing run.
 | Known non-passive profession research | Preserve only reviewed research IDs with matching existing professions and exact load-safe effects; never execute research or infer recipes |
 | Hidden/passive runtime child with an AC-only predecessor prefix | Delegate only the exact authorized learned child to native AC talent loading when TC has no predecessor obligation. Do not persist the child or grant target-only predecessors. |
 | Nurturing Instinct helpers | Delegate exact selected-rank helper to native aura/temporary ownership (`AURA`); never persist the helper or reconstruct its predecessors |
+| Feral Swiftness world-learned helpers | Under the v8 contract, map TC's inactive dependent helper to AC's selected-talent/form aura (`AURA`); retain exact rank/spec ownership, with no persistent helper or inferred form |
 | Runeforging native skill rewards | Delegate only verified `53428 -> 53341/53343` dependencies (`SKILL`), with existing skill `776` exactly `1/1` and matching eligible native reward metadata |
 | Flight Form's TC world dependency | Materialize `33943 -> 34090` and its verified riding predecessors as persistent ordinary rows only with an explicit active TC world edge and existing riding `762` at `225/225`, or `300/300` with an already known Artisan Riding anchor. Never infer Artisan Riding from Flight Form. |
 | TC dependent learned spells | Reconstruct only verified native-compatible dependencies; unsupported world-only learning relationships block |
@@ -165,6 +166,72 @@ reports include original flags and selected learned-spell owners.
 The migrator changes no talent selections, skill rows, skill caps or profession
 slots. Profession/riding spell effects are checked against existing skills;
 native runtime slot/tier behavior must also pass the gameplay gate below.
+
+### Feral Swiftness world helpers
+
+`spell-state-v8` supports a specific native representation difference, not a
+general permission to ignore TC world dependencies. TC's explicit inactive,
+non-autolearned edges are `17002 -> 24867` and `24866 -> 24864`. `AddSpell`
+restores the helper with `active=false`, `dependent=true`, `disabled=false`
+when the enabled selected parent loads; `_SaveSpells` omits dependent rows.
+The hidden helper's Cat/Bear/Dire Bear stance flags let TC's native shapeshift
+loop cast it even though it is inactive in the client spellbook.
+
+AC has no equivalent learn edge. Its protected `spell_dru_feral_swiftness`
+callback checks `HasTalent` in the active spec and casts only that rank's
+helper. It is attached to both talent ranks and Bear/Dire Bear form spells;
+the native talent stance loop applies the Cat talent aura. Removal clears both
+helper auras. The helper is an aura, not an AC temporary or persistent known
+spell. Migration records `AURA` with the exact selected owner's mask. It never
+adds Bear Form, Dire Bear Form, Cat Form or a talent selection.
+
+The bounded `world_talent_auras` profile contract checks both ranks of talent
+family `807`, druid class ownership, exact inactive TC edges, absence of AC
+learn edges, script bindings on both parents and both Bear forms, singleton
+helper chains, effect types/amounts, targets, exact attributes, stances and visibility. Skills,
+trainers, extra teachers, prerequisites, helper scripts and outgoing helper
+dependencies cannot provide alternative authorization. Paired metadata changes
+are rejected when they depart from the reviewed effect contract. A changed
+contract reports `INCOMPATIBLE_WORLD_TALENT_AURA`.
+
+Both specs may select different ranks, or share a rank. Availability remains
+the exact union of selected owner masks; an inactive spec never authorizes an
+active-spec helper. Existing enabled/disabled parent checks still apply.
+Explicitly persisted helper rows block as `UNSUPPORTED_AURA_HELPER_SPELL_ROW`,
+including disabled rows and rows without ownership; this policy does not delete
+or reinterpret them. Overlapping Nurturing Instinct world relationships and
+other world-only dependencies require their own review.
+
+In reverse migration, retain both talent groups and persist only the active
+selected direct parent as required by TC's reviewed loader. TC then restores
+its inactive dependent helper natively; no helper row is persisted and no
+lower or higher direct talent rank is inferred. Inactive groups retain their
+talent ownership for native spec activation.
+
+Provenance records `TC_WORLD_TALENT_AURA` derivations and
+`authorization.world_talent_aura`: exact parent, TC active/dependent semantics,
+AC script/form callbacks, lifetime and target representation
+(`AC_SELECTED_TALENT_AURA` or `TC_NATIVE_DEPENDENT_RESTORE`). Expected-set and
+runtime-owner validation reject persistent helpers and changed spec ownership.
+The policy/profile enter existing input, expected-result and checkpoint hashes;
+transaction, resume and rerun behavior is unchanged.
+
+Both v2 manifests additionally protect `SpellAuraEffects.cpp`, including native
+stance loops. The configured consumers match the retained TC/AC pins; neither
+revision is substituted. Keep v1 and `PROFILE_APPROVAL=UNREVIEWED` unchanged.
+Use a new migration toolkit/run with fresh target/control schemas. Retain
+earlier preparation toolkits with their archives for their original restoration
+contracts; this change requires no additional preparation SQL.
+
+The focused harness executes protected TC dependency/stance bodies and AC
+talent/stance/apply/remove bodies with mocked state/aura dispatch. Synthetic
+fixtures cover ranks, specs, missing ownership, drift, stored helpers and
+semantic round trips. This is consumer verification, not gameplay acceptance.
+In staging check Cat/Bear/Dire Bear with rank 1, rank 2 and no selected talent;
+switch specs in and out of form, relog, save and restart. Verify movement/dodge
+effects, removal of stale helpers, unchanged talents/skills/profession slots
+and no helper spell deletion/correction logs. Record every unexecuted check
+as NOT TESTED alongside the five acceptance gates below.
 
 ### Flight Form and existing riding
 
@@ -305,15 +372,59 @@ They produce no persistent `character_spell` rows in either direction. Parent
 selection remains in `character_talent`; reverse conversion retains only its
 active direct talent in TC's stored spellbook where required.
 
-Although the helper IDs have a shared rank chain in both worlds, casting an
-aura does not call TC's spell-learning reconstruction. Selecting rank 2 does
-not authorize helper rank 1. Different selected ranks in the two specs retain
-independent masks. This contract does not relax the temporary rank guard for
-Primal Fury or death-knight talents where TC actually learns a ranked child.
+Casting alone does not call TC's spell-learning reconstruction. In script-only
+worlds, selecting rank 2 therefore does not establish a known helper rank 1.
+The additional TC world-learning case is covered separately below. Different
+selected ranks in the two specs retain independent AC masks.
 Stored Nurturing helper rows block as `UNSUPPORTED_AURA_HELPER_SPELL_ROW`;
 these need separate review instead of being silently deleted or enabled.
 Mismatched bindings or effective parent/helper effects, visibility, stance or
 talent ranks also block. Other scripts are not approved by this exception.
+
+### Nurturing Instinct world helpers (`spell-state-v9`)
+
+Some TC worlds also have the exact inactive, non-autolearned edges
+`33872 -> 47179` and `33873 -> 47180`. This is a second mechanism alongside
+the scripts above. TC's `AddSpell()` learns helper rank 1 before rank 2, with
+inactive visibility and dependent persistence flags. Its stance loop can cast
+both known hidden ranks in Cat Form. The protected same-rank aura exclusion
+prevents these non-passive healing-received helpers from stacking.
+
+AC's Nurturing script adds only the exact selected helper as temporary state.
+Its native stance gate/loop applies that helper in Cat Form; native removal
+and saving remove/omit the temporary entry. The converter delegates only that
+exact rank as `AURA`, preserving the selected owner's mask. Rank 2 alone never
+creates an AC rank-1 entry. Differing ranks in two specs keep separate masks;
+the callback's internal mask `3` does not confer ownership in the other spec,
+because only the active talent aura owns its temporary lifetime.
+
+The profile verifies the whole two-rank family: talent/class identity, both
+script bindings, exact TC edges/flags, helper rank order, attributes, stance,
+aura gates, effect magnitudes/targets, duration, item requirements and family
+masks. Unexpected learning, prerequisites, skills, trainers or scripts on a
+helper block, including on the lower TC-only predecessor. Partial or changed
+world routes block as `INCOMPATIBLE_WORLD_TALENT_AURA`; unrelated dependencies
+retain `UNSUPPORTED_DEPENDENT_LEARN`. Script-only worlds retain their prior
+cast-only behavior.
+
+Provenance records `TC_WORLD_NATIVE_RANKED_TALENT_AURA`, the exact selected
+owner/mask, TC dependent flag and known predecessor list, native lifetime and
+direction-specific representation. No helper is persisted in either direction.
+Reverse conversion stores only the active selected direct parent; unchanged
+talent rows retain the other spec and TC restores its native dependent prefix.
+Stored helper rows remain blocked, including unowned or disabled rows; they
+need a separately reviewed preparation policy. Skills, caps, profession slots
+and talent ownership are preserved.
+
+This policy changes metadata/checkpoint hashes. Use a new migration run with
+fresh target/control schemas; retain old cleanup toolkits and archives for
+their original guarded restoration. Isolated consumer and MySQL tests do not
+establish gameplay acceptance. On staging, test both selected ranks, different
+ranks in each spec, Cat entry/exit, spec switches and relogs: only the active
+selected healing-received helper should apply, without stacking a lower rank.
+Repeat after save/restart and confirm unchanged talents, skills and profession
+slots. These checks and the five general gameplay gates remain **NOT TESTED**
+until performed against the target worldserver. Approval remains **UNREVIEWED**.
 
 TC's enabled Runeforging dependencies `53428 -> 53341` (Cinderglacier) and
 `53428 -> 53343` (Razorice) can be restored by both native skill loaders. The

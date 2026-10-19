@@ -90,6 +90,7 @@ write_trinitycore_semantic_manifest() {
         src/server/game/Spells/SpellDefines.h \
         src/server/game/Spells/Auras/SpellAuraDefines.h \
         src/server/game/Spells/Auras/SpellAuras.cpp \
+        src/server/game/Spells/Auras/SpellAuraEffects.cpp \
         src/server/game/DataStores/DBCStores.cpp \
         src/server/shared/DataStores \
         src/common/DataStores \
@@ -140,6 +141,7 @@ write_azerothcore_semantic_manifest() {
         src/server/game/Spells/SpellDefines.h \
         src/server/game/Spells/Auras/SpellAuraDefines.h \
         src/server/game/Spells/Auras/SpellAuras.cpp \
+        src/server/game/Spells/Auras/SpellAuraEffects.cpp \
         src/server/game/Spells/SpellInfoCorrections.cpp \
         src/server/game/DataStores/DBCStores.cpp \
         src/server/shared/DataStores \

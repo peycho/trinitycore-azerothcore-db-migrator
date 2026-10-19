@@ -44,13 +44,25 @@ for repo,name in ((tc,'WillTc'),(ac,'WillAc')):
         Effect const& GetEffectInfo(int index) const{return info->Effects[index];}
     '''+'\n'.join(function(script,signature).replace(' override','') for signature in
                   ('bool Load()','void CalculateAmount(','void Absorb('))+'\n};\n')
+nurturing=[]
+for repo,name in ((tc,'TcNurturing'),(ac,'AcNurturing')):
+    script=(repo/'src/server/scripts/Spells/spell_druid.cpp').read_text()
+    script=script[script.index('class spell_dru_nurturing_instinct '):]
+    nurturing.append('struct '+name+" { Player* player; SpellInfo const* info; Player* GetTarget(){return player;} SpellInfo const* GetSpellInfo(){return info;}\n"+
+                     '\n'.join(function(script,signature) for signature in ('void AfterApply(','void AfterRemove('))+'\n};\n')
 stack=[]
 for repo,name in ((tc,'TcStack'),(ac,'AcStack')):
     source=(repo/'src/server/game/Spells/Auras/SpellAuras.cpp').read_text()
     text=function(source,'bool Aura::CanStackWith(')
-    # Only the actual early same-caster passive exclusion is exercised below.
+    # Execute the early same-caster passive exclusion and, separately, the
+    # non-passive same-rank branch used by Nurturing's hidden helper chain.
     end=text.index('for (',text.index('// passive auras'))
     stack.append(text[:end].replace('Aura::CanStackWith','Aura::'+name)+'\nreturn true;\n}\n')
+    rank=text[text.index('// spell of same spell rank chain'):]
+    stack.append('bool Aura::'+name+'Rank(Aura const*existingAura)const {auto existingSpellInfo=existingAura->GetSpellInfo();'+
+                 ('bool sameCaster=true;' if repo==ac else '')+rank)
+    info=(repo/'src/server/game/Spells/SpellInfo.cpp').read_text()
+    stack.append(function(info,'bool SpellInfo::IsMultiSlotAura() const').replace('IsMultiSlotAura()',name+'MultiSlot()'))
 
 mock=r'''
 #include <algorithm>
@@ -65,12 +77,17 @@ mock=r'''
 using uint8=uint8_t;using uint16=uint16_t;using uint32=uint32_t;
 using int32=int32_t;
 constexpr int EFFECT_0=0;
+constexpr uint32 SPELL_DRUID_NURTURING_INSTINCT_R1=47179,SPELL_DRUID_NURTURING_INSTINCT_R2=47180;
+constexpr uint32 SPELLFAMILY_HUNTER=9,SPELL_SPECIFIC_AURA=1;
+#define UI64LIT(x) x##ULL
+enum SpellAttr2 {SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED=1};
+using ShapeshiftForm=uint32;
 constexpr uint32 SPELL_DK_WILL_OF_THE_NECROPOLIS_TALENT_R1=49189;
 uint32 CalculatePct(uint32 value,uint32 pct){return value*pct/100;}
 struct AuraEffect {};
 struct DamageInfo {uint32 damage;uint32 GetDamage() const{return damage;}};
 enum SpellState { PLAYERSPELL_UNCHANGED,PLAYERSPELL_CHANGED,PLAYERSPELL_NEW,PLAYERSPELL_REMOVED,PLAYERSPELL_TEMPORARY };
-enum SpellAttr0 { SPELL_ATTR0_PASSIVE=64,SPELL_ATTR0_DO_NOT_DISPLAY=128 };
+enum SpellAttr0 { SPELL_ATTR0_PASSIVE=64,SPELL_ATTR0_DO_NOT_DISPLAY=128,SPELL_ATTR0_CU_ENCHANT_PROC=256 };
 constexpr uint8 MAX_SPELL_EFFECTS=3,SPEC_MASK_ALL=3;
 constexpr uint32 SPELL_EFFECT_LEARN_SPELL=36,SPELL_EFFECT_SKILL_STEP=44;
 constexpr int DYNOBJ_AURA_TYPE=1,SPELL_AURA_PERIODIC_DAMAGE=3;
@@ -81,13 +98,18 @@ constexpr int CHAR_DEL_CHAR_SPELL_BY_SPELL=1,CHAR_INS_CHAR_SPELL=2;
 constexpr int SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED=207,CONFIG_MAX_PRIMARY_TRADE_SKILL=0;
 struct World { uint32 getIntConfig(int) const{return 2;} } world;
 World* sWorld=&world;
-using AuraStateType=int;
+using AuraStateType=int;using AuraEffectHandleModes=uint32;
 #define LOG_INFO(...) ((void)0)
 struct Guid { uint32 id=0;bool IsEmpty() const{return !id;}explicit operator bool() const{return id;}bool operator!=(Guid other) const{return id!=other.id;}uint32 GetRawValue() const{return id;} };
 struct Effect { uint32 Effect=0,TriggerSpell=0,ApplyAuraName=0;int amount=0;bool IsEffect() const{return Effect;}int CalcValue(void const* =nullptr) const{return amount;} };
 struct SpellInfo {
+    uint32 SpellFamilyName=7,SpellFamilyFlags[3]{};
     uint32 Id=0,flags=192,root=0,Stances=0,CasterAuraState=0,rank=1;std::array<Effect,3> Effects{};
     uint8 GetRank() const{return rank;}Effect const& GetEffect(int index) const{return Effects[index];}
+    bool TcStackMultiSlot()const;bool AcStackMultiSlot()const;
+    bool IsMultiSlotAura()const{return IsPassive();}uint32 GetSpellSpecific()const{return 0;}
+    bool IsRankOf(SpellInfo const*other)const{return root==other->root;}
+    bool HasAttribute(SpellAttr2)const{return false;}
     bool HasEffect(uint32 value) const { for(auto const& e:Effects)if(e.Effect==value)return true;return false; }
     bool HasAttribute(SpellAttr0 value) const{return flags&value;}
     bool HasAnyAura() const{for(auto const& e:Effects)if(e.Effect==6)return true;return false;}
@@ -103,6 +125,7 @@ struct Aura {
     Guid GetCastItemGUID() const{return m_castItemGuid;}
     bool IsPassive() const{return m_spellInfo->IsPassive();}
     bool TcStack(Aura const*) const;bool AcStack(Aura const*) const;
+    bool TcStackRank(Aura const*)const;bool AcStackRank(Aura const*)const;bool IsArea()const{return false;}
     void* GetApplicationOfTarget(Guid) const{return nullptr;}
     void HandleAllEffects(void*,int,bool){}
 };
@@ -151,7 +174,11 @@ struct Database {
     std::vector<std::unique_ptr<CharacterDatabasePreparedStatement>> statements;
     CharacterDatabasePreparedStatement* GetPreparedStatement(int kind){auto p=std::make_unique<CharacterDatabasePreparedStatement>();p->kind=kind;statements.push_back(std::move(p));return statements.back().get();}
 } CharacterDatabase;
+struct Player;using Unit=Player;
+void NurturingApply(Player*,uint32);void NurturingRemove(Player*,uint32);
 struct Player {
+    bool player=true;uint32 form=0;Player*ToPlayer(){return player?this:nullptr;}
+    ShapeshiftForm GetShapeshiftForm()const{return form;}
     PlayerSpellMap m_spells;std::set<uint32> auras;Session session;uint8 m_activeSpec=0;bool eligible=true,tcStack=false;
     uint32 health=10000;
     uint32 GetHealth() const{return health;}uint32 CountPctFromMaxHealth(int pct) const{return 10000*pct/100;}
@@ -162,14 +189,17 @@ struct Player {
     bool IsInWorld() const{return !session.loading;}bool isBeingLoaded() const{return session.loading;}
     Session* GetSession(){return &session;}uint8 GetActiveSpec() const{return m_activeSpec;}
     Guid GetGUID() const{return Guid{1};}
-    bool IsNeedCastPassiveSpellAtLearn(SpellInfo const*) const{return eligible;}
+    bool IsNeedCastPassiveSpellAtLearn(SpellInfo const*spellInfo)const;
+    bool NativeStanceGate(SpellInfo const*spellInfo)const;
+    void addSpell(uint32 id,uint8 mask,bool update,bool temp){assert(!update&&temp);_addSpell(id,mask,temp);}
+    void CastSpell(Player*target,uint32 id,AuraEffect const*){CastSpell(target,id,true);}
     void CastSpell(Player*,uint32 id,bool){
         Aura added{manager.GetSpellInfo(id),{}};
         for(auto it=auras.begin();it!=auras.end();){Aura existing{manager.GetSpellInfo(*it),{}};
-            if(!(tcStack?added.TcStack(&existing):added.AcStack(&existing)))it=auras.erase(it);else ++it;}
-        auras.insert(id);
+            if(!(tcStack?(added.TcStack(&existing)&&added.TcStackRank(&existing)):(added.AcStack(&existing)&&added.AcStackRank(&existing))))it=auras.erase(it);else ++it;}
+        auras.insert(id);if(id==33872||id==33873)NurturingApply(this,id);
     }
-    void RemoveOwnedAura(uint32 id){auras.erase(id);}void RemoveAurasDueToSpell(uint32 id){auras.erase(id);}
+    void RemoveOwnedAura(uint32 id){if(auras.erase(id)&&(id==33872||id==33873))NurturingRemove(this,id);}void RemoveAurasDueToSpell(uint32 id){auras.erase(id);}
     void RemovePetAura(PetAura const*){}void SendLearnPacket(uint32,bool){}
     uint32 GetFreePrimaryProfessionPoints() const{return 2;}void SetFreePrimaryProfessions(uint32){assert(false);}
     uint16 GetMaxSkillValueForLevel() const{return 400;}
@@ -182,7 +212,38 @@ struct Player {
     bool HasAuraState(AuraStateType) const{return true;}
 };
 '''
+methods+='\n'+function(player,'bool Player::IsNeedCastPassiveSpellAtLearn(').replace('IsNeedCastPassiveSpellAtLearn','NativeStanceGate')
+methods+='\nbool Player::IsNeedCastPassiveSpellAtLearn(SpellInfo const*info)const{return eligible&&NativeStanceGate(info);}'
+nurturing.append("void NurturingApply(Player*p,uint32 id){AcNurturing{p,manager.GetSpellInfo(id)}.AfterApply(nullptr,0);}")
+nurturing.append("void NurturingRemove(Player*p,uint32 id){AcNurturing{p,manager.GetSpellInfo(id)}.AfterRemove(nullptr,0);}")
 main=['int main(){ SkillLineAbilityEntry classAbility;']
+for rank,(parent,helper) in enumerate(((33872,47179),(33873,47180)),1):
+    main.append(f'manager.spells[{parent}].Id={parent};manager.spells[{parent}].rank={rank};manager.spells[{parent}].root=33872;')
+    main.append(f'manager.spells[{helper}].Id={helper};manager.spells[{helper}].rank={rank};manager.spells[{helper}].root=47179;manager.spells[{helper}].flags=400;manager.spells[{helper}].Stances=1;')
+    main.append(f'manager.spells[{helper}].Effects[0]={{6,0,118}};manager.first[{helper}]=47179;')
+main.append(r"""
+for(uint8 active:{0,1})for(uint32 parent:{33872,33873})for(uint32 form:{0,1,5,8}){
+    uint32 child=parent==33872?47179:47180;
+    Player ac;ac.m_activeSpec=active;ac.form=form;
+    ac._addTalentAurasAndSpells(parent);
+    assert(ac.m_spells.size()==1&&ac.m_spells.count(child));
+    assert(ac.m_spells[child]->State==PLAYERSPELL_TEMPORARY);
+    assert(ac.auras.count(child)==(form==1));assert(!ac.m_spells.count(child==47179?47180:47179));
+    auto saved=std::make_shared<Transaction>();ac._SaveSpells(saved);assert(saved->saved.empty());
+    ac._removeTalentAurasAndSpells(parent);assert(ac.auras.empty()&&ac.m_spells.empty());
+    // The spec scheduler is mocked; native remove/apply/save bodies are real.
+    ac.m_activeSpec=1-active;uint32 next=parent==33872?33873:33872;
+    ac._addTalentAurasAndSpells(next);assert(ac.m_spells.count(next==33872?47179:47180));
+    ac._removeTalentAurasAndSpells(next);assert(ac.m_spells.empty());
+}
+// Actual same-rank-chain exclusion: TC's lower known helper adds no stacked
+// healing-received aura. Both native implementations keep one helper aura.
+for(bool tc:{false,true}){Player p;p.tcStack=tc;p.CastSpell(&p,47179,true);p.CastSpell(&p,47180,true);assert(p.auras==std::set<uint32>{47180});}
+assert(!manager.spells[47179].TcStackMultiSlot()&&!manager.spells[47180].AcStackMultiSlot());
+Player unsafeNurturing;unsafeNurturing.session.loading=false;unsafeNurturing.form=1;unsafeNurturing._addSpell(47179,3,false);
+unsafeNurturing._addTalentAurasAndSpells(33873);unsafeNurturing._removeTalentAurasAndSpells(33873);
+auto savedUnsafe=std::make_shared<Transaction>();unsafeNurturing._SaveSpells(savedUnsafe);assert(savedUnsafe->saved.count(47179));
+""")
 for family,cls,owners,children in fixtures.NATIVE_PASSIVE_TALENTS:
     for owner in owners:
         row=data['Spell'][owner]
@@ -247,10 +308,10 @@ for(uint32 rank=1;rank<=3;++rank){
         assert(left==expected);
     }
 }
-std::cout << "Protected native passive consumers passed: canonical exact auras, temporary add/remove/save, spec scheduling/relog and persistent-row refusal; state/DB/aura sinks mocked; gameplay NOT TESTED\n";
+std::cout << "Protected native passive/Nurturing consumers passed: canonical exact auras, temporary add/remove/save/stance, spec scheduling/relog and persistent-row refusal; state/DB/aura sinks mocked; gameplay NOT TESTED\n";
 }''')
 with tempfile.TemporaryDirectory() as directory:
     cpp,binary=Path(directory)/'passive.cpp',Path(directory)/'passive'
-    cpp.write_text(mock+'\n'+'\n'.join(stack)+'\n'+methods+'\n'+'\n'.join(callbacks)+'\n'+'\n'.join(main))
+    cpp.write_text(mock+'\n'+'\n'.join(stack)+'\n'+methods+'\n'+'\n'.join(callbacks)+'\n'+'\n'.join(nurturing)+'\n'+'\n'.join(main))
     subprocess.run(['g++','-std=c++17','-Wall','-Wextra','-Werror',str(cpp),'-o',str(binary)],check=True)
     subprocess.run([str(binary)],check=True)

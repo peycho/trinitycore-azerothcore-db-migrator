@@ -1,5 +1,26 @@
 # Profile v2 review and acceptance record
 
+The 2026-10-19 `spell-state-v9` amendment handles Nurturing Instinct's hybrid
+script plus inactive TC world-learning representation. Exact selected AC
+temporary helpers replace TC's internal known-helper prefix under a bounded
+two-rank contract; no helper is persisted or talent/skill ownership changed.
+Reverse conversion delegates prefix restoration to TC's active direct parent.
+Existing protected consumers cover dependency/rank reconstruction, stance,
+non-passive aura-rank exclusion and temporary add/remove/save behavior. Pins,
+manifests, v1 and UNREVIEWED approval are unchanged by this amendment. A fresh
+migration run is required. See the
+[Nurturing contract](spell-reconstruction.md#nurturing-instinct-world-helpers-spell-state-v9).
+
+The 2026-10-19 `spell-state-v8` amendment maps Feral Swiftness's two inactive
+TC world dependencies to AC's exact selected-talent/form helper auras. It
+preserves talents and skill state, stores no helper row, and restores TC's
+active direct parent in reverse so TC can reconstruct its dependent helper.
+Full native stance consumers in `SpellAuraEffects.cpp` join both protected
+manifests and match the retained pins byte for byte. Existing pins, v1 and
+UNREVIEWED approval remain unchanged. Synthetic and protected-consumer tests
+are separate from the outstanding gameplay and production-sized gates.
+See the [contract and acceptance checks](spell-reconstruction.md#feral-swiftness-world-helpers).
+
 The 2026-10-19 `spell-state-v7` correction fixes the Flight Form dependency's
 riding category: the actual 3.3.5 DBC and effective AC overlay use secondary
 category `9`, whereas the prior synthetic fixture and guard used class category
@@ -382,9 +403,11 @@ both rank tables. TC casts the exact helper aura; AC adds the exact helper
 with mask `3`, update `false`, temporary `true`, then removes only temporary
 spells on aura removal. The conversion records the selected owner's mask and
 exact helper as `AURA` without persistent helper rows in either direction.
-The shared helper rank chain does not establish learned predecessor ownership:
-TC casts an aura here rather than learning a spell. The temporary-rank blockers
-for genuinely learned Primal Fury and death-knight children remain unchanged.
+That v4 review covered script-only worlds. The later v9 contract above also
+accounts for explicit inactive TC world edges that do establish a known helper
+prefix; casting by itself still does not establish that prefix. Later reviewed
+native-passive contracts separately cover selected Primal Fury/death-knight
+families. Neither contract grants persistent helper ranks.
 Stored Nurturing helpers, differing bindings and incompatible effective
 parent/helper shapes block explicitly. No zero-mask history policy is added.
 

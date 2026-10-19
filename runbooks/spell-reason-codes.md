@@ -52,7 +52,7 @@ AC can keep only the exact selected child temporarily and omit it from saved
 spell rows. Persisting every internal rank could outlive the talent or produce
 incorrect specialization behavior.
 
-The policy introduced in `spell-state-v6` and retained in `spell-state-v7`
+The policy introduced in `spell-state-v6` and retained in `spell-state-v9`
 supports the reviewed Primal Fury, Will of the Necropolis, On a Pale Horse and
 Blood Gorged families. It preserves exact selected talents and spec ownership,
 delegates the selected passive child to AC, and does not persist superseded
@@ -95,6 +95,7 @@ both cores' chains and native runtime behavior before extending support.
 | `UNSUPPORTED_AURA_HELPER_SPELL_ROW` | A native aura/temporary helper is stored as a persistent player spell. Review the exact helper row separately from the owning talent. |
 | `UNSUPPORTED_TALENT_AURA_SCRIPT` | A recognized talent-aura script's parent/helper effects, visibility, gates or rank identity differ from its reviewed rule. |
 | `INCOMPATIBLE_TALENT_AURA_SCRIPT` | TC/AC aura-script bindings or helper predecessor chains differ. Compare both effective bindings and chains. |
+| `INCOMPATIBLE_WORLD_TALENT_AURA` | A reviewed TC world-helper/AC native-aura mapping fails its class, exact rank, inactive learn edge, script/form binding, effect, stance or excluded-route contract. Compare the named parent/helper and both effective catalogs; do not persist the helper to bypass the failure. |
 | `UNSUPPORTED_DEPENDENT_LEARN` | TC would restore a learned child without a verified compatible native AC dependency or reviewed persistent mapping. Inspect parent/child and active/auto-learn metadata. |
 | `UNREPRESENTABLE_INACTIVE_DEPENDENCY` | A learned child is inactive in TC, but the reviewed representation cannot preserve that availability in AC. |
 | `CONDITIONAL_DEPENDENT_LEARN` | A dependency reached through spell effects has stance/aura-state conditions that prevent unconditional reconstruction. |
@@ -146,3 +147,15 @@ Supporting a previously blocked representation requires reviewed compatibility
 rules and relevant tests, not a code rename or report edit. Passing these checks
 does not replace the [staging gameplay gates](spell-reconstruction.md#validation-and-staging-gameplay-gate).
 Release approval remains **UNREVIEWED** until its acceptance gates pass.
+
+`spell-state-v8` supports Feral Swiftness's exact `17002 -> 24867` and
+`24866 -> 24864` inactive world edges through native AC selected-talent/form
+auras. It does not rename or remove `UNSUPPORTED_DEPENDENT_LEARN` for other
+relationships. See the [world-helper contract](spell-reconstruction.md#feral-swiftness-world-helpers).
+
+`spell-state-v9` additionally supports Nurturing Instinct's exact inactive
+`33872 -> 47179` and `33873 -> 47180` world edges, with TC-only known prefixes
+and AC exact temporary helpers. Unexpected mechanics or incoming/outgoing
+routes remain `INCOMPATIBLE_WORLD_TALENT_AURA`; stored helpers still report
+`UNSUPPORTED_AURA_HELPER_SPELL_ROW`. See the
+[ranked world-helper contract](spell-reconstruction.md#nurturing-instinct-world-helpers-spell-state-v9).

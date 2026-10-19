@@ -29,7 +29,8 @@ class World:
     def __init__(self):
         self.tables = {
             'spell_ranks': [[str(chain[0]),str(spell),str(rank)] for chain in fixtures.CHAINS+fixtures.NATIVE_PASSIVE_CHAINS for rank,spell in enumerate(chain,1)]
-                           + [['47179','47179','1'],['47179','47180','2']],
+                           + [['47179','47179','1'],['47179','47180','2'],
+                              ['17002','17002','1'],['17002','24866','2']],
             'spell_required': [['25899','20911'], ['5209','5487']],
             'spell_learn_spell': [['900011','900012','1'],['53428','53341','1'],['53428','53343','1'],['33943','34090','1']],
             'spell_script_names': [['-33872','spell_dru_nurturing_instinct']],
@@ -42,6 +43,10 @@ class World:
                                       ['40326','spell_teron_gorefiend_shadowy_construct']])
         if world=='ac' and table=='spell_ranks':
             rows += [['44440','44440','1'],['44440','44441','2']]
+        if world=='tc' and table=='spell_learn_spell':
+            rows += [['17002','24867','0'],['24866','24864','0']]
+        if world=='ac' and table=='spell_script_names':
+            rows += [[str(s),'spell_dru_feral_swiftness'] for s in (-17002,5487,9634)]
         if table=='trainer_spell':
             return rows
         return sorted(rows,key=lambda row:int(row[0]))
@@ -486,6 +491,116 @@ class SpellTests(unittest.TestCase):
             else:tc.learns[53428][0]=(53341,0,False)
             self.fails('UNSUPPORTED_DEPENDENT_LEARN',lambda:self.convert({53428:(1,0)},skills={776:(1,1)},cls=6,tc=tc,ac=ac))
 
+    def test_feral_swiftness_world_helpers_delegate_exact_rank_and_spec_both_directions(self):
+        for active in (0,1):
+            for reverse in (False,True):
+                result=self.convert({}, {17002:1,24866:2},cls=11,active=active,reverse=reverse)
+                self.assertEqual(set(result),{17002,24866,24867,24864})
+                for parent,child,mask in ((17002,24867,1),(24866,24864,2)):
+                    self.assertEqual(result[parent]['disposition'],
+                        'PERSISTENT' if reverse and mask & (1<<active) else 'TALENT')
+                    row=result[child]
+                    self.assertEqual((row['disposition'],row['mask'],row['derived']),('AURA',mask,True))
+                    self.assertEqual(row['authorization']['owner_masks'],[(parent,mask)])
+                    contract=row['authorization']['world_talent_aura']
+                    self.assertEqual((contract['tc_active'],contract['tc_dependent']),(0,True))
+                    self.assertEqual(contract['target_representation'],
+                        'TC_NATIVE_DEPENDENT_RESTORE' if reverse else 'AC_SELECTED_TALENT_AURA')
+                    self.assertTrue(any(p[2]=='TC_WORLD_TALENT_AURA' for p in row['proofs']))
+                    self.assertNotIn(5487,result)
+        both=self.convert({}, {24866:3},cls=11)
+        self.assertEqual(set(both),{24866,24864})
+        self.assertEqual(both[24864]['mask'],3)
+        self.assertEqual(self.convert({},cls=11),{})
+
+    def test_feral_stored_parents_keep_flags_and_overlap_without_granting_higher_rank(self):
+        for active in (0,1):
+            stored={17002:(1,int(active!=0)),24866:(1,int(active!=1))}
+            skills={134:(400,400)}
+            before=copy.deepcopy((stored,skills))
+            result=self.convert(stored,{17002:1,24866:2},cls=11,active=active,skills=skills)
+            self.assertEqual((stored,skills),before)
+            self.assertEqual(result[24864]['mask'],2)
+            self.assertEqual(result[24867]['mask'],1)
+            self.assertEqual(result[24866]['original'],list(stored[24866]))
+        result=self.convert({17002:(1,0)}, {17002:3},cls=11)
+        self.assertEqual(set(result),{17002,24867})
+        self.fails('TC_SPELL_OWNERSHIP_CONFLICT',lambda:self.convert({24866:(1,0)},{24866:2},cls=11))
+        self.fails('UNREPRESENTABLE_DISABLED_SPELL',lambda:self.convert({24866:(1,1)},{24866:1},cls=11))
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({24866:(1,1)},cls=11))
+
+    def test_feral_persisted_helpers_block_without_guessing_ownership(self):
+        for child in (24867,24864):
+            for reverse in (False,True):
+                for owners in ({},{17002:1,24866:2}):
+                    flags=(3,0) if reverse else (0,0)
+                    self.fails('UNSUPPORTED_AURA_HELPER_SPELL_ROW',lambda:self.convert(
+                        {child:flags},owners,cls=11,reverse=reverse))
+        self.fails('INVALID_TALENT_OWNERSHIP',lambda:self.convert({}, {24866:1},cls=1))
+
+    def test_feral_contract_rejects_world_script_rank_and_effect_drift(self):
+        for mutation in ('active','missing-edge','extra-edge','target-edge','parent-rank','child-rank',
+                         'missing-form-script','extra-script-binding','missing-parent-script',
+                         'paired-basepoints','paired-stance','paired-diesides','paired-duration','paired-item',
+                         'paired-aura-gate','paired-parent-attributes','paired-helper-attributes',
+                         'paired-excluded-stance','helper-skill',
+                         'trainer','requirements','extra-parent-learn','form-type','profile'):
+            tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+            if mutation=='active':tc.learns[24866]=[(24864,1,False)]
+            elif mutation=='missing-edge':tc.learns[17002]=[]
+            elif mutation=='extra-edge':tc.learns[17002].append((6603,0,False))
+            elif mutation=='target-edge':ac.learns[24866].append((24864,0,False))
+            elif mutation=='parent-rank':ac.position[24866]=(24866,0)
+            elif mutation=='child-rank':tc.add_chain((24867,24864))
+            elif mutation=='missing-form-script':ac.scripts[5487].clear()
+            elif mutation=='extra-script-binding':ac.scripts[6603].add('spell_dru_feral_swiftness')
+            elif mutation=='missing-parent-script':ac.scripts[17002].clear()
+            elif mutation=='paired-basepoints':tc.spells[24864][80]=ac.spells[24864][80]=50
+            elif mutation=='paired-stance':tc.spells[24864][12]=ac.spells[24864][12]=1
+            elif mutation=='paired-diesides':tc.spells[24864][74]=ac.spells[24864][74]=5
+            elif mutation=='paired-duration':tc.spells[24864][40]=ac.spells[24864][40]=1
+            elif mutation=='paired-item':tc.spells[24864][68]=ac.spells[24864][68]=2
+            elif mutation=='paired-aura-gate':tc.spells[24864][24]=ac.spells[24864][24]=6603
+            elif mutation=='paired-parent-attributes':tc.spells[24866][6]=ac.spells[24866][6]=0x80000
+            elif mutation=='paired-helper-attributes':tc.spells[24864][5]=ac.spells[24864][5]=0
+            elif mutation=='paired-excluded-stance':tc.spells[24864][13]=ac.spells[24864][13]=1
+            elif mutation=='helper-skill':ac.abilities[24864].append([1,171,24864,0,0,0,0,1,0,2,0])
+            elif mutation=='trainer':ac.trainer_taught.add(24864)
+            elif mutation=='requirements':ac.requires[24864].add(6603)
+            elif mutation=='extra-parent-learn':tc.learn_parents[24864].add(6603)
+            elif mutation=='form-type':tc.spells[5487][110]=ac.spells[5487][110]=1
+            else:ac.world_talent_auras['807']['class']=1
+            with self.subTest(mutation=mutation):
+                self.fails('INCOMPATIBLE_WORLD_TALENT_AURA',lambda:self.convert(
+                    {}, {24866:1},cls=11,tc=tc,ac=ac))
+
+    def test_feral_cycle_is_not_hidden_by_aura_delegation(self):
+        tc=copy.deepcopy(self.tc)
+        tc.learns[24864].append((24866,0,False))
+        self.fails('CYCLIC_SPELL_RELATIONSHIP',lambda:self.convert({}, {24866:1},cls=11,tc=tc))
+
+    def test_feral_regression_old_unmapped_dependency_blocks(self):
+        tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+        tc.world_talent_auras.clear()
+        ac.world_talent_auras.clear()
+        self.fails('UNSUPPORTED_DEPENDENT_LEARN',lambda:self.convert({24866:(1,0)}, {24866:1},cls=11,tc=tc,ac=ac))
+        result=self.convert({24866:(1,0)}, {24866:1},cls=11)
+        self.assertEqual((result[24864]['disposition'],result[24864]['mask']),('AURA',1))
+
+    def test_feral_semantic_round_trip_preserves_owners_and_skills(self):
+        skills={134:(400,400),171:(320,450),762:(300,300)}
+        owners={17002:1,24866:2}
+        for active in (0,1):
+            forward=self.convert({9634:(1,0)},owners,cls=11,active=active,skills=skills)
+            ac_rows={s:(r['mask'],0) for s,r in forward.items() if r['disposition']=='PERSISTENT'}
+            reverse=self.convert(ac_rows,owners,cls=11,active=active,skills=skills,reverse=True)
+            tc_rows={s:(r['active'],r['disabled']) for s,r in reverse.items() if r['disposition']=='PERSISTENT'}
+            again=self.convert(tc_rows,owners,cls=11,active=active,skills=skills)
+            for spell in forward:
+                self.assertEqual((again[spell]['mask'],again[spell]['disposition']),
+                                 (forward[spell]['mask'],forward[spell]['disposition']))
+            self.assertEqual(skills,{134:(400,400),171:(320,450),762:(300,300)})
+
     def test_nurturing_instinct_uses_native_transient_helpers_without_spell_rows(self):
         for active in (0,1):
             for reverse in (False,True):
@@ -522,6 +637,86 @@ class SpellTests(unittest.TestCase):
             else:ac.scripts[6603].add('spell_dru_nurturing_instinct')
             reason='INVALID_TALENT_OWNERSHIP' if mutation=='rank' else 'UNSUPPORTED_TALENT_AURA_SCRIPT'
             self.fails(reason,lambda:self.convert({6603:(1,0)}, {33873:1},cls=11,ac=ac))
+
+    def nurturing_world(self):
+        tc=copy.deepcopy(self.tc)
+        for parent,child in ((33872,47179),(33873,47180)):
+            tc.learns[parent].append((child,0,False))
+            tc.learn_parents[child].add(parent)
+        return tc
+
+    def test_nurturing_world_known_prefix_uses_exact_ac_rank_and_reverse_parent(self):
+        tc=self.nurturing_world()
+        for active in (0,1):
+            for owners in ({33873:3},{33872:1,33873:2},{33872:2,33873:1},{33872:1}):
+                stored={p:(1,int(not m&(1<<active))) for p,m in owners.items()}
+                skills={134:(400,400),171:(320,450)}
+                snapshot=copy.deepcopy((stored,owners,skills))
+                forward=self.convert(stored,owners,cls=11,active=active,skills=skills,tc=tc)
+                self.assertEqual(set(forward),set(owners)|{47179 if p==33872 else 47180 for p in owners})
+                for parent,mask in owners.items():
+                    helper=47179 if parent==33872 else 47180
+                    row=forward[helper]
+                    self.assertEqual((row['disposition'],row['mask']),('AURA',mask))
+                    self.assertEqual(row['authorization']['owner_masks'],[(parent,mask)])
+                    proof=row['authorization']['ranked_world_talent_aura']
+                    self.assertEqual(proof['tc_known_predecessors'],[] if helper==47179 else [47179])
+                    self.assertEqual(proof['target_representation'],'AC_NATIVE_EXACT_TEMPORARY')
+                    self.assertTrue(all(p[2]=='TC_WORLD_RANKED_TALENT_AURA' for p in row['proofs']))
+                reverse=self.convert({},owners,cls=11,active=active,skills=skills,tc=tc,reverse=True)
+                self.assertEqual({p for p,r in reverse.items() if r['disposition']=='PERSISTENT'},
+                                 {p for p,m in owners.items() if m&(1<<active)})
+                again=self.convert({p:(r['active'],r['disabled']) for p,r in reverse.items()
+                                    if r['disposition']=='PERSISTENT'},owners,cls=11,active=active,skills=skills,tc=tc)
+                self.assertEqual({p:(r['mask'],r['disposition']) for p,r in forward.items()},
+                                 {p:(r['mask'],r['disposition']) for p,r in again.items()})
+                self.assertEqual((stored,owners,skills),snapshot)
+
+    def test_nurturing_world_regression_old_script_only_mapping_cannot_restore_known_edges(self):
+        tc=self.nurturing_world()
+        tc.world_ranked_talent_auras={}
+        self.fails('UNSUPPORTED_DEPENDENT_LEARN',lambda:self.convert({33873:(1,0)}, {33873:1},cls=11,tc=tc))
+        result=self.convert({33873:(1,0)}, {33873:1},cls=11,tc=self.nurturing_world())
+        self.assertEqual(set(result),{33873,47180})
+
+    def test_nurturing_world_mechanics_and_route_mutations_remain_blocked(self):
+        for core in ('tc','ac'):
+            for field in (4,5,12,20,21,31,36,40,49,68,71,74,80,86,95,110,116,125,208,209):
+                tc,ac=self.nurturing_world(),copy.deepcopy(self.ac)
+                metadata=tc if core=='tc' else ac
+                metadata.spells[47179][field]^=1
+                with self.subTest(core=core,field=field):
+                    with self.assertRaises(Unsupported) as error:
+                        self.convert({}, {33873:1},cls=11,tc=tc,ac=ac)
+                    self.assertIn(error.exception.reason,('INCOMPATIBLE_WORLD_TALENT_AURA','UNSUPPORTED_TALENT_AURA_SCRIPT'))
+        for mutation in ('active','auto','missing','extra','outgoing','incoming','trainer','skill','prefix'):
+            tc,ac=self.nurturing_world(),copy.deepcopy(self.ac)
+            if mutation=='active':tc.learns[33873]=[(47180,1,False)]
+            elif mutation=='auto':tc.learns[33873]=[(47180,0,True)]
+            elif mutation=='missing':tc.learns[33872].clear()
+            elif mutation=='extra':tc.learns[33873].append((6603,0,False))
+            elif mutation=='outgoing':tc.learns[47179].append((6603,1,False))
+            elif mutation=='incoming':ac.learn_parents[47179].add(6603)
+            elif mutation=='trainer':ac.trainer_taught.add(47179)
+            elif mutation=='skill':ac.abilities[47179].append([1,134,47179,0,1024,0,0,1,0,2,0])
+            else:ac.chains[47179]=(47179,)
+            with self.subTest(mutation=mutation):
+                self.fails('INCOMPATIBLE_WORLD_TALENT_AURA',lambda:self.convert({}, {33873:1},cls=11,tc=tc,ac=ac))
+
+    def test_nurturing_world_never_accepts_stored_helpers_or_unowned_parents(self):
+        for helper in (47179,47180):
+            for flags in ((0,0),(1,0),(1,1)):
+                self.fails('UNSUPPORTED_AURA_HELPER_SPELL_ROW',
+                           lambda:self.convert({helper:flags},{33873:3},cls=11,tc=self.nurturing_world()))
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({33873:(1,1)},cls=11,tc=self.nurturing_world()))
+
+    def test_nurturing_world_paired_drift_and_cycles_do_not_bypass_contract(self):
+        tc,ac=self.nurturing_world(),copy.deepcopy(self.ac)
+        tc.spells[47179][80]=ac.spells[47179][80]=10
+        self.fails('INCOMPATIBLE_WORLD_TALENT_AURA',lambda:self.convert({}, {33873:3},cls=11,tc=tc,ac=ac))
+        tc=self.nurturing_world()
+        tc.learns[47179].append((33873,1,False))
+        self.fails('CYCLIC_SPELL_RELATIONSHIP',lambda:self.convert({}, {33873:1},cls=11,tc=tc))
 
     def test_native_aliases_and_enum_field_copy_corrections(self):
         for metadata in [self.tc,self.ac]:
