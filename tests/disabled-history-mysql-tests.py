@@ -448,6 +448,23 @@ backup_reference=disposable-synthetic-fixture
             passed('v5 selected-rank authority: both specs/different ranks and flags retained, lower/higher stale disabled rows only; enabled conflicts/pending/foreign/invalid owners excluded; source/world drift, late rollback, rerun, fresh audit and exact restore')
             sql(f'DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 40 AND 46; DELETE FROM `{source}`.character_skills WHERE guid=40; DELETE FROM `{source}`.character_talent WHERE guid BETWEEN 40 AND 46; DELETE FROM `{source}`.characters WHERE guid BETWEEN 40 AND 46;')
             assert checksum()==baseline
+            saved_report=work/'migration-blockers.tsv'
+            saved_report.write_text('guid\tspell\treason_code\tdetail\n1\t*\tUNAUTHORIZED_TALENT_SPELL\t12282: stored_flags=(1, 1)\n2\t*\tUNSUPPORTED_DEPENDENT_LEARN\t33943:34090: no verified native AC dependency\n')
+            active_before=(session()/'active-batch.json').read_bytes() if (session()/'active-batch.json').exists() else None
+            captured=run('inspect-migration-blockers','--report',str(saved_report),'--bundle')
+            evidence=Path(captured.stdout.split('Reports: ',1)[1].splitlines()[0].strip())
+            assert Path(captured.stdout.split('Bundle: ',1)[1].strip()).is_file()
+            details=json.loads((evidence/'inspection.json').read_text())
+            state=json.loads((evidence/'source-state.json').read_text())['rows']
+            assert details['reported_characters']==2 and details['cleanup_approval']=='NOT_GRANTED',details
+            assert details['migration_approval']=='UNREVIEWED' and details['dbc_sha256'],details
+            for table in ('characters','character_spell','character_talent','character_skills'):
+                assert len(state.get(table,[]))==int(sql(f'SELECT COUNT(*) FROM `{source}`.`{table}` WHERE guid IN (1,2)')),table
+            assert (evidence/'tc-world.json').exists() and (evidence/'SHA256SUMS').exists()
+            assert not list(evidence.glob('*.sql')) and not (evidence/'INCOMPLETE').exists()
+            assert checksum()==baseline
+            assert ((session()/'active-batch.json').read_bytes() if (session()/'active-batch.json').exists() else None)==active_before
+            passed('saved migration blocker context with SELECT-only credentials: complete ordinary/direct spell, both-spec talent and skill rows; TC world/DBC fingerprints; source/auth/world and active batch unchanged; no executable cleanup')
             scale=int(os.environ.get('HISTORY_SCALE_ROWS','0'))
             if scale:
                 assert 1<=scale<=200000

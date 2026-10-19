@@ -285,6 +285,13 @@ characters, not an exhaustive list of bad rows. A script/correction guard can
 mean that compatibility has not been reviewed; it does not prove corrupt data.
 Use the script inventory to review bindings hidden behind earlier failures
 without repeatedly running preflight to discover one more stored script.
+For several remaining categories, the preparation console's
+[saved blocker context command](cleanup-console.md#review-a-saved-migration-blocker-report)
+captures all spell flags, both talent groups, skill state and TC world metadata
+for every reported GUID together. It makes no source changes and is not another
+migration preflight. It cannot establish target overlay compatibility, exhaustive
+failures or a cleanup selection; it supplies the full context needed to review
+first-character failures in groups.
 Print unresolved bindings from the saved JSON (replace the path):
 
 ```bash

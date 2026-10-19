@@ -158,6 +158,15 @@ Python policy units run in static CI.
 
 ## Disposable MySQL fixture rehearsals
 
+Saved migration-blocker context units cover strict TSV parsing, duplicate GUIDs,
+numeric and size bounds, literal untrusted details, deterministic grouping,
+private sealed output, missing source characters and incomplete evidence after
+failure. The disabled-history MySQL suite also executes this command with the
+SELECT-only reader, verifies complete spell/talent/skill rows for the requested
+GUIDs and TC world/DBC fingerprints, and checks unchanged source/auth/world
+checksums and active-batch selection. This diagnostic command emits no executable
+cleanup package and changes no reconstruction/cleanup policy or approval.
+
 Python 3, g++ (C++17), MySQL 8 client tools, and a dedicated disposable MySQL **8.4.x** server
 are required. The harness needs an administrator named `root` that can create
 users and databases. It accepts localhost only and rejects port 3306.

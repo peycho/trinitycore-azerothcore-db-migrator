@@ -54,7 +54,7 @@ def toolkit_hashes():
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
-           'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','lib/cleanup_talent_relations.py','lib/cleanup_selected_rank_history.py','tools/disabled-talent-history.sql.in')
+           'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','lib/cleanup_talent_relations.py','lib/cleanup_selected_rank_history.py','lib/cleanup_migration_evidence.py','tools/disabled-talent-history.sql.in')
     hashes={}
     for name in names:
         path=ROOT/name
@@ -641,6 +641,9 @@ def parser():
     inspect=commands.add_parser('inspect-items',help='Report zero-entry containers and their contents; no item deletion')
     history=commands.add_parser('inspect-spell-history',help='Review direct talent history against both talent groups; no cleanup or preflight')
     history.add_argument('--audit',help='Full audit ID in this session; defaults to latest completed audit')
+    blockers=commands.add_parser('inspect-migration-blockers',help='Capture read-only source context for every character in a saved migration blocker TSV; no cleanup or preflight')
+    blockers.add_argument('--report',required=True,help='Path to saved spell-state-blockers.tsv from the migration toolkit')
+    blockers.add_argument('--bundle',action='store_true',help='Also create a private tar.gz in the operation directory for offline review')
     plans=commands.add_parser('plan',help='Generate private SQL and a reviewable manifest; no source writes')
     types=plans.add_subparsers(dest='kind',required=True)
     talents=types.add_parser('talents',help='Only verified TALENT_VALUE_IS_NOT_RANK_SPELL rows')
@@ -712,6 +715,9 @@ def main(argv=None):
                 elif args.command=='inspect-spell-history':
                     from cleanup_spell_history import inspect_history
                     inspect_history(settings,work,args)
+                elif args.command=='inspect-migration-blockers':
+                    from cleanup_migration_evidence import inspect
+                    inspect(settings,work,args)
                 elif args.command=='status':
                     command_status(settings,work,args)
                 else:

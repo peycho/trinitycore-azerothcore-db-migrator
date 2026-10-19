@@ -175,6 +175,59 @@ character state are read again in one read-only consistent snapshot. Schema,
 DBC or report drift blocks inspection. Unrelated same-count data changes are
 not detected as a replay of the earlier audit. No profile approval changes.
 
+## Review a saved migration blocker report
+
+When several migration spell categories remain, capture their complete source
+context together instead of deleting every audit finding or repeatedly rerunning
+preflight. With the existing preparation config and session:
+
+```bash
+python3 console inspect-migration-blockers \
+  --report /secure/migration-reports/RUN_ID/spell-state-blockers.tsv --bundle
+```
+
+This performs SELECT only through the configured audit account. It creates no
+archive schema, cleanup batch or executable SQL and leaves the active batch
+unchanged. The saved file is treated as data, never as instructions or SQL.
+The expected input is the migrator's four-column, first-failure-per-character
+TSV. Invalid headers, duplicate GUIDs, numeric/control-character errors and
+oversized inputs fail with structured errors. Limits are 128 MiB, 40000 reported
+characters, 16384 characters per detail and 5000000 captured semantic rows;
+exceeding a limit blocks instead of truncating.
+
+The private `inspections/*-migration-blockers/` directory contains:
+
+- Original `spell-state-blockers.tsv` and its SHA-256 fingerprint.
+- `groups.tsv`: reason, spell, reported flags, exact detail and character count.
+- `source-state.json`: all spell flags, both talent groups, skill values/caps and
+  character race/class/level/spec/online/login state for every reported GUID.
+- `character-context.jsonl`: the same complete per-character context beside its
+  reported blocker, with explicit comparisons where the report supplies flags.
+- `tc-world.json`: effective TC world input tables with layouts and fingerprints;
+  `spell-metadata-profile.json` and DBC hashes identify the metadata interpretation.
+- `inspection.json`, `README.md` and `SHA256SUMS`: provenance, limits and sealed
+  evidence. Failures retain an `INCOMPLETE` directory plus the operation journal.
+
+Retain or transfer the whole private directory for consolidated offline review.
+The optional `--bundle` writes `migration-blocker-context.tar.gz` into the private
+operation directory and prints its path. `bundle.json` records its SHA-256; the
+archive contains exactly the sealed inspection files and no client config.
+No passwords are exported, but player evidence must remain private. This captures
+a **new** read-only source snapshot, not a replay of the migration run. Missing
+characters and mismatched reported flags are recorded; the saved file does not
+prove the current source is unchanged. Character tables share one consistent
+snapshot; TC world metadata uses a separate consistent snapshot. Target-world
+overlays are not captured. These semantic fields are not full-row restore
+archives and cannot be used as a cleanup package.
+
+The report shows only the first failure per character. Direct talent history
+does not cover all trained/indirect ranks, and an unsupported temporary chain
+can be valid source data with no reviewed target representation. Missing skills
+or prerequisites do not authorize grants. Enabled records do not authorize
+deletion. Review complete ownership, effective relationships and native consumers
+before implementing a fix or preparing exact source changes. Migration approval
+remains `UNREVIEWED`.
+
 ## Archive eligible disabled direct talent history
 
 After reviewing the inspection totals, use its exact disabled/no-selected-family

@@ -56,6 +56,13 @@ earlier policy flags. Native loading of retained builds still needs acceptance.
 
 ## Run a standalone read-only audit
 
+If migration preflight remains blocked across multiple spell categories, use
+the [saved blocker context command](cleanup-console.md#review-a-saved-migration-blocker-report)
+to collect complete spell/talent/skill state for every reported character in one
+read-only inspection. It retains TC world inputs and DBC fingerprints alongside
+the report, without making a cleanup selection. Do not infer migration readiness
+from a falling source-audit count or treat compatibility gaps as corrupt rows.
+
 Use `tools/audit-tc-source.py` from the repository checkout. It does not require
 an approved migration profile, target databases or a control schema. It uses
 the bundled profile's TC DBC layouts as diagnostic metadata; it cannot approve
