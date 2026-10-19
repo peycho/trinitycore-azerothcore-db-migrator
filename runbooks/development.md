@@ -25,6 +25,14 @@ that workflow or locally using the instructions below, and record the result.
 Documentation-only and other changes without migration behavior do not require
 the full database suite.
 
+Private snapshot redaction has a focused MySQL test,
+`tests/character-share-mysql-tests.py`, also included in the full rehearsal.
+It verifies the standalone SQL procedure against every stock table/column,
+unknown metadata and executable objects, late-error rollback, row and gameplay
+state preservation, idempotency and an actual dump/restore. See the
+[snapshot sharing guide](sharing-character-snapshot.md) for its dedicated-server
+command. It does not change migration mappings or loader behavior.
+
 ## Static checks
 
 Install ShellCheck, Python 3 and the tools listed in the migration guide, and make both

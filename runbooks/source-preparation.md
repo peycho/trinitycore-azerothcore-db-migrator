@@ -63,6 +63,12 @@ resets remain deferred. Complete affected originals are archived before apply.
 
 ## Run a standalone read-only audit
 
+For private reproduction outside your environment, use the separate
+[character snapshot redaction procedure](sharing-character-snapshot.md).
+It clears channel passwords, mail/support text, notes and client caches only in
+a disposable `_share` copy. It preserves migration-relevant rows and reports
+unreviewed custom fields; it does not replace the audit/cleanup process below.
+
 If migration preflight remains blocked across multiple spell categories, use
 the [saved blocker context command](cleanup-console.md#review-a-saved-migration-blocker-report)
 to collect complete spell/talent/skill state for every reported character in one

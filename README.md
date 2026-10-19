@@ -30,6 +30,7 @@ is historical and requires the corresponding older toolkit release.
 | --- | --- |
 | [Migration guide](runbooks/migration-guide.md) | Complete operator workflow; start here |
 | [Source inspection and preparation](runbooks/source-preparation.md) | Read-only legacy-data audit and reviewed cleanup workflow |
+| [Private snapshot sharing](runbooks/sharing-character-snapshot.md) | Redact a disposable character dump while preserving migration evidence |
 | [Cleanup shell console](runbooks/cleanup-console.md) | One config, private sessions, talent/item/skill plans, apply and exact restore |
 | [Invalid talent cleanup](runbooks/talent-cleanup.md) | Generate exact-row archive, apply and restore SQL from an audit |
 | [Migration behavior](runbooks/migration-behavior.md) | Data policies and semantic transforms |
