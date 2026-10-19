@@ -298,6 +298,9 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     sql("UPDATE item_instance SET charges='1 2 3 4 5 ',enchantments=REPEAT('0 ',36) WHERE guid=200", CHARS)
     sql("INSERT INTO guild_bank_item (guildid,TabId,SlotId,item_guid) VALUES (940,0,0,201)", CHARS)
     print('Checking research and hidden talent-child blockers',flush=True)
+    spell_guard('SPELL_WOULD_CHANGE_SKILL',
+        f'UPDATE `{CHARS}`.characters SET activeTalentGroup=1 WHERE guid=130',
+        f'UPDATE `{CHARS}`.characters SET activeTalentGroup=0 WHERE guid=130')
     spell_guard('UNREPRESENTABLE_TEACHER_STATE',
         f'UPDATE `{CHARS}`.characters SET talentGroupsCount=1 WHERE guid=126',
         f'UPDATE `{CHARS}`.characters SET talentGroupsCount=2 WHERE guid=126')
@@ -455,6 +458,13 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=38795',3)
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=60893',3)
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=113 AND spell=674',3)
+    for guid,mask in ((130,2),(131,1)):
+        equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid={guid}',0)
+        equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_skills WHERE guid={guid}',0)
+        equal(f'SELECT spell,specMask FROM `{AC_CHARS}`.character_talent WHERE guid={guid}',f'30798\t{mask}')
+        equal(f"SELECT disposition,spec_mask FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid={guid} AND spell=674",f'RUNTIME\t{mask}')
+        equal(f"SELECT JSON_UNQUOTE(JSON_EXTRACT(provenance,'$.authorization.inactive_talent_skill.policy')) FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid={guid} AND spell=674",'NATIVE_INACTIVE_DUAL_WIELD')
+        equal(f"SELECT JSON_EXTRACT(provenance,'$.authorization.inactive_talent_skill.skill_granted') FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid={guid} AND spell=674",'false')
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=119 AND specMask=3',len(SPELL_FIXTURES.RUNEFORGING)-1)
     for guid,spell in [(120,7744),(112,37377),(113,40081),(112,40326)]:
         equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid={guid} AND spell={spell}',3)
@@ -575,6 +585,7 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES '+','.join(
         f'(119,{spell},3)' for spell in [*SPELL_FIXTURES.RUNEFORGING,53428]),AC_CHARS)
     sql('INSERT INTO character_talent (guid,spell,specMask) VALUES (115,33872,1),(115,33873,2),(125,33872,1),(125,33873,2)',AC_CHARS)
+    sql('INSERT INTO character_talent (guid,spell,specMask) VALUES (130,30798,2),(131,30798,1)',AC_CHARS)
     sql('INSERT INTO character_talent (guid,spell,specMask) VALUES (115,17002,1),(115,24866,2),(125,17002,1),(125,24866,2)',AC_CHARS)
     sql('INSERT INTO character_talent (guid,spell,specMask) VALUES (123,37117,1),(123,37116,2),'
         '(124,50150,1),(124,51267,1),(124,61158,2)',AC_CHARS)
@@ -630,6 +641,11 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     phase(reverse, 'validate')
     assert_ready(rv)
     equal(f'SELECT active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid=113 AND spell=674','1\t0')
+    for guid,group in ((130,1),(131,0)):
+        equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid={guid}',0)
+        equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_skills WHERE guid={guid}',0)
+        equal(f'SELECT spell,talentGroup FROM `{TC_CHARS}`.character_talent WHERE guid={guid}',f'30798\t{group}')
+        equal(f"SELECT disposition FROM `{RC}`.spell_provenance WHERE run_id='{rv['MIGRATION_RUN_ID']}' AND guid={guid} AND spell=674",'RUNTIME')
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=119 AND active=1 AND disabled=0',len(SPELL_FIXTURES.RUNEFORGING)-1)
     for guid,spell in [(120,7744),(112,37377),(113,40081),(112,40326)]:
         equal(f'SELECT active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid={guid} AND spell={spell}','1\t0')

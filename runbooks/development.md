@@ -33,6 +33,21 @@ idempotency and an actual dump/restore. See the
 [snapshot sharing guide](sharing-character-snapshot.md) for its dedicated-server
 command. It does not change migration mappings or loader behavior.
 
+## Inactive Dual Wield v12 checks
+
+Units cover both active specs and migration directions, exact runtime ownership,
+unchanged missing skills, deterministic results and metadata drift. Active/shared
+owners, stored children, malformed existing skills and other classes retain
+their guards. MySQL includes both inactive-spec books, no persistent child or
+skill grant, committed provenance, exact reverse selections and an active-spec
+negative control, through the existing transactional/resume/rerun suite.
+
+The passive runtime harness executes AC's protected talent activation gate,
+full temporary add/remove/save consumers and skill update path with mocked
+state/catalogs. It verifies no inactive child/skill, native `1/1` creation on
+activation and removal with its owner. Scheduling, casts and database sinks
+remain mocked; full staging gameplay is a separate gate.
+
 ## Ordinary training prerequisites v11 checks
 
 Units preserve known ordinary spells and verified predecessors without granting

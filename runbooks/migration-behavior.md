@@ -80,6 +80,11 @@ the selected mapping registries.
   ordinary parents without granting them. Talent-linked requirements continue
   to constrain selected spec ownership. See the
   [ordinary training contract](spell-reconstruction.md#ordinary-training-prerequisites-spell-state-v11).
+  Under `spell-state-v12`, an absent Dual Wield child of Shaman talent `30798`
+  selected only in the inactive spec remains native runtime state without
+  inserting missing skill `118`. Active/shared owners and stored child rows
+  retain skill checks; see the
+  [inactive talent contract](spell-reconstruction.md#inactive-dual-wield-talent-spell-state-v12).
 - Cooldown category/end fields are consolidated with the later expiration time.
 - Instance extension enum value `EXTENDED` becomes the target boolean.
 - Item and money loot tables merge into `item_loot_storage`; money is stored as

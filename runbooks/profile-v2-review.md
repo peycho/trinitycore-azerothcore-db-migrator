@@ -1,5 +1,15 @@
 # Profile v2 review and acceptance record
 
+The 2026-10-19 `spell-state-v12` amendment fixes an overstrict skill check for
+Shaman Dual Wield selected only in the inactive spec. Under the exact reviewed
+`30798 -> 674` contract, an absent skill `118` stays absent and the unpersisted
+child remains native runtime state in both directions. Active/shared owners,
+stored children and other skills retain their guards. Provenance records the
+inactive owner and no skill grant. Existing protected consumers cover the
+behavior; pins, manifests, metadata profile, v1 and UNREVIEWED approval remain
+unchanged. Use fresh target/control schemas and run identity. See the
+[contract](spell-reconstruction.md#inactive-dual-wield-talent-spell-state-v12).
+
 The 2026-10-19 `spell-state-v11` amendment corrects an overstrict requirement
 check: the reviewed native loaders retain existing ordinary known spells, and
 both trainers return Known before consulting ordinary training requirements.

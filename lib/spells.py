@@ -15,7 +15,7 @@ import struct
 import subprocess
 import sys
 
-POLICY = 'spell-state-v11'
+POLICY = 'spell-state-v12'
 LEARN, SKILL, SKILL_STEP, DUAL_WIELD = 36, 118, 44, 40
 PASSIVE, HIDDEN = 0x40, 0x80
 
@@ -1071,6 +1071,48 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
             persistent_dependencies[child].append(proof)
         return True
 
+    inactive_skill_proofs = {}
+    def inactive_dual_wield(spell, mask):
+        """An inactive Shaman talent does not load its child or create a skill.
+
+        This is deliberately limited to the stock 30798 -> 674 relationship.
+        Stored child rows, active/shared ownership and other skill effects keep
+        the normal preservation checks. Both native talent loaders defer the
+        inactive build; switching specs remains the cores' responsibility.
+        """
+        if (spell != 674 or cls != 7 or groups != 2 or spell in stored or 118 in skills
+                or mask != 1 << (1 - active_group) or owners.get(30798) != mask):
+            return None
+        if spell not in temporary_spells or authorization_owners.get(spell) != {30798:mask}:
+            reject('INCOMPATIBLE_INACTIVE_TALENT_SKILL', '30798:674: native child authorization differs')
+        for metadata in (tc,ac):
+            parent, child = metadata.spells[30798], metadata.spells[674]
+            if (metadata.talents.get(30798) != (1690,1)
+                    or parent[71:74] != [LEARN,0,0] or parent[116:119] != [674,0,0]
+                    or parent[86:92] != [1,0,0,0,0,0]
+                    or child[4:13] != [80,0,0,0,0,0,0,0,0]
+                    or child[71:74] != [DUAL_WIELD,0,0]
+                    or child[86:98] != [1,0,0,0,0,0,0,0,0,0,0,0]
+                    or any(child[110:119]) or metadata.skill_effect(674) != (118,1,1,1)
+                    or metadata.stores['SkillLine'].get(118,[0,0])[1] != 6
+                    or metadata.scripts[30798] or metadata.scripts[674]
+                    or metadata.predecessors(30798) or metadata.predecessors(674)
+                    or metadata.requires[30798] or metadata.requires[674]
+                    or metadata.learns[674] or 674 in metadata.additional
+                    or metadata.aura_owners.get(674)
+                    or metadata.learns[30798] != [(674,True,True)]):
+                reject('INCOMPATIBLE_INACTIVE_TALENT_SKILL', '30798:674: native Dual Wield contract differs')
+        proof = {'policy':'NATIVE_INACTIVE_DUAL_WIELD', 'parent':30798, 'child':674,
+                 'owner_mask':mask, 'active_spec':active_group, 'skill':118,
+                 'skill_present':False, 'skill_granted':False,
+                 'target_representation':'NATIVE_ON_SPEC_ACTIVATION'}
+        inactive_skill_proofs[spell] = proof
+        return proof
+
+    # Validate the selected parent even if a changed pet-target/learn relation
+    # would prevent its child from reaching add(). No changed relationship may
+    # silently turn a reviewed runtime child into an omitted spell.
+    inactive_dual_wield(674,owners.get(30798,0))
     result = {}
     def add(spell, mask, anchor, path, reason):
         compatible(spell)
@@ -1083,6 +1125,7 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
         mask &= allowed
         if not mask:
             reject('UNAUTHORIZED_TALENT_SPELL', f'{spell}: anchor={anchor}')
+        inactive_skill = inactive_dual_wield(spell,mask)
         for metadata in (tc,ac):
             for script in metadata.scripts[spell]:
                 skill = metadata.cast_only_scripts.get(script,{}).get('spell_skills',{}).get(str(spell))
@@ -1116,7 +1159,7 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
         effect = ac.skill_effect(spell)
         if effect:
             skill, _, minimum, maximum = effect
-            if skill not in skills or skills[skill][0] < minimum or skills[skill][1] < maximum:
+            if not inactive_skill and (skill not in skills or skills[skill][0] < minimum or skills[skill][1] < maximum):
                 reject('SPELL_WOULD_CHANGE_SKILL', f'{spell}: skill={skill}; minimum={minimum}; cap={maximum}')
             rows, source_rows = race_class_rows(ac, skill), race_class_rows(tc, skill)
             if not rows or not source_rows:
@@ -1162,6 +1205,8 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
                 disposition = 'TALENT'
             else:
                 disposition = 'PERSISTENT'
+        if inactive_skill:
+            disposition = 'RUNTIME'
         row = result.setdefault(spell, {'mask': 0, 'disposition': disposition, 'proofs': []})
         if row['disposition'] != disposition:
             reject('CONFLICTING_SPELL_REPRESENTATION', str(spell))
@@ -1285,7 +1330,7 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
             reject('SPELL_TRAVERSAL_BOUND', str(spell))
     # Do not create professions/skills through skill-ability autolearning.
     for spell, row in result.items():
-        for ability in ac.abilities[spell]:
+        for ability in ac.abilities[spell] if spell not in inactive_skill_proofs else ():
             skill = ability[1]
             if (ability[9] == 2 or (skill in (633, 776) and ability[10] == 0)) and skill not in skills:
                 reject('SPELL_WOULD_ADD_SKILL', f'{spell}: skill={skill}')
@@ -1305,6 +1350,9 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
             'rank_root': tc.first(spell), 'owner_masks': sorted(authorized_by.items()),
             'required_spells': requirements,
         }
+        if spell in inactive_skill_proofs:
+            row['authorization']['policy'] = 'NATIVE_INACTIVE_TALENT_SKILL'
+            row['authorization']['inactive_talent_skill'] = inactive_skill_proofs[spell]
         training = training_only_requirements(spell)
         if training:
             row['authorization']['policy'] = 'ORDINARY_TRAINING_PREREQUISITES'

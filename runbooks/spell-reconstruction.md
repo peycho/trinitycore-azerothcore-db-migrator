@@ -451,6 +451,42 @@ Use a new toolkit, fresh target/control schemas and a new run. Keep the cleaned
 source and its retained cleanup archives. An in-place staging repair remains a
 separately reviewed task.
 
+## Inactive Dual Wield talent (`spell-state-v12`)
+
+Shaman talent `30798` learns Dual Wield `674`. Both reviewed cores associate
+the child's effect with skill `118` at `1/1`. That does not mean an inactive
+talent must create this skill during login: TC stores inactive talent ownership
+without learning its spell, and AC's `addTalent` calls its temporary-spell loader
+only for the active spec. Requiring an absent skill for this unloaded child was
+an overstrict migration check.
+
+V12 records the child as `RUNTIME` in both directions when this exact talent is
+selected only in the other of two specs, the child has no stored spell row, and
+skill `118` is absent. The bounded contract checks both cores' talent identity,
+self-targeted learn/dual-wield effects, visibility, skill category, rank and
+requirement relationships, scripts and exact child authorization. Other skill
+eligibility and metadata checks remain. Drift reports
+`INCOMPATIBLE_INACTIVE_TALENT_SKILL`; no fallback skill is inserted.
+
+The target retains the exact talent selection and all skill rows. Neither the
+talent wrapper nor its inactive child becomes a persistent spell. Provenance
+records owner mask, active spec, absent skill and `skill_granted=false` under
+`authorization.inactive_talent_skill`. The normal transactional expected set,
+runtime-owner validation, reports and checkpoint hashes cover these rows.
+Reverse conversion leaves restoration to TC's selected-spec activation too.
+
+Active/shared ownership, explicit stored child rows, existing malformed skill
+values and other skills retain the normal preservation guards. Native spec
+activation can create `118` at `1/1`, and removing Dual Wield clears it; this is
+the existing native skill lifecycle, not a preparation repair or a change to
+professions. Test both switch directions, relog/restart, talent ownership,
+Dual Wield availability and unchanged unrelated skills in staging.
+
+The policy changes run identity. Use a fresh migration run and target/control
+schemas; no preparation cleanup batch is required. Pins, metadata profile, v1
+and `PROFILE_APPROVAL=UNREVIEWED` remain unchanged. Existing staging targets
+need a fresh migration; an in-place repair requires separate review.
+
 ## Ordinary training prerequisites (`spell-state-v11`)
 
 The pinned TC `Trainer::GetSpellState` and AC

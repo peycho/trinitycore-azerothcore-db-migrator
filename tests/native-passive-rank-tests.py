@@ -33,6 +33,9 @@ methods='\n'.join(function(player,signature) for signature in (
     'void Player::_addTalentAurasAndSpells(', 'bool Player::_addSpell(',
     'void Player::_removeTalentAurasAndSpells(', 'void Player::removeSpell('))
 methods+='\n'+function((ac/'src/server/game/Entities/Player/PlayerStorage.cpp').read_text(),'void Player::_SaveSpells(')
+gate_start=player.index('// xinef: add talent auras and spells',player.index('bool Player::addTalent('))
+gate_end=player.index('// xinef: find the spell on our talent map',gate_start)
+methods+='\nvoid Player::LoadNativeTalent(uint32 spellId,uint8 addSpecMask){'+player[gate_start:gate_end]+'}\n'
 callbacks=[]
 for repo,name in ((tc,'WillTc'),(ac,'WillAc')):
     script=(repo/'src/server/scripts/Spells/spell_dk.cpp').read_text()
@@ -158,7 +161,8 @@ struct SpellMgr {
     uint32 GetFirstSpellInChain(uint32 id) const{auto it=first.find(id);return it==first.end()?id:it->second;}
     SkillLineAbilityMapBounds GetSkillLineAbilityMapBounds(uint32 id) const{return abilities.equal_range(id);}
     SpellsRequiringSpellMapBounds GetSpellsRequiringSpellBounds(uint32 id) const{return required.equal_range(id);}
-    SpellLearnSkillNode const* GetSpellLearnSkill(uint32) const{return nullptr;}
+    SpellLearnSkillNode dualWield{118,1,1,1};
+    SpellLearnSkillNode const* GetSpellLearnSkill(uint32 id) const{return id==674?&dualWield:nullptr;}
 } manager;
 SpellMgr* sSpellMgr=&manager;
 struct ScriptMgr { void OnPlayerForgotSpell(void*,uint32){} } scripts;
@@ -181,6 +185,9 @@ struct Player {
     ShapeshiftForm GetShapeshiftForm()const{return form;}
     PlayerSpellMap m_spells;std::set<uint32> auras;Session session;uint8 m_activeSpec=0;bool eligible=true,tcStack=false;
     uint32 health=10000;
+    std::map<uint32,std::pair<uint32,uint32>> skills;
+    uint8 GetActiveSpecMask() const{return 1<<m_activeSpec;}
+    void LoadNativeTalent(uint32,uint8);
     uint32 GetHealth() const{return health;}uint32 CountPctFromMaxHealth(int pct) const{return 10000*pct/100;}
     ~Player(){for(auto p:m_spells)delete p.second;}
     void _addTalentAurasAndSpells(uint32);bool _addSpell(uint32,uint8,bool,bool=false,bool=true);
@@ -203,9 +210,10 @@ struct Player {
     void RemovePetAura(PetAura const*){}void SendLearnPacket(uint32,bool){}
     uint32 GetFreePrimaryProfessionPoints() const{return 2;}void SetFreePrimaryProfessions(uint32){assert(false);}
     uint16 GetMaxSkillValueForLevel() const{return 400;}
-    uint32 GetPureSkillValue(uint32) const{assert(false);return 0;}
-    uint32 GetPureMaxSkillValue(uint32) const{assert(false);return 0;}
-    void SetSkill(uint32,uint32,uint32,uint32){assert(false);}void LearnDefaultSkill(uint32,int){assert(false);}
+    uint32 GetPureSkillValue(uint32 id) const{assert(id==118);auto p=skills.find(id);return p==skills.end()?0:p->second.first;}
+    uint32 GetPureMaxSkillValue(uint32 id) const{assert(id==118);auto p=skills.find(id);return p==skills.end()?0:p->second.second;}
+    void SetSkill(uint32 id,uint32,uint32 value,uint32 cap){assert(id==118);if(value)skills[id]={value,cap};else skills.erase(id);}
+    void LearnDefaultSkill(uint32,int){assert(false);}
     bool HasSkill(uint32) const{return true;}
     bool Has310Flyer(bool,uint32=0) const{return false;}void SetHas310Flyer(bool){}
     void UpdateAchievementCriteria(int,uint32){}Aura* GetAura(uint32){return nullptr;}
@@ -217,11 +225,26 @@ methods+='\nbool Player::IsNeedCastPassiveSpellAtLearn(SpellInfo const*info)cons
 nurturing.append("void NurturingApply(Player*p,uint32 id){AcNurturing{p,manager.GetSpellInfo(id)}.AfterApply(nullptr,0);}")
 nurturing.append("void NurturingRemove(Player*p,uint32 id){AcNurturing{p,manager.GetSpellInfo(id)}.AfterRemove(nullptr,0);}")
 main=['int main(){ SkillLineAbilityEntry classAbility;']
-for spell in(63680,63644,63645):
+for spell in(63680,63644,63645,30798,674):
     row=data['Spell'][spell]
     main.append(f'manager.spells[{spell}].Id={spell};manager.spells[{spell}].root={spell};manager.spells[{spell}].flags={row[4]};')
     for i in range(3):main.append(f'manager.spells[{spell}].Effects[{i}]={{{row[71+i]},{row[116+i]},{row[95+i]}}};')
 main.append(r"""
+for(uint8 active:{0,1}){
+    Player p;p.m_activeSpec=active;
+    p.LoadNativeTalent(30798,1<<(1-active));
+    assert(p.m_spells.empty()&&p.skills.empty());
+    auto inactiveSave=std::make_shared<Transaction>();p._SaveSpells(inactiveSave);
+    assert(inactiveSave->saved.empty());
+    p.m_activeSpec=1-active;
+    p.LoadNativeTalent(30798,1<<p.m_activeSpec);
+    assert(p.m_spells.at(674)->State==PLAYERSPELL_TEMPORARY);
+    assert((p.skills.at(118)==std::pair<uint32,uint32>{1,1}));
+    auto activeSave=std::make_shared<Transaction>();p._SaveSpells(activeSave);
+    assert(activeSave->saved.empty());
+    p._removeTalentAurasAndSpells(30798);
+    assert(p.skills.empty());
+}
 for(uint8 active:{0,1}){
     Player old;old.m_activeSpec=active;old.session.loading=false;
     assert(!old._addSpell(63680,3,false)&&old.m_spells.empty()&&old.auras.empty());
@@ -328,7 +351,7 @@ for(uint32 rank=1;rank<=3;++rank){
         assert(left==expected);
     }
 }
-std::cout << "Protected native passive/Nurturing consumers passed: canonical exact auras, temporary add/remove/save/stance, spec scheduling/relog and persistent-row refusal; state/DB/aura sinks mocked; gameplay NOT TESTED\n";
+std::cout << "Protected native passive/Nurturing/Dual Wield consumers passed: inactive talent gate creates no child/skill; active talent creates temporary 674 and skill 118 at 1/1, removal clears the skill; canonical exact auras, temporary add/remove/save/stance, spec scheduling/relog and persistent-row refusal; state/DB/aura sinks mocked; gameplay NOT TESTED\n";
 }''')
 with tempfile.TemporaryDirectory() as directory:
     cpp,binary=Path(directory)/'passive.cpp',Path(directory)/'passive'

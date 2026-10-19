@@ -34,6 +34,13 @@ policy change also invalidates earlier run/checkpoint identities.
 
 ## Reviewing a candidate
 
+`spell-state-v12` recognizes the native inactive-spec gate for Shaman Dual Wield
+without granting skill `118` or changing talent selections. The protected player,
+skill-manager and storage consumers already cover this behavior. Metadata
+profile, manifests, pins and v1 remain unchanged. Policy hashes require fresh
+target/control schemas and a new run; approval remains UNREVIEWED. See the
+[contract](spell-reconstruction.md#inactive-dual-wield-talent-spell-state-v12).
+
 `spell-state-v11` separates ordinary training prerequisites from known-spell
 loading and talent authorization. Protected TC/AC player and trainer consumers
 already cover the behavior; no pins, manifests or v1 files change. The metadata

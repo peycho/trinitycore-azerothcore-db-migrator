@@ -114,6 +114,7 @@ both cores' chains and native runtime behavior before extending support.
 | `RESEARCH_SKILL_MISSING` | A reviewed profession research spell lacks its required existing positive skill value/cap. No profession or recipes are inferred. |
 | `INCOMPATIBLE_SKILL_EFFECT` | Effective TC/AC skill effects differ. Compare the spell effects before considering a mapping. |
 | `INCOMPATIBLE_SKILL_METADATA` | Skill category, race/class flags, tier data or reviewed Runeforging layout differs or is unsupported. Inspect both effective catalogs. |
+| `INCOMPATIBLE_INACTIVE_TALENT_SKILL` | The narrowly reviewed inactive Shaman Dual Wield relationship differs from stock metadata or authorization. Compare talent `30798`, child `674`, effects, targets, scripts and dependencies; no skill is granted as a fallback. |
 | `SPELL_SKILL_NOT_ELIGIBLE` | A spell's skill effect lacks eligible race/class metadata in one or both cores. |
 | `MISSING_SKILL_TIER` | Referenced target skill-tier metadata is absent. Verify the assets and database overlays. |
 | `NONDETERMINISTIC_SKILL_EFFECT` | The skill effect uses a die-side representation outside the deterministic forms understood by the reader. Review the effect instead of guessing a value. |
@@ -170,3 +171,10 @@ values/caps differing from native `level × 5` report
 `SPELL_WOULD_CHANGE_SKILL` and require separately reviewed preparation. Other
 learn wrappers remain `UNSUPPORTED_PERSISTENT_LEARN_EFFECT`. See the
 [exact teacher contract](spell-reconstruction.md#dual-spec-teaching-wrapper-spell-state-v10).
+
+`spell-state-v12` delegates absent Dual Wield child `674` to native activation
+when Shaman talent `30798` is selected only in the inactive spec and skill `118`
+is absent. This clears an overstrict initial skill check; it neither inserts a
+skill nor changes talent ownership. Active/shared ownership and stored child
+rows retain skill checks. See the
+[inactive talent contract](spell-reconstruction.md#inactive-dual-wield-talent-spell-state-v12).

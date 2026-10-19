@@ -343,6 +343,56 @@ class SpellTests(unittest.TestCase):
                 self.assertEqual(result[674]['disposition'],'RUNTIME')
                 self.assertNotIn('independent_skill_routes',result[674]['authorization'])
 
+    def test_inactive_dual_wield_keeps_absent_skill_and_native_spec_ownership(self):
+        for active in (0,1):
+            mask=1 << (1-active)
+            for reverse in (False,True):
+                skills={}
+                talents={30798:mask}
+                result=self.convert({},talents,skills=skills,cls=7,active=active,reverse=reverse)
+                self.assertEqual(set(result),{30798,674})
+                self.assertEqual(result[674]['mask'],mask)
+                self.assertEqual(result[674]['disposition'],'RUNTIME')
+                self.assertEqual(result[30798]['disposition'],'TALENT')
+                proof=result[674]['authorization']['inactive_talent_skill']
+                self.assertEqual(proof['policy'],'NATIVE_INACTIVE_DUAL_WIELD')
+                self.assertEqual(proof['owner_mask'],mask)
+                self.assertFalse(proof['skill_granted'])
+                self.assertFalse(proof['skill_present'])
+                self.assertEqual(skills,{})
+                self.assertEqual(talents,{30798:mask})
+                self.assertEqual(result,self.convert({},talents,skills={},cls=7,active=active,reverse=reverse))
+
+    def test_inactive_dual_wield_does_not_bypass_active_stored_or_other_skill_guards(self):
+        for active in (0,1):
+            for mask in (1<<active,3):
+                for reverse in (False,True):
+                    self.fails('SPELL_WOULD_CHANGE_SKILL',lambda:self.convert(
+                        {},{30798:mask},skills={},cls=7,active=active,reverse=reverse))
+            self.fails('SPELL_WOULD_CHANGE_SKILL',lambda:self.convert(
+                {674:(1,1)},{30798:1<<(1-active)},skills={},cls=7,active=active))
+            self.fails('SPELL_WOULD_CHANGE_SKILL',lambda:self.convert(
+                {},{30798:1<<(1-active)},skills={118:(0,0)},cls=7,active=active))
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({674:(1,0)},skills={},cls=7))
+        for cls in (1,3,4,6):
+            self.fails('SPELL_WOULD_CHANGE_SKILL',lambda:self.convert({674:(1,0)},skills={},cls=cls))
+
+    def test_inactive_dual_wield_contract_rejects_metadata_drift(self):
+        for core in ('tc','ac'):
+            for mutation in ('effects','target','child_flags','script','requirement','dependency','parent_dependency'):
+                tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+                metadata=tc if core=='tc' else ac
+                if mutation=='effects':metadata.spells[674][72]=3
+                elif mutation=='target':metadata.spells[30798][86]=5
+                elif mutation=='child_flags':metadata.spells[674][5]=1
+                elif mutation=='script':metadata.scripts[674].add('spell_murmur_sonic_boom_effect')
+                elif mutation=='requirement':metadata.requires[674].add(5487)
+                elif mutation=='dependency':metadata.learns[674].append((5487,1,False))
+                elif mutation=='parent_dependency':metadata.learns[30798].append((5487,1,False))
+                with self.subTest(core=core,mutation=mutation):
+                    self.fails('INCOMPATIBLE_INACTIVE_TALENT_SKILL',lambda:self.convert(
+                        {},{30798:2},skills={},cls=7,tc=tc,ac=ac))
+
     def test_independent_skill_routes_require_paired_native_evidence(self):
         for mutation in ('ability_class','ability_race','acquire','skill_class','skill_race',
                          'not_trainable','mismatch','talent_class','unknown_talent_class','generic_class'):

@@ -220,6 +220,7 @@ def stores(profile):
     # talent-owned for shamans. Match the supplied stock DBC relationships.
     data['Spell'][674][4],data['Spell'][674][71] = 80,40
     data['Spell'][30798][71],data['Spell'][30798][116] = 36,674
+    data['Spell'][674][86] = data['Spell'][30798][86] = 1
     record('SkillLine',118)[1] = 6
     ability=record('SkillLineAbility',674)
     ability[1:10]=[118,674,0,109,0,0,1,0,2]
