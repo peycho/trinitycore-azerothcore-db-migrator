@@ -925,6 +925,7 @@ write_final_report() {
             WHERE run_id='$(sql_escape "$RUN_ID")' AND derived=0
               AND disposition='PERSISTENT' AND spec_mask<>3;"
         printf '\n'
+        printf 'Reviewed native passive-rank contracts: `spell-native-passive-ranks.tsv` (exact owners, TC predecessor state and target representation).\n\n'
         printf '## Validation results\n\n'
         printf '| Check | Severity | Observed | Expected | Passed | Detail |\n'
         printf '|---|---:|---:|---:|:---:|---|\n'

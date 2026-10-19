@@ -61,7 +61,14 @@ the selected mapping registries.
   state; verified Runeforging dependencies are delegated to existing native skill
   rewards. Both dispositions are reported and emit no persistent spell rows in
   either direction. Profession/riding transforms must preserve existing skills.
-  See [spell reconstruction](spell-reconstruction.md) for the precise policy.
+  The reviewed TC Flight Form world edge can also restore persistent Expert
+  Riding and its known prefix, only when existing riding values/caps already
+  support them; it never grants Artisan Riding from a form. See
+  [spell reconstruction](spell-reconstruction.md) for the precise policy. Four
+  explicitly reviewed passive talent families use AC's native exact temporary
+  child representation; superseded TC internal passive entries are recorded in
+  provenance rather than persisted in AC. Ordinary trained ranks and selected
+  talent ownership retain their existing rules.
 - Cooldown category/end fields are consolidated with the later expiration time.
 - Instance extension enum value `EXTENDED` becomes the target boolean.
 - Item and money loot tables merge into `item_loot_storage`; money is stored as

@@ -312,12 +312,18 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     spell_guard('SPELL_WOULD_CHANGE_SKILL',
         f'UPDATE `{CHARS}`.character_skills SET max=450 WHERE guid=119 AND skill=776',
         f'UPDATE `{CHARS}`.character_skills SET max=1 WHERE guid=119 AND skill=776')
+    spell_guard('SPELL_WOULD_CHANGE_SKILL',
+        f'UPDATE `{CHARS}`.character_skills SET value=150,max=150 WHERE guid=121 AND skill=762',
+        f'UPDATE `{CHARS}`.character_skills SET value=225,max=225 WHERE guid=121 AND skill=762')
     spell_guard('UNSUPPORTED_AURA_HELPER_SPELL_ROW',
         f'INSERT INTO `{CHARS}`.character_spell VALUES (115,47179,1,0)',
         f'DELETE FROM `{CHARS}`.character_spell WHERE guid=115 AND spell=47179')
     spell_guard('INCOMPATIBLE_TALENT_AURA_SCRIPT',
         f'DELETE FROM `{AC_WORLD}`.spell_script_names WHERE spell_id=-33872',
         f"INSERT INTO `{AC_WORLD}`.spell_script_names VALUES (-33872,'spell_dru_nurturing_instinct')")
+    spell_guard('UNSUPPORTED_NATIVE_PASSIVE_RANK',
+        f'INSERT INTO `{AC_WORLD}`.trainer_spell VALUES (2,16958)',
+        f'DELETE FROM `{AC_WORLD}`.trainer_spell WHERE TrainerId=2')
     print('Checking representation boundaries', flush=True)
     for length in (16, 17, 18, 32, 33, 64):
         sql(f"UPDATE account SET username=REPEAT('A',{length}) WHERE id=1", AUTH)
@@ -426,6 +432,33 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     equal(f"SELECT disposition,spec_mask FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=118 AND spell=44440",'RUNTIME\t1')
     equal(f"SELECT disposition,spec_mask FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=118 AND spell=44441",'RUNTIME\t2')
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=110 AND spell=53407',3)
+    for guid in (123,124):
+        equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid={guid}',0)
+    for child,mask in [(16958,2),(16952,2),(16961,1),(16954,1)]:
+        equal(f"SELECT disposition,spec_mask FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=123 AND spell={child}",f'RUNTIME\t{mask}')
+    equal(f"SELECT JSON_EXTRACT(provenance,'$.authorization.native_passive_rank.stored_predecessors') "
+          f"FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=123 AND spell=16961",'[[16958, 0, 0]]')
+    equal(f'SELECT GROUP_CONCAT(CONCAT(spell,":",specMask) ORDER BY spell) FROM `{AC_CHARS}`.character_talent WHERE guid=123','37116:2,37117:1')
+    native_report=TOOLKIT/'reports'/fv['MIGRATION_RUN_ID']/'spell-native-passive-ranks.tsv'
+    native_bytes=native_report.read_bytes()
+    assert b'NATIVE_AC_EXACT_PASSIVE_RANK' in native_bytes
+    sql(f'INSERT INTO `{AC_CHARS}`.character_spell VALUES (123,16958,3)')
+    library(forward,'validate_character_spells')
+    equal(f"SELECT passed FROM `{FC}`.validation_result WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND check_name='character_spell_unexpected'",0)
+    sql(f'DELETE FROM `{AC_CHARS}`.character_spell WHERE guid=123 AND spell=16958')
+    sql(f'UPDATE `{AC_CHARS}`.character_talent SET specMask=3 WHERE guid=123 AND spell=37117')
+    library(forward,'validate_character_spells')
+    equal(f"SELECT passed FROM `{FC}`.validation_result WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND check_name='character_spell_native_passive_contract_mismatch'",0)
+    sql(f'UPDATE `{AC_CHARS}`.character_talent SET specMask=1 WHERE guid=123 AND spell=37117')
+    library(forward,'validate_character_spells')
+    assert native_report.read_bytes()==native_bytes,'Native passive reports did not regenerate deterministically'
+    for guid,cap,highest in [(121,225,34090),(122,300,34091)]:
+        expected=[33388,33391,34090]+([34091] if highest==34091 else [])
+        equal(f'SELECT GROUP_CONCAT(spell ORDER BY spell) FROM `{AC_CHARS}`.character_spell '
+              f'WHERE guid={guid} AND spell IN (33388,33391,34090,34091) AND specMask=3',','.join(map(str,expected)))
+        equal(f'SELECT value,max FROM `{AC_CHARS}`.character_skills WHERE guid={guid} AND skill=762',f'{cap}\t{cap}')
+        equal(f"SELECT JSON_UNQUOTE(JSON_EXTRACT(provenance,'$.authorization.persistent_world_dependencies[0].policy')) "
+              f"FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid={guid} AND spell=34090",'TC_WORLD_LOAD_PERSISTENT_RIDING')
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=116 AND spell=34074',3)
     equal(f"SELECT disposition FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=117 AND spell=51470",'TALENT')
     equal(f"SELECT disposition FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=112 AND spell=54349",'TALENT')
@@ -461,6 +494,8 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES '+','.join(
         f'(119,{spell},3)' for spell in [*SPELL_FIXTURES.RUNEFORGING,53428]),AC_CHARS)
     sql('INSERT INTO character_talent (guid,spell,specMask) VALUES (115,33872,1),(115,33873,2)',AC_CHARS)
+    sql('INSERT INTO character_talent (guid,spell,specMask) VALUES (123,37117,1),(123,37116,2),'
+        '(124,50150,1),(124,51267,1),(124,61158,2)',AC_CHARS)
     seed_pet_relations(AC_CHARS, reverse=True)
     sql("INSERT INTO item_instance (guid,itemEntry,owner_guid,`count`,enchantments) VALUES (202,20815,100,1,'')", AC_CHARS)
     sql('''INSERT INTO item_loot_storage
@@ -522,6 +557,9 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=115 AND spell IN (47179,47180)',0)
     equal(f'SELECT active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid=115 AND spell=33872','1\t0')
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=115 AND spell=33873',0)
+    equal(f'SELECT GROUP_CONCAT(spell ORDER BY spell) FROM `{TC_CHARS}`.character_spell WHERE guid=123','16954,16961,37117')
+    equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=124 AND spell IN (50096,50108,50109,50110,50111,61274,61275,61276,61277,61278)',0)
+    equal(f'SELECT GROUP_CONCAT(CONCAT(spell,":",talentGroup) ORDER BY spell) FROM `{TC_CHARS}`.character_talent WHERE guid=123','37116:1,37117:0')
     for child in (53341,53343):
         equal(f"SELECT disposition,spec_mask FROM `{RC}`.spell_provenance WHERE run_id='{rv['MIGRATION_RUN_ID']}' AND guid=119 AND spell={child}",'SKILL\t3')
 
@@ -554,6 +592,9 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     drift, dv = config('tc-to-ac','-spell-drift')
     library(drift,'initialize_control_schema\nprepare_spell_snapshot capture')
     original_inputs = snapshot(AUTH,CHARS,WORLD,AC_WORLD)
+    sql(f'UPDATE `{AC_WORLD}`.trainer_spell SET SpellId=48782 WHERE TrainerId=1')
+    library(drift,'prepare_spell_snapshot verify','Spell inputs or reconstruction changed')
+    sql(f'UPDATE `{AC_WORLD}`.trainer_spell SET SpellId=6603 WHERE TrainerId=1')
     sql(f'UPDATE `{CHARS}`.character_spell SET spell=48781 WHERE guid=110 AND spell=48782')
     library(drift,'prepare_spell_snapshot verify','Spell inputs or reconstruction changed')
     sql(f'UPDATE `{CHARS}`.character_spell SET spell=48782 WHERE guid=110 AND spell=48781')

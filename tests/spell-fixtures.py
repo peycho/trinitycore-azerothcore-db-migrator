@@ -19,9 +19,17 @@ CHAINS = [
     [33388,33391,34090,34091],
     [900001,900002,900003],
     [5487,9634],
+    [33943,40120],
 ]
 CLASS_SKILLS = {skill:(400,400) for skill in [183,267,594,613,78,355,593,134]}
 RUNEFORGING = [53323,53331,53341,53342,53343,53344,54446,54447,62158,70164]
+NATIVE_PASSIVE_CHAINS = [[16958,16961],[16952,16954],[52284,52285,52286],
+                         [51983,51986],[51969,51970],
+                         [50096,50108,50109,50110,50111],[61274,61275,61276,61277,61278]]
+NATIVE_PASSIVE_TALENTS = [(801,11,[37116,37117],[[16958,16952],[16961,16954]]),
+    (1959,6,[49189,50149,50150],[[52284],[52285],[52286]]),
+    (2039,6,[49146,51267],[[51983,51969],[51986,51970]]),
+    (2034,6,[61154,61155,61156,61157,61158],[[50096,61274],[50108,61275],[50109,61276],[50110,61277],[50111,61278]])]
 
 
 def stores(profile):
@@ -77,6 +85,12 @@ def stores(profile):
                 ability[9] = 2
     for spell in CHAINS[13]:
         data['Spell'][spell][95] = 36  # shapeshift aura: ranks supersede
+    for spell in CHAINS[14]:
+        data['Spell'][spell][71:74] = [6,6,6]
+        data['Spell'][spell][95:98] = [36,77,201]
+        data['Spell'][spell][208] = 7
+        ability = record('SkillLineAbility',spell)
+        ability[1],ability[2],ability[4] = 134,spell,1024
     for ident, cls, ranks, spellbook in [
         (1,1,[12282,12663,12664],0),(2,1,[12300,12301],0),
         (3,2,[20473],1),(4,5,[34914],1),(5,9,[17877],1),(6,2,[20911],1),
@@ -84,7 +98,7 @@ def stores(profile):
         (137,1,[12296],0),
         (146,1,[12308,12810,12811],0),
         (2049,7,[51466,51470],0),(1882,9,[54347,54348,54349],0),
-        (2001,8,[64353,64357],0),(2002,11,[37116,37117],0),
+        (2001,8,[64353,64357],0),
         (1690,7,[30798],1),
         (1792,11,[33872,33873],0),
     ]:
@@ -114,6 +128,38 @@ def stores(profile):
             data['Spell'][owner][116+index]=child
             data['Spell'][child][4]|=0xc0
             data['Spell'][child][71]=6
+    record('SkillLine',770)[1]=7
+    info=record('SkillRaceClassInfo',770)
+    info[1],info[3],info[4]=770,32,0x410
+    for family,cls,owners,children in NATIVE_PASSIVE_TALENTS:
+        record('TalentTab',family)[20]=1<<(cls-1)
+        talent=record('Talent',family)
+        talent[1],talent[4:4+len(owners)]=family,owners
+        for owner,learned in zip(owners,children):
+            row=record('Spell',owner)
+            row[4]={801:8651136,1959:400,2039:16777616,2034:400}[family]
+            for i,child in enumerate(learned):
+                slot=1 if family==1959 else 2 if family==2034 and i==1 else i
+                row[71+slot],row[86+slot],row[116+slot]=36,1,child
+                row=record('Spell',child)
+                row[4],row[71],row[86]=464,6,1
+                ability=record('SkillLineAbility',child)
+                ability[1],ability[2],ability[4]=134 if cls==11 else 770,child,1<<(cls-1)
+                row=data['Spell'][owner]
+            if family==1959:
+                row[71],row[86],row[80]=3,1,35
+    for chain,auras,stances,state,trigger in [
+        ([16958,16961],[42,0,0],144,0,16959),([16952,16954],[42,0,0],1,0,16953),
+        ([52284,52285,52286],[69,0,0],0,0,0),([51983,51986],[172,232,232],0,0,0),
+        ([51969,51970],[211,0,0],0,0,0),
+        ([50096,50108,50109,50110,50111],[79,0,0],0,23,0),
+        ([61274,61275,61276,61277,61278],[280,0,0],0,0,0)]:
+        for spell in chain:
+            row=data['Spell'][spell]
+            row[95:98],row[12],row[20],row[116]=auras,stances,state,trigger
+            row[71:74]=[6 if aura else 0 for aura in auras]
+    for trigger in (16953,16959):
+        record('Spell',trigger)[71]=30
     # A ranked additional talent spell is persistent, a hidden unranked
     # dependent is runtime temporary; neither is granted in an unowned spec.
     data['Spell'][900000][71] = 36
@@ -154,6 +200,11 @@ def stores(profile):
             ability = record('SkillLineAbility', spell)
             ability[1],ability[2] = skill,spell
             tier[16+step] = step*75
+    # Native riding spells have a harmless dummy effect before SKILL.
+    for step,spell in enumerate(CHAINS[11],1):
+        row = data['Spell'][spell]
+        row[4],row[71:74] = 16777424,[3,118,0]
+        row[110:113],row[80:83],row[74:77] = [0,762,0],[0,step-1,0],[0,1,0]
     record('SkillLine',773)[1]=11
     record('SkillRaceClassInfo',773)[1]=773
     for spell,skill in [(60893,171),(61177,773),(61288,773)]:
@@ -188,6 +239,8 @@ def write_assets(directory, profile):
 
 
 def seed_worlds(sql, tc, ac, tc_world, ac_world, profile):
+    sql('CREATE TABLE trainer_spell (TrainerId INT UNSIGNED,SpellId INT UNSIGNED);'
+        'INSERT INTO trainer_spell VALUES (1,6603);',ac_world)
     for name, layout in profile['stores'].items():
         source = (ac/f'data/sql/base/db_world/{layout["table"]}.sql').read_text()
         ddl = re.search(r'CREATE TABLE `[^`]+` \(.*?\) ENGINE=[^;]+;',source,re.S)[0]
@@ -200,9 +253,8 @@ def seed_worlds(sql, tc, ac, tc_world, ac_world, profile):
             'CREATE TABLE spell_required (spell_id INT UNSIGNED,req_spell INT UNSIGNED);'
             'CREATE TABLE spell_script_names (spell_id INT,ScriptName VARCHAR(128));'
             'CREATE TABLE spell_custom_attr ('+('entry' if world==tc_world else 'spell_id')+' INT,attributes INT UNSIGNED);',world)
-        values = ','.join(f'({chain[0]},{spell},{rank})' for chain in CHAINS for rank,spell in enumerate(chain,1))
+        values = ','.join(f'({chain[0]},{spell},{rank})' for chain in CHAINS+NATIVE_PASSIVE_CHAINS for rank,spell in enumerate(chain,1))
         sql('INSERT INTO spell_ranks VALUES '+values,world)
-        sql('INSERT INTO spell_ranks VALUES (16958,16958,1),(16958,16961,2)',world)
         sql('INSERT INTO spell_ranks VALUES (47179,47179,1),(47179,47180,2)',world)
         sql('INSERT INTO spell_required VALUES (25899,20911),(5209,5487)',world)
         sql("INSERT INTO spell_script_names VALUES (38795,'spell_murmur_sonic_boom_effect'),"
@@ -211,8 +263,9 @@ def seed_worlds(sql, tc, ac, tc_world, ac_world, profile):
             "(60893,'spell_gen_profession_research')",world)
         sql('INSERT INTO spell_custom_attr VALUES (6603,0)',world)
         sql("INSERT INTO spell_script_names VALUES (-33872,'spell_dru_nurturing_instinct')",world)
+        sql("INSERT INTO spell_script_names VALUES (-52284,'spell_dk_will_of_the_necropolis')",world)
     sql('CREATE TABLE spell_learn_spell (entry INT,SpellID INT,Active TINYINT);'
-        'INSERT INTO spell_learn_spell VALUES (900011,900012,1),(53428,53341,1),(53428,53343,1)',tc_world)
+        'INSERT INTO spell_learn_spell VALUES (900011,900012,1),(53428,53341,1),(53428,53343,1),(33943,34090,1)',tc_world)
     sql('INSERT INTO spell_script_names VALUES '+','.join(
         f"({spell},'spell_chapter1_runeforging_credit')" for spell in RUNEFORGING),tc_world)
     sql('INSERT INTO spell_ranks VALUES (44440,44440,1),(44440,44441,2)',ac_world)

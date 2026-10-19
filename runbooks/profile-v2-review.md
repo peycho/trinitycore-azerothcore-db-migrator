@@ -507,3 +507,32 @@ source/world/unrelated-data preservation passed. All 92 frozen runtime/profile/
 test files and 14 supplied DBC assets remained unchanged. The disposable test
 server is removed after validation. Operator preflight, staging gameplay and
 production-sized acceptance are not established by these tests.
+
+## Native passive rank and riding review amendment, 2026-10-19
+
+`spell-state-v6` adds a bounded persistent Flight Form/riding contract and
+explicit native temporary-passive contracts for four talent families. Selected
+talents/specs and skill values/caps remain unchanged. Superseded TC internal
+passive entries can be absent from AC's known-spell map; ordinary trained ranks
+still reconstruct their verified prefixes. Unowned higher passive ranks,
+conflicting flags, extra learning/skill routes and trainer offerings block.
+Reverse conversion stores active exact passive children, with TC restoring
+the prefix; it does not persist inactive higher passive ranks that could
+disable the active lower rank. See [spell reconstruction](spell-reconstruction.md).
+
+Both v2 semantic manifests now protect the complete `SpellAuras.cpp` file.
+The retained TC `92127cd6252edb96fbfa36540db0eba17d0031fa` and AC
+`1cd97629ed6ef49f5c70dec39316846381d2e450` pins remain unchanged. The configured
+AC `cb3d99cd8cd0265857185120542b345c76c377c8` and staging reference
+`f089543d9dfb3aaba2615fbf9427ea3e54a346e3` match this additional AC consumer,
+as well as the previously protected inputs. Effective target-world overlays
+and trainer data remain separately fingerprinted and checked per run.
+
+The new native-rank report is regenerated from committed provenance and names
+exact owner masks, source predecessor flags and the target representation.
+Synthetic semantic, native-consumer and disposable bidirectional MySQL tests
+cover this contract separately from gameplay acceptance. Use new migration
+target/control schemas and a fresh run after the policy/profile change; keep
+the preparation toolkit and archives for guarded restoration. V1, core C++ and
+release approval are unchanged. All native gameplay and production-sized
+acceptance gates remain required; approval is **UNREVIEWED**.

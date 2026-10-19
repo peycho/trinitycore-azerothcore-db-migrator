@@ -229,6 +229,26 @@ validate_character_spells() {
           GROUP BY e.guid,e.spell,e.spec_mask
         ) ownership WHERE spec_mask<>owned_mask;" \
         "Runtime temporary spells must be covered by verified target talent ownership"
+    if [[ $MIGRATION_DIRECTION == tc-to-ac ]]; then
+        check_zero character_spell_native_passive_contract_mismatch "
+            SELECT COUNT(*) FROM (
+              SELECT e.guid,e.spell,e.spec_mask,e.disposition,
+                JSON_UNQUOTE(JSON_EXTRACT(e.provenance,'$.authorization.native_passive_rank.target_representation')) representation,
+                JSON_UNQUOTE(JSON_EXTRACT(e.provenance,'$.authorization.native_passive_rank.target_predecessors_persisted')) persisted,
+                COALESCE(BIT_OR(owner.mask),0) owner_mask,
+                SUM(IF(t.guid IS NULL OR t.mask<>owner.mask,1,0)) invalid_owner
+              FROM \`$CONTROL_SCHEMA\`.spell_expected e
+              JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=e.guid
+              LEFT JOIN JSON_TABLE(e.provenance,'$.authorization.native_passive_rank.owner_masks[*]'
+                COLUMNS (spell INT UNSIGNED PATH '\$[0]',mask INT UNSIGNED PATH '\$[1]')) owner ON TRUE
+              LEFT JOIN ($talent_state) t ON t.guid=e.guid AND t.spell=owner.spell
+              WHERE e.run_id='$(sql_escape "$RUN_ID")'
+                AND JSON_EXTRACT(e.provenance,'$.authorization.native_passive_rank') IS NOT NULL
+              GROUP BY e.guid,e.spell,e.spec_mask,e.disposition,representation,persisted
+            ) passive_contract WHERE disposition<>'RUNTIME' OR spec_mask<>owner_mask OR invalid_owner<>0
+                OR COALESCE(representation,'')<>'AC_NATIVE_EXACT' OR COALESCE(persisted,'')<>'false';" \
+            "Reviewed passive ranks must remain exact native children of unchanged selected talents"
+    fi
     check_zero character_spell_skill_reward_mismatch "
         SELECT COUNT(*) FROM \`$CONTROL_SCHEMA\`.spell_expected e
         JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=e.guid
@@ -264,4 +284,10 @@ write_spell_reports() {
         mysql_query -e "SELECT guid,spell,spec_mask,disposition,derived,provenance
             FROM \`$CONTROL_SCHEMA\`.spell_provenance WHERE run_id='$(sql_escape "$RUN_ID")' ORDER BY guid,spell;"
     } > "$REPORTS_DIR/$RUN_ID/spell-reconstruction.tsv"
+    {
+        printf 'guid\tspell\tspec_mask\tnative_passive_rank_contract\n'
+        mysql_query -e "SELECT guid,spell,spec_mask,JSON_EXTRACT(provenance,'$.authorization.native_passive_rank')
+            FROM \`$CONTROL_SCHEMA\`.spell_provenance WHERE run_id='$(sql_escape "$RUN_ID")'
+              AND JSON_EXTRACT(provenance,'$.authorization.native_passive_rank') IS NOT NULL ORDER BY guid,spell;"
+    } > "$REPORTS_DIR/$RUN_ID/spell-native-passive-ranks.tsv"
 }

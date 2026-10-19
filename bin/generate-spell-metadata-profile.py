@@ -74,6 +74,35 @@ REVIEWED_SKILL_REWARD_DEPENDENCIES = {
               'parent_effects':[47,0,0], 'child_effects':[53,3,0],
               'class_mask':32, 'acquire':1, 'minimum':1},
 }
+# TC's explicit load-time world edge restores Expert Riding from Flight Form.
+# AC needs persistent riding rows; this is not a trainer- or skill-based grant.
+REVIEWED_PERSISTENT_WORLD_DEPENDENCIES = {
+    '33943': {'child':34090, 'class':11, 'skill':762,
+              'parent_effects':[6,6,6], 'parent_auras':[36,77,201],
+              'child_effects':[3,118,0], 'child_visibility':192, 'ranks':[33388,33391,34090],
+              'skill_states':[[225,225],[300,300]], 'higher_anchor':34091},
+}
+# Explicitly reviewed native AC representation: selected exact passive children,
+# without persisting TC's superseded internal predecessor entries.
+REVIEWED_NATIVE_PASSIVE_RANKS = {
+    '801': {'class':11, 'owners':[37116,37117],
+            'parent_effects':[36,36,0],
+            'children':[[16958,16952],[16961,16954]],
+            'chains':[[16958,16961],[16952,16954]],
+            'triggers':{'16958':16959,'16952':16953}},
+    '1959': {'class':6, 'owners':[49189,50149,50150],
+             'parent_effects':[3,36,0],
+             'children':[[52284],[52285],[52286]],
+             'chains':[[52284,52285,52286]], 'triggers':{}},
+    '2039': {'class':6, 'owners':[49146,51267],
+             'parent_effects':[36,36,0],
+             'children':[[51983,51969],[51986,51970]],
+             'chains':[[51983,51986],[51969,51970]], 'triggers':{}},
+    '2034': {'class':6, 'owners':[61154,61155,61156,61157,61158],
+             'parent_effects':[36,0,36],
+             'children':[[50096,61274],[50108,61275],[50109,61276],[50110,61277],[50111,61278]],
+             'chains':[[50096,50108,50109,50110,50111],[61274,61275,61276,61277,61278]], 'triggers':{}},
+}
 CORRECTION_DEFINITIONS = (
     'src/server/shared/SharedDefines.h',
     'src/server/game/Spells/SpellDefines.h',
@@ -181,6 +210,8 @@ def script_policies(content, reviewed=None, legacy_aliases=None, template_aliase
 def generate(tc, ac):
     result = {'version': 1, 'stores': {}, 'corrections': {}, 'scripts': {}, 'inputs': {}}
     result['skill_reward_dependencies'] = REVIEWED_SKILL_REWARD_DEPENDENCIES
+    result['persistent_world_dependencies'] = REVIEWED_PERSISTENT_WORLD_DEPENDENCIES
+    result['native_passive_ranks'] = REVIEWED_NATIVE_PASSIVE_RANKS
     for name, (table, fmt_name) in STORES.items():
         sql = (ac / f'data/sql/base/db_world/{table}.sql').read_text()
         columns = re.findall(r'^  `([^`]+)` ', sql, re.M)
@@ -199,7 +230,8 @@ def generate(tc, ac):
     ]:
         registration = ('src/server/game/Scripting/ScriptMgr.h' if core == 'tc' else
                         'src/server/game/Scripting/ScriptDefines/SpellScriptLoader.h')
-        inputs = ['src/server/shared/DataStores/DBCfmt.h', *CORRECTION_DEFINITIONS, relative, registration]
+        inputs = ['src/server/shared/DataStores/DBCfmt.h', *CORRECTION_DEFINITIONS, relative, registration,
+                  'src/server/game/Spells/Auras/SpellAuras.cpp']
         if core == 'ac':
             inputs.extend(f'data/sql/base/db_world/{table}.sql' for table,_ in STORES.values())
         raw = (repo / relative).read_text()

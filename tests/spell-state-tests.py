@@ -28,11 +28,10 @@ spec.loader.exec_module(spell_profile)
 class World:
     def __init__(self):
         self.tables = {
-            'spell_ranks': [[str(chain[0]),str(spell),str(rank)] for chain in fixtures.CHAINS for rank,spell in enumerate(chain,1)]
-                           + [['16958','16958','1'],['16958','16961','2'],
-                              ['47179','47179','1'],['47179','47180','2']],
+            'spell_ranks': [[str(chain[0]),str(spell),str(rank)] for chain in fixtures.CHAINS+fixtures.NATIVE_PASSIVE_CHAINS for rank,spell in enumerate(chain,1)]
+                           + [['47179','47179','1'],['47179','47180','2']],
             'spell_required': [['25899','20911'], ['5209','5487']],
-            'spell_learn_spell': [['900011','900012','1'],['53428','53341','1'],['53428','53343','1']],
+            'spell_learn_spell': [['900011','900012','1'],['53428','53341','1'],['53428','53343','1'],['33943','34090','1']],
             'spell_script_names': [['-33872','spell_dru_nurturing_instinct']],
         }
     def table(self,world,table,columns):
@@ -43,6 +42,8 @@ class World:
                                       ['40326','spell_teron_gorefiend_shadowy_construct']])
         if world=='ac' and table=='spell_ranks':
             rows += [['44440','44440','1'],['44440','44441','2']]
+        if table=='trainer_spell':
+            return rows
         return sorted(rows,key=lambda row:int(row[0]))
     def rows(self,*args):
         return []
@@ -612,8 +613,126 @@ class SpellTests(unittest.TestCase):
         tc.scripts[6603].add(name)
         self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:self.convert({6603:(1,0)},tc=tc))
 
-    def test_source_runtime_predecessor_obligation_stays_blocked(self):
-        self.fails('UNSUPPORTED_TEMPORARY_RANK_CHAIN',lambda:self.convert({}, {37117:1},cls=11))
+    def test_unreviewed_source_runtime_predecessor_obligation_stays_blocked(self):
+        tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+        tc.native_passive_ranks={}
+        ac.native_passive_ranks={}
+        self.fails('UNSUPPORTED_TEMPORARY_RANK_CHAIN',lambda:self.convert({}, {37117:1},cls=11,tc=tc,ac=ac))
+
+    def test_reviewed_native_passive_ranks_preserve_exact_selected_children(self):
+        for family,cls,owners,children in fixtures.NATIVE_PASSIVE_TALENTS:
+            for owner,learned in zip(owners,children):
+                result=self.convert({}, {owner:1},cls=cls,skills={})
+                self.assertEqual(set(result),{owner,*learned})
+                self.assertEqual(result[owner]['disposition'],'TALENT')
+                for child in learned:
+                    self.assertEqual(result[child]['disposition'],'RUNTIME')
+                    self.assertEqual(result[child]['mask'],1)
+                    self.assertEqual(result[child]['authorization']['native_passive_rank']['tc_predecessors'],list(self.tc.predecessors(child)))
+                    self.assertFalse(result[child]['authorization']['native_passive_rank']['target_predecessors_persisted'])
+                reverse=self.convert({}, {owner:1},cls=cls,skills={},reverse=True)
+                expected={owner,*learned}
+                for child in learned:expected.update(self.tc.predecessors(child))
+                self.assertEqual(set(reverse),expected)
+                self.assertEqual({s for s,r in reverse.items() if r['disposition']=='PERSISTENT'}, {owner,*learned})
+                again=self.convert({s:(r['active'],r['disabled']) for s,r in reverse.items() if r['disposition']=='PERSISTENT'},
+                                   {owner:1},cls=cls,skills={})
+                self.assertEqual({s:r['mask'] for s,r in result.items()},{s:r['mask'] for s,r in again.items()})
+
+    def test_native_passive_cross_spec_ranks_and_stored_predecessor_provenance(self):
+        talents={37117:1,37116:2}
+        for active in (0,1):
+            result=self.convert({},talents,cls=11,active=active,skills={})
+            self.assertEqual({s:result[s]['mask'] for s in (16958,16952,16961,16954)},
+                             {16958:2,16952:2,16961:1,16954:1})
+            reverse=self.convert({},talents,cls=11,active=active,skills={},reverse=True)
+            self.assertEqual(reverse[16958]['mask'],3)
+            self.assertEqual(reverse[16952]['mask'],3)
+            stored={s:(r['active'],r['disabled']) for s,r in reverse.items() if r['disposition']=='PERSISTENT'}
+            again=self.convert(stored,talents,cls=11,active=active,skills={})
+            self.assertEqual({s:r['mask'] for s,r in result.items()},{s:r['mask'] for s,r in again.items()})
+            self.assertEqual(again[16961]['authorization']['native_passive_rank']['stored_predecessors'],
+                             [[16958,*stored[16958]]] if 16958 in stored else [])
+            inactive=16961 if active==1 else 16958
+            self.assertNotEqual(reverse[inactive]['disposition'],'PERSISTENT')
+        normalized=self.convert({16958:(0,0)}, {37117:1},cls=11,skills={})
+        self.assertNotIn(16958,normalized)
+        self.assertEqual(normalized[16961]['authorization']['native_passive_rank']['stored_predecessors'],[[16958,0,0]])
+        self.fails('UNREPRESENTABLE_DISABLED_SPELL',lambda:self.convert({16958:(1,1)},{37117:1},cls=11,skills={}))
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({16961:(1,0)},cls=11,skills={}))
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({16961:(1,0)},{37116:1},cls=11,skills={}))
+        self.fails('UNAUTHORIZED_TALENT_SPELL',lambda:self.convert({51986:(1,1)},{49146:2},cls=6,skills={}))
+
+    def test_native_passive_contract_rejects_mutating_shared_or_changed_metadata(self):
+        for mutation in ('visible','skill','learn','stance','effect_value','required','route','class_skill','parent','trainer'):
+            tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+            if mutation=='visible':ac.spells[16961][4]&=~64
+            elif mutation=='skill':ac.spells[16958][71]=118
+            elif mutation=='learn':tc.learns[16958].append((6603,1,False))
+            elif mutation=='stance':ac.spells[16961][12]=0
+            elif mutation=='effect_value':ac.spells[16961][80]+=1
+            elif mutation=='required':tc.prerequisite_users[16958].add(6603)
+            elif mutation=='route':tc.learn_parents[16958].add(6603)
+            elif mutation=='class_skill':ac.abilities[16958][0][9]=2
+            elif mutation=='parent':ac.spells[37117][86]=5
+            elif mutation=='trainer':ac.trainer_taught.add(16958)
+            self.fails('UNSUPPORTED_NATIVE_PASSIVE_RANK',lambda:self.convert({}, {37117:1},cls=11,skills={},tc=tc,ac=ac))
+
+    def test_native_passive_trainer_catalog_is_exclusion_evidence_and_validated(self):
+        world=World()
+        world.tables['trainer_spell']=[['16958']]
+        ac=Metadata('ac',self.path/'ac-dbc','ac',self.profile,world)
+        self.fails('UNSUPPORTED_NATIVE_PASSIVE_RANK',lambda:self.convert({}, {37117:1},cls=11,skills={},ac=ac))
+        world.tables['trainer_spell']=[['900000']]
+        ac=Metadata('ac',self.path/'ac-dbc','ac',self.profile,world)
+        self.assertIn(900010,ac.trainer_taught)
+        for value in ('NULL','text','-1','4294967296'):
+            world.tables['trainer_spell']=[[value]]
+            self.fails('INVALID_TRAINER_SPELL_METADATA',lambda:Metadata('ac',self.path/'ac-dbc','ac',self.profile,world))
+
+    def test_flight_form_restores_verified_riding_without_changing_skills(self):
+        for active in (0,1):
+            for anchor in (33943,40120):
+                skills={762:(225,225)}
+                result=self.convert({anchor:(1,0)},skills=skills,cls=11,active=active)
+                self.assertEqual(set(result),set(fixtures.CHAINS[14][:1 if anchor==33943 else 2]+fixtures.CHAINS[11][:3]))
+                self.assertTrue(all(row['mask']==3 and row['disposition']=='PERSISTENT' for row in result.values()))
+                self.assertNotIn(34091,result)
+                self.assertEqual(skills,{762:(225,225)})
+                proof=result[34090]['authorization']['persistent_world_dependencies'][0]
+                self.assertEqual(proof['policy'],'TC_WORLD_LOAD_PERSISTENT_RIDING')
+                self.assertEqual(proof['stored_skill'],[225,225])
+                self.assertIn([anchor,[anchor]+([] if anchor==33943 else [33943])+[34090],
+                               'TC_WORLD_PERSISTENT_DEPENDENCY'],result[34090]['proofs'])
+                reverse=self.convert({s:(r['mask'],0) for s,r in result.items()},skills=skills,cls=11,reverse=True)
+                self.assertEqual(set(reverse),set(result))
+        complete=self.convert({33943:(1,0),34091:(1,0)},skills={762:(300,300)},cls=11)
+        self.assertEqual(set(complete),{33943,*fixtures.CHAINS[11]})
+        repeated=self.convert({34090:(1,0),33943:(1,0)},skills={762:(225,225)},cls=11)
+        self.assertFalse(repeated[34090]['derived'])
+        self.assertEqual(repeated,self.convert({33943:(1,0),34090:(1,0)},skills={762:(225,225)},cls=11))
+
+    def test_flight_form_dependency_requires_existing_compatible_riding_and_ordinary_ownership(self):
+        self.fails('SPELL_WOULD_ADD_SKILL',lambda:self.convert({33943:(1,0)},skills={},cls=11))
+        for skills in ({762:(150,150)},{762:(225,300)},{762:(300,300)}):
+            self.fails('SPELL_WOULD_CHANGE_SKILL',lambda:self.convert({33943:(1,0)},skills=skills,cls=11))
+        self.fails('AC_WOULD_DELETE_SPELL',lambda:self.convert({33943:(1,0)},skills={762:(225,225)},cls=1))
+        self.fails('UNREPRESENTABLE_DISABLED_SPELL',lambda:self.convert({33943:(1,1)},skills={762:(225,225)},cls=11))
+        tc=copy.deepcopy(self.tc)
+        tc.learns[33943]=[(34090,0,False)]
+        self.fails('UNSUPPORTED_DEPENDENT_LEARN',lambda:self.convert({33943:(1,0)},skills={762:(225,225)},cls=11,tc=tc))
+        tc=copy.deepcopy(self.tc)
+        tc.learns[33943]=[]
+        self.assertEqual(set(self.convert({33943:(1,0)},skills={762:(225,225)},cls=11,tc=tc)),{33943})
+        for core in ('tc','ac'):
+            tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+            metadata=tc if core=='tc' else ac
+            metadata.spells[33943][95]=4
+            self.fails('UNSUPPORTED_DEPENDENT_LEARN',lambda:self.convert({33943:(1,0)},skills={762:(225,225)},cls=11,tc=tc,ac=ac))
+        tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+        for metadata in (tc,ac):
+            metadata.spells[34090][71]=36
+        self.fails('UNSUPPORTED_DEPENDENT_LEARN',lambda:self.convert({33943:(1,0)},skills={762:(225,225)},cls=11,tc=tc,ac=ac))
 
     def test_profession_riding_preserve_existing_caps(self):
         skills = {171:(320,450),762:(300,300)}

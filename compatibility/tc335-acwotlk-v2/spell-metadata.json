@@ -5451,6 +5451,7 @@
       "data/sql/base/db_world/talenttab_dbc.sql": "0705b86a7b17a07d20d26166be9a5507d156331b9e40be239903ee00de9a3d42",
       "src/server/game/Scripting/ScriptDefines/SpellScriptLoader.h": "68eb3db69b6fcf0c8909a6b3e9d41271f92e988378eb09f8dbd75db14af08bbe",
       "src/server/game/Spells/Auras/SpellAuraDefines.h": "75aeaa2620ad0841997e82383ed0ce2609de5d370be40f9ed3e4b05c50c0886d",
+      "src/server/game/Spells/Auras/SpellAuras.cpp": "fdeffc5233c2835b8056e81a3eb51d6400dc15b41b43ac2329a13c3a3ea3a297",
       "src/server/game/Spells/SpellDefines.h": "e37856ce41701971a082082b1e1e0f30b1c07b78a7e60a07678a987467e680c1",
       "src/server/game/Spells/SpellInfoCorrections.cpp": "d2864343af4683fff898da118bc77b520aa51dba9981f65a4e762933cf4531b2",
       "src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp": "ad456fd8ccf14368cb5132ce05b84e2a763ee0040a24ba79113ce6b54cbbf126",
@@ -5476,6 +5477,7 @@
     "tc": {
       "src/server/game/Scripting/ScriptMgr.h": "1ddce424d2ef2a3494b0948a98e8f9b06c6b0f6af6d0f9682a533bcc786b4cb1",
       "src/server/game/Spells/Auras/SpellAuraDefines.h": "f083b57e26b285a713059a3fc94331b237f6b402237eee8e7ff9fc1a9c6faed0",
+      "src/server/game/Spells/Auras/SpellAuras.cpp": "4707b3d7eb64fd10c74dd3d14967ab587790937712219d2bfa636e0b32b8e288",
       "src/server/game/Spells/SpellDefines.h": "59a060ab01461cc1300bc6b9f70f8a74446c56396eaddf8fbd46221ed5141b5d",
       "src/server/game/Spells/SpellMgr.cpp": "44903947322b5fadeb075c6d01f0b25a2004f0cae22bb43a6df75624b5e80817",
       "src/server/scripts/EasternKingdoms/ScarletEnclave/chapter1.cpp": "baafdba90237ccedaba8caa08bbcf940bcdb49bdeed7aea82ca7ac9402c1c645",
@@ -5498,6 +5500,202 @@
       "src/server/scripts/Spells/spell_warrior.cpp": "ebbee4f9b76d8c15759844608c312f724ff4ef2e1c3acfc2a2e21999c7a25156",
       "src/server/shared/DataStores/DBCfmt.h": "bb78bbddc4490923595296c2873e1889938f2e86667787929e45f0bd7b894202",
       "src/server/shared/SharedDefines.h": "b856c76d1743776e042acc21c9c3e9d3d24ac7b8d24542f0779b19c6b7007a54"
+    }
+  },
+  "native_passive_ranks": {
+    "1959": {
+      "chains": [
+        [
+          52284,
+          52285,
+          52286
+        ]
+      ],
+      "children": [
+        [
+          52284
+        ],
+        [
+          52285
+        ],
+        [
+          52286
+        ]
+      ],
+      "class": 6,
+      "owners": [
+        49189,
+        50149,
+        50150
+      ],
+      "parent_effects": [
+        3,
+        36,
+        0
+      ],
+      "triggers": {}
+    },
+    "2034": {
+      "chains": [
+        [
+          50096,
+          50108,
+          50109,
+          50110,
+          50111
+        ],
+        [
+          61274,
+          61275,
+          61276,
+          61277,
+          61278
+        ]
+      ],
+      "children": [
+        [
+          50096,
+          61274
+        ],
+        [
+          50108,
+          61275
+        ],
+        [
+          50109,
+          61276
+        ],
+        [
+          50110,
+          61277
+        ],
+        [
+          50111,
+          61278
+        ]
+      ],
+      "class": 6,
+      "owners": [
+        61154,
+        61155,
+        61156,
+        61157,
+        61158
+      ],
+      "parent_effects": [
+        36,
+        0,
+        36
+      ],
+      "triggers": {}
+    },
+    "2039": {
+      "chains": [
+        [
+          51983,
+          51986
+        ],
+        [
+          51969,
+          51970
+        ]
+      ],
+      "children": [
+        [
+          51983,
+          51969
+        ],
+        [
+          51986,
+          51970
+        ]
+      ],
+      "class": 6,
+      "owners": [
+        49146,
+        51267
+      ],
+      "parent_effects": [
+        36,
+        36,
+        0
+      ],
+      "triggers": {}
+    },
+    "801": {
+      "chains": [
+        [
+          16958,
+          16961
+        ],
+        [
+          16952,
+          16954
+        ]
+      ],
+      "children": [
+        [
+          16958,
+          16952
+        ],
+        [
+          16961,
+          16954
+        ]
+      ],
+      "class": 11,
+      "owners": [
+        37116,
+        37117
+      ],
+      "parent_effects": [
+        36,
+        36,
+        0
+      ],
+      "triggers": {
+        "16952": 16953,
+        "16958": 16959
+      }
+    }
+  },
+  "persistent_world_dependencies": {
+    "33943": {
+      "child": 34090,
+      "child_effects": [
+        3,
+        118,
+        0
+      ],
+      "child_visibility": 192,
+      "class": 11,
+      "higher_anchor": 34091,
+      "parent_auras": [
+        36,
+        77,
+        201
+      ],
+      "parent_effects": [
+        6,
+        6,
+        6
+      ],
+      "ranks": [
+        33388,
+        33391,
+        34090
+      ],
+      "skill": 762,
+      "skill_states": [
+        [
+          225,
+          225
+        ],
+        [
+          300,
+          300
+        ]
+      ]
     }
   },
   "scripts": {

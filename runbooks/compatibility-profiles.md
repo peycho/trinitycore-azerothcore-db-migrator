@@ -17,6 +17,15 @@ are protected because the spell-profile generator uses their ordered layouts.
 Live spell metadata is separately fingerprinted for each run. There is no
 production approval override.
 
+The unapproved v2 spell metadata also contains a narrow persistent-world
+dependency contract for Flight Form and existing Expert Riding. It requires
+the actual TC learn edge, reviewed spell/rank/skill metadata and preserved riding
+values/caps. The separate `spell-state-v6` native-passive contract explicitly
+lists four talent families and seven chains, with unchanged ownership and skill
+state. Both v2 manifests additionally protect `SpellAuras.cpp`; pinned revisions
+remain unchanged. The metadata profile and policy change run/checkpoint identity. Earlier migration
+runs need fresh target/control schemas. See [spell reconstruction](spell-reconstruction.md).
+
 ## Reviewing a candidate
 
 Generate outside the repository, choosing a new profile ID for later revisions:

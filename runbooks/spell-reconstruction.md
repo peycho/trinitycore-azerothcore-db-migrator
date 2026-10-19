@@ -48,6 +48,10 @@ overlap writable target/control schemas. The migrator never imports world SQL
 or alters DBC assets. Empty spell/talent input can omit spell metadata; existing
 reverse respawn checks still have their own source-world requirement.
 
+AC `trainer_spell.SpellId` is read and fingerprinted as exclusion evidence for
+native passive ranks, including wrapped learned spells. Trainer entries never
+authorize a grant. Missing required metadata stops conversion.
+
 The reader follows TC's additive `spell_dbc` policy: replacing an existing DBC
 ID is rejected, as TC's reader would abort. AC numeric DBC database overrides
 are applied using the pinned layouts. Rank/talent chains, spell requirements,
@@ -82,10 +86,12 @@ schemas and run ID; do not replace code underneath an existing run.
 | Talent-unlocked trained ranks | Apply verified owner masks and intersect prerequisite eligibility; never infer untrained higher ranks |
 | Direct talent ranks | Keep existing selections; never grant preceding talent ranks; follow AC's `addToSpellBook` marker |
 | Native temporary talent spells | Record runtime ownership; omit persistent rows that would outlive the owning talent |
+| Reviewed ranked passive talent children | Use AC's exact selected temporary children for Primal Fury, Will of the Necropolis, On a Pale Horse and Blood Gorged, under the bounded native contract below; never persist superseded internal passive predecessors in AC |
 | Known non-passive profession research | Preserve only reviewed research IDs with matching existing professions and exact load-safe effects; never execute research or infer recipes |
 | Hidden/passive runtime child with an AC-only predecessor prefix | Delegate only the exact authorized learned child to native AC talent loading when TC has no predecessor obligation. Do not persist the child or grant target-only predecessors. |
 | Nurturing Instinct helpers | Delegate exact selected-rank helper to native aura/temporary ownership (`AURA`); never persist the helper or reconstruct its predecessors |
 | Runeforging native skill rewards | Delegate only verified `53428 -> 53341/53343` dependencies (`SKILL`), with existing skill `776` exactly `1/1` and matching eligible native reward metadata |
+| Flight Form's TC world dependency | Materialize `33943 -> 34090` and its verified riding predecessors as persistent ordinary rows only with an explicit active TC world edge and existing riding `762` at `225/225`, or `300/300` with an already known Artisan Riding anchor. Never infer Artisan Riding from Flight Form. |
 | TC dependent learned spells | Reconstruct only verified native-compatible dependencies; unsupported world-only learning relationships block |
 | Profession/riding tiers | Preserve existing skill lines, values and caps; block missing skills, incompatible effects or cap/value increases |
 | Recipes and other ordinary spells | Preserve legitimate stored availability; do not infer recipes from trainer catalogs |
@@ -149,8 +155,8 @@ exact selected talent's learned child with `_addSpell`, without lower-rank
 reconstruction. If that child is hidden/passive and TC has no predecessor
 obligation, it is runtime-owned only; the transform grants no additional rank.
 If TC does require a predecessor, as with Primal Fury's `16958 -> 16961`, the
-temporary-rank guard remains. Do not persist temporary predecessors to work
-around their missing native restoration; they can outlive talent ownership.
+temporary-rank guard remains unless the reviewed native-passive contract below
+applies. Persisting temporary predecessors can make them outlive talent ownership.
 The actual Fiery Payback talent ranks are `64353` and `64357`; their learned
 children are respectively `44440`/`64350` and `44441`/`64349`. Stored disabled
 children without selected ownership retain the blocking policy. Rank mismatch
@@ -159,6 +165,87 @@ reports include original flags and selected learned-spell owners.
 The migrator changes no talent selections, skill rows, skill caps or profession
 slots. Profession/riding spell effects are checked against existing skills;
 native runtime slot/tier behavior must also pass the gameplay gate below.
+
+### Flight Form and existing riding
+
+`spell-state-v5` includes a narrow reviewed world-dependency contract. Pinned
+TC `AddSpell` restores non-autolearned `spell_learn_spell` children during
+loading, including the active `33943 -> 34090` edge when present in the actual
+source world. Its known Flight Form anchor may itself be a verified predecessor
+of stored Swift Flight Form. Neither a trainer entry nor a skill row alone
+authorizes this dependency; an absent world edge derives no riding spell.
+
+AC lacks this world learn map. The transform persists Expert Riding `34090`
+and the agreed `33388 -> 33391 -> 34090` prefix. The rule requires an ordinary
+druid anchor and ordinary riding ranks in both specs, reviewed effects/visibility,
+matching source/target rank and skill metadata, and an existing riding skill at
+`225/225`. An existing `300/300` skill also qualifies only with an independently
+known higher riding anchor `34091`; that anchor is never inferred from the form.
+Missing, insufficient or nonstandard skill states block. Existing talent,
+script, cycle, race/class, skill-cap and profession-slot checks still apply.
+
+The protected loaders use the maximum of existing and learned riding values/caps;
+the reviewed SKILL cast handler has no additional skill write. Lower riding rows
+therefore reconstruct known TC state without raising these existing values/caps.
+`spell-reconstruction.tsv` and committed provenance retain the world parent,
+child, path, stored skill and `TC_WORLD_LOAD_PERSISTENT_RIDING` contract. Reverse
+conversion preserves these ordinary chains through the existing exact expected
+set checks. No source cleanup or talent reset is required for this contract.
+
+Use a fresh migration toolkit copy, run ID and new target/control schemas after
+this policy/profile change. Do not resume an earlier run with changed code.
+Retain the old preparation toolkit and all cleanup archives for guarded restore;
+its sealed inspections are tied to their original metadata profile. This change
+does not itself normalize temporary talent predecessors or complete native
+gameplay acceptance. Profile approval stays `UNREVIEWED`.
+
+### Reviewed native passive talent ranks
+
+`spell-state-v6` adds a separately reviewed representation policy for four
+talent families: Primal Fury (801), Will of the Necropolis (1959), On a Pale
+Horse (2039) and Blood Gorged (2034). The profile enumerates every selected
+parent, exact learned child and all seven passive chains. It does not apply
+to ordinary trained spell ranks or arbitrary temporary chains.
+
+TC can retain superseded lower internal passive spell entries. AC adds only
+the exact selected child temporarily, removes it on talent/spec removal and
+excludes it from `_SaveSpells`. Same-caster passive ranks do not stack; the
+selected exact child supplies the active aura. This policy explicitly accepts
+AC's native internal representation while preserving selected talents and their
+specialization ownership. It does not claim identical TC/AC `HasSpell` results
+for superseded internal IDs. Ordinary trained rank reconstruction is unchanged.
+
+Both cores must agree on the reviewed talent identities, rank ordering,
+self-targeted learn children, selected effect data, stance/aura-state gates and
+proc effects. All chain members must remain hidden passive aura-only spells,
+without skills/professions/riding, extra teachers/dependencies, prerequisite
+consumers or trainer offerings. The explicit Will of the Necropolis parent
+`[DUMMY, LEARN, NONE]` stores the threshold read by its reviewed aura callback;
+its full selected effect data must agree. Other parent effect changes block.
+Unknown scripts, mixed child effects, cycles and incompatible metadata block.
+
+Each spec authorizes its exact passive child independently. A higher passive
+rank is not authorized merely because the lower rank is selected. The verified
+TC prefix supplies a separate source-state mask for checking stored TC flags;
+valid superseded predecessor rows are omitted from the AC spellbook and retained
+with their original flags in the owning child's provenance. Disabled conflicts,
+unowned higher ranks and unexplained inactive states remain blockers. No source
+rows, talent selections, points, skills/caps or profession slots are changed.
+
+Reverse migration stores active exact children and active direct talents.
+TC restores the passive prefix itself; inactive children remain runtime-owned
+through the unchanged talent groups. Persisting an inactive higher child could
+disable a lower active rank during TC loading, so it is deliberately excluded.
+This preserves safe native spec switching without guessing disabled rank rows.
+
+`spell-native-passive-ranks.tsv` is regenerated from committed control data.
+It records exact owners/masks, TC known masks, source predecessor flags, native
+lifetime and target representation. Exact persistent-set and runtime-owner
+validation also reject leaked passive rows and broadened talent masks. Profile
+and policy hashes bind expected sets, checkpoints, resume and reruns. Both
+unapproved v2 manifests now also protect `SpellAuras.cpp`; pins and v1 remain
+unchanged. Existing migrations require fresh target/control schemas and a new
+run. Native gameplay, save/relog/restart and release gates remain mandatory.
 
 ## Reviewed cooldown, proc and encounter callbacks
 

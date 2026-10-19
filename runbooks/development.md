@@ -67,9 +67,39 @@ exclusion and incomplete query reports. The encounter callback harness also
 executes the protected Shadowy Construct load/apply bodies with mocked sinks.
 The spell regressions also cover reviewed legacy constructor aliases, bounded
 family-flag corrections, authorized AC-only temporary rank prefixes and rejection
-when TC still requires a temporary predecessor.
+of unreviewed TC temporary predecessor obligations.
 Inventories use `LC_ALL=C`. Candidate approval exists only in disposable
 toolkit copies under `/tmp`; the checkout's approval is unchanged.
+
+Flight Form regressions require the explicit TC world edge, an ordinary druid
+anchor (including a reconstructed Flight Form below Swift Flight Form), exact
+riding effects and matching rank prefixes. They verify `225/225` and existing
+`300/300` with a known higher anchor, no inferred higher rank, both active specs,
+overlapping derivations, reverse round trips and unchanged skills. Missing or
+insufficient skills, changed metadata, disabled ordinary spells and unsupported
+world relationships remain blocked. The disposable fixture rehearsal loads these
+rows transactionally through interruption/resume/rerun and both migration
+directions, checks committed provenance and preserves source/world checksums.
+`riding-dependency-tests.py` separately compiles the protected TC dependency body
+and both native skill-update bodies with mocked getters/sinks, including a
+negative control that would raise an insufficient skill. This is consumer
+behavior verification, not a worldserver gameplay test.
+
+Native passive-rank units exercise the seven explicitly reviewed chains across
+four talent families, both active specs and different ranks in each spec. They
+check exact-child masks, stored predecessor flag/provenance normalization,
+reverse active-child/native-prefix round trips, unowned higher-rank rejection,
+skill/learn/stance/value/teacher/trainer mutations and unsupported contracts.
+The compiled `native-passive-rank-tests.py` executes protected AC add/remove/save
+bodies and the TC/AC same-caster passive exclusion branches. It checks canonical
+exact aura identities, gated casts, temporary save omission, mocked spec/relog
+scheduling, persistent-predecessor leakage as a negative control and the actual
+Will of the Necropolis rank/threshold callbacks. Getters, aura application,
+transaction sinks and scheduling are mocked; full gameplay remains NOT TESTED.
+MySQL fixtures check both directions, unchanged talents/skills, committed native
+provenance, leaked persistent rows, broadened owner masks, report regeneration,
+trainer conflicts and same-count trainer metadata drift. The ordinary trainer
+rank regression and all previous cleanup suites remain required.
 
 The active-build pending-reset tests exercise the real console on MySQL 8.4:
 read-only planning/prepare, custom binary/timestamp snapshots, narrow source

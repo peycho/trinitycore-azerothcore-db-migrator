@@ -98,6 +98,13 @@ Player old; old.spells[48942]=3;
 Trainer::Spell low{465};
 assert(trainer.GetDefaultSpellState(&old,&low)!=SpellState::Known);
 assert(players[110].HasSpell(465));
+// Native passive normalization cannot pretend an absent internal rank is
+// trainer-known. The metadata contract rejects any real trainer offering it.
+manager.spells[16958];manager.spells[1016958].effects.push_back({36,16958});
+Player nativePassive;
+Trainer::Spell internal{16958},wrappedInternal{1016958};
+assert(trainer.GetDefaultSpellState(&nativePassive,&internal)!=SpellState::Known);
+assert(trainer.GetDefaultSpellState(&nativePassive,&wrappedInternal)!=SpellState::Known);
 std::cout << "Pinned AC trainer direct/wrapped spell regressions passed\\n";
 }''')
 with tempfile.TemporaryDirectory() as directory:
