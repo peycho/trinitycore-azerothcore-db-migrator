@@ -27,9 +27,9 @@ the full database suite.
 
 Private snapshot redaction has a focused MySQL test,
 `tests/character-share-mysql-tests.py`, also included in the full rehearsal.
-It verifies the standalone SQL procedure against every stock table/column,
-unknown metadata and executable objects, late-error rollback, row and gameplay
-state preservation, idempotency and an actual dump/restore. See the
+It verifies the plain SQL transaction against every stock table/column,
+custom-data preservation, late-error rollback, row and gameplay state preservation,
+idempotency and an actual dump/restore. See the
 [snapshot sharing guide](sharing-character-snapshot.md) for its dedicated-server
 command. It does not change migration mappings or loader behavior.
 
