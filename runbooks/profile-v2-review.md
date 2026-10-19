@@ -1,5 +1,16 @@
 # Profile v2 review and acceptance record
 
+The 2026-10-19 `spell-state-v7` correction fixes the Flight Form dependency's
+riding category: the actual 3.3.5 DBC and effective AC overlay use secondary
+category `9`, whereas the prior synthetic fixture and guard used class category
+`7`. The profile now explicitly records category `9`, keeps all existing
+skill/cap/anchor restrictions and records the category in provenance. Regression
+coverage rejects category `7`, primary-profession category `11` and mismatched
+catalogs; protected native profession classifiers verify that category `9`
+does not consume a primary profession slot. Existing native-passive contracts
+and core pins remain unchanged. This correction needs a fresh migration run;
+approval remains **UNREVIEWED** and native gameplay gates remain outstanding.
+
 Reviewed on 2026-10-12 against local clean checkouts. No remote fetch was used.
 
 | Core | Previous reviewed revision | Candidate revision | Additional commits |

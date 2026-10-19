@@ -25,6 +25,8 @@ tc_skill = body(tc_source,'if (SpellLearnSkillNode const* spellLearnSkill = sSpe
 ac_skill = body(ac_source[ac_source.index('bool Player::_addSpell('):],'if (spellLearnSkill)')
 tc_effect = body((tc/'src/server/game/Spells/SpellEffects.cpp').read_text(),'void Spell::EffectSkill(')
 ac_effect = body((ac/'src/server/game/Spells/SpellEffects.cpp').read_text(),'void Spell::EffectSkill(')
+tc_primary = body((tc/'src/server/game/Spells/SpellMgr.cpp').read_text(),'bool IsPrimaryProfessionSkill(')
+ac_primary = body((ac/'src/server/game/Spells/SpellMgr.cpp').read_text(),'bool IsPrimaryProfessionSkill(')
 mock = r'''
 #include <cassert>
 #include <cstdint>
@@ -33,6 +35,12 @@ mock = r'''
 #include <utility>
 #include <vector>
 using uint16=uint16_t;using uint32=uint32_t;
+constexpr uint32 SKILL_CATEGORY_PROFESSION=11;
+struct SkillLineEntry { uint32 CategoryID=9,categoryId=9; };
+struct SkillLineStore {
+    SkillLineEntry row;
+    SkillLineEntry const* LookupEntry(uint32 id) const { return id==762 ? &row : nullptr; }
+} sSkillLineStore;
 constexpr int CONFIG_ALWAYS_MAXSKILL=0;
 #define TC_LOG_DEBUG(...) ((void)0)
 #define LOG_DEBUG(...) ((void)0)
@@ -68,12 +76,19 @@ struct Player {
 };
 '''
 methods = ('void Player::Restore(uint32 spellId) {\n'+dependency+'\n}\n'
+           'bool TcPrimaryProfession(uint32 skill) '+tc_primary+'\n'
+           'bool AcPrimaryProfession(uint32 skill) '+ac_primary+'\n'
            'void Player::TcSkill(SpellLearnSkillNode const* spellLearnSkill,uint32 fromSkill) '+tc_skill+'\n'
            'void Player::AcSkill(SpellLearnSkillNode const* spellLearnSkill) '
            '{uint16 maxskill=GetMaxSkillValueForLevel();'+ac_skill+'}\n'
            'void Spell::TcEffect() '+tc_effect+'\nvoid Spell::AcEffect() '+ac_effect+'\n')
 main = r'''
 int main() {
+    // The actual 3.3.5 riding category is secondary (9), not primary (11).
+    assert(!TcPrimaryProfession(762) && !AcPrimaryProfession(762));
+    sSkillLineStore.row.CategoryID=sSkillLineStore.row.categoryId=11;
+    assert(TcPrimaryProfession(762) && AcPrimaryProfession(762));
+    sSkillLineStore.row.CategoryID=sSkillLineStore.row.categoryId=9;
     for (int mode:{0,1}) { Spell spell;spell.effectHandleMode=mode;spell.TcEffect();spell.AcEffect(); }
     manager.rows.emplace(33943,SpellLearnSpellNode{});
     Player restored;restored.Restore(33943);

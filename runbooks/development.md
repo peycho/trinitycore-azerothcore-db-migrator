@@ -79,6 +79,11 @@ of unreviewed TC temporary predecessor obligations.
 Inventories use `LC_ALL=C`. Candidate approval exists only in disposable
 toolkit copies under `/tmp`; the checkout's approval is unchanged.
 
+Flight Form fixtures use the native secondary riding category `9`. Category
+`7`, category `11` and per-core disagreements must fail the dependency contract.
+The protected native profession classifiers are also executed with mocked DBC
+lookups to verify slot classification.
+
 Flight Form regressions require the explicit TC world edge, an ordinary druid
 anchor (including a reconstructed Flight Form below Swift Flight Form), exact
 riding effects and matching rank prefixes. They verify `225/225` and existing

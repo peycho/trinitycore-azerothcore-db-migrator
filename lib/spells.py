@@ -15,7 +15,7 @@ import struct
 import subprocess
 import sys
 
-POLICY = 'spell-state-v6'
+POLICY = 'spell-state-v7'
 LEARN, SKILL, SKILL_STEP, DUAL_WIELD = 36, 118, 44, 40
 PASSIVE, HIDDEN = 0x40, 0x80
 
@@ -786,7 +786,7 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
                     or metadata.spells[parent][4] & (PASSIVE|HIDDEN)
                     or metadata.skill_effect(parent) is not None
                     or list(metadata.predecessors(child)) + [child] != ranks
-                    or metadata.stores['SkillLine'].get(rule['skill'],[0,0])[1] != 7):
+                    or metadata.stores['SkillLine'].get(rule['skill'],[0,0])[1] != rule['skill_category']):
                 return False
             for step,rank in enumerate(ranks,1):
                 if (metadata.spells[rank][71:74] != rule['child_effects']
@@ -804,7 +804,8 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
             reject('SPELL_WOULD_CHANGE_SKILL',f'{parent}:{child}: skill={skill}; stored={skills[skill]}; '
                    'requires riding 225/225 or 300/300 with a known higher riding anchor')
         proof = {'parent':parent,'child':child,'policy':'TC_WORLD_LOAD_PERSISTENT_RIDING',
-                 'skill':skill,'stored_skill':list(skills[skill]),'ranks':ranks}
+                 'skill':skill,'skill_category':rule['skill_category'],
+                 'stored_skill':list(skills[skill]),'ranks':ranks}
         if proof not in persistent_dependencies[child]:
             persistent_dependencies[child].append(proof)
         return True

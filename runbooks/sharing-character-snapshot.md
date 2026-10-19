@@ -63,3 +63,27 @@ MIGRATOR_DISPOSABLE_MYSQL=1 REHEARSAL_MYSQL_PORT=33317 \
 
 This standalone sharing helper does not change the migration or cleanup-console
 policies. Compatibility-profile approval remains UNREVIEWED.
+
+## Optional world metadata for spell reproduction
+
+A characters dump plus DBC files does not establish the effective spell chains,
+script bindings or trainer data. Export the relevant tables from the matching
+TC source and AC staging worlds (adjust the two schema names), using your usual
+connection options. These commands read world data and omit stored code:
+
+```bash
+mysqldump --single-transaction --no-tablespaces --set-gtid-purged=OFF --skip-triggers \
+  trinity_world spell_dbc spell_ranks spell_required spell_learn_spell \
+  spell_script_names spell_custom_attr playercreateinfo_spell_custom \
+  quest_template quest_template_addon item_template > tc-world-metadata.sql
+mysqldump --single-transaction --no-tablespaces --set-gtid-purged=OFF --skip-triggers \
+  acore_world spell_dbc talent_dbc talenttab_dbc skillline_dbc \
+  skilllineability_dbc skillraceclassinfo_dbc skilltiers_dbc spell_ranks \
+  spell_required spell_script_names spell_custom_attr trainer_spell \
+  quest_template quest_template_addon item_template > ac-world-metadata.sql
+```
+
+Review these private exports before sharing. Compression is optional. No auth
+credentials or complete auth dump are needed to investigate character spell
+reconstruction. Auth account-parent validation remains unverified without
+account-ID evidence; world metadata does not replace that separate check.

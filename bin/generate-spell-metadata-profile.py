@@ -77,7 +77,7 @@ REVIEWED_SKILL_REWARD_DEPENDENCIES = {
 # TC's explicit load-time world edge restores Expert Riding from Flight Form.
 # AC needs persistent riding rows; this is not a trainer- or skill-based grant.
 REVIEWED_PERSISTENT_WORLD_DEPENDENCIES = {
-    '33943': {'child':34090, 'class':11, 'skill':762,
+    '33943': {'child':34090, 'class':11, 'skill':762, 'skill_category':9,
               'parent_effects':[6,6,6], 'parent_auras':[36,77,201],
               'child_effects':[3,118,0], 'child_visibility':192, 'ranks':[33388,33391,34090],
               'skill_states':[[225,225],[300,300]], 'higher_anchor':34091},

@@ -168,6 +168,17 @@ native runtime slot/tier behavior must also pass the gameplay gate below.
 
 ### Flight Form and existing riding
 
+`spell-state-v7` requires riding skill `762` to have the native secondary
+category `9` in both effective catalogs. The former class-category `7` check
+rejected the real Flight Form dependency despite a valid relationship and
+stored skill. Synthetic riding fixtures now use category `9` too; categories
+`7` and `11`, and source/target category disagreements, are rejected. Both
+native `IsPrimaryProfessionSkill` functions exclude secondary skills from
+primary profession slots. The category is recorded in dependency provenance;
+all existing skill-value/cap and higher-anchor restrictions remain. Start a
+fresh migration run with new target/control schemas after this policy/profile
+change, and retain the old preparation toolkit and archives for restoration.
+
 `spell-state-v5` includes a narrow reviewed world-dependency contract. Pinned
 TC `AddSpell` restores non-autolearned `spell_learn_spell` children during
 loading, including the active `33943 -> 34090` edge when present in the actual

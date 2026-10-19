@@ -26,6 +26,12 @@ state. Both v2 manifests additionally protect `SpellAuras.cpp`; pinned revisions
 remain unchanged. The metadata profile and policy change run/checkpoint identity. Earlier migration
 runs need fresh target/control schemas. See [spell reconstruction](spell-reconstruction.md).
 
+The `spell-state-v7` correction binds the persistent riding dependency to native
+secondary skill category `9`, replacing an incorrect class-category assumption.
+The generator and synthetic fixture agree with actual DBC/overlay data. Core
+pins, protected-file manifests and approval remain unchanged. This metadata and
+policy change also invalidates earlier run/checkpoint identities.
+
 ## Reviewing a candidate
 
 Generate outside the repository, choosing a new profile ID for later revisions:

@@ -190,7 +190,8 @@ def stores(profile):
         info[1:6]=[118,races,classes,flags,level]
     for skill, chain in [(171,CHAINS[10]),(762,CHAINS[11])]:
         row = record('SkillLine', skill)
-        row[1] = 11 if skill == 171 else 7
+        # Riding is a secondary skill in the native 3.3.5 DBC, not a class skill.
+        row[1] = 11 if skill == 171 else 9
         tier = record('SkillTiers', skill)
         race = record('SkillRaceClassInfo', skill)
         race[1],race[6] = skill,skill

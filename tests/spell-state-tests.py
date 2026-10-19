@@ -702,6 +702,7 @@ class SpellTests(unittest.TestCase):
                 proof=result[34090]['authorization']['persistent_world_dependencies'][0]
                 self.assertEqual(proof['policy'],'TC_WORLD_LOAD_PERSISTENT_RIDING')
                 self.assertEqual(proof['stored_skill'],[225,225])
+                self.assertEqual(proof['skill_category'],9)
                 self.assertIn([anchor,[anchor]+([] if anchor==33943 else [33943])+[34090],
                                'TC_WORLD_PERSISTENT_DEPENDENCY'],result[34090]['proofs'])
                 reverse=self.convert({s:(r['mask'],0) for s,r in result.items()},skills=skills,cls=11,reverse=True)
@@ -733,6 +734,18 @@ class SpellTests(unittest.TestCase):
         for metadata in (tc,ac):
             metadata.spells[34090][71]=36
         self.fails('UNSUPPORTED_DEPENDENT_LEARN',lambda:self.convert({33943:(1,0)},skills={762:(225,225)},cls=11,tc=tc,ac=ac))
+
+    def test_flight_form_requires_native_secondary_riding_category(self):
+        self.assertEqual(self.tc.stores['SkillLine'][762][1],9)
+        self.assertEqual(self.ac.stores['SkillLine'][762][1],9)
+        for core in ('tc','ac','both'):
+            for category in (7,11):
+                tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+                for name,metadata in (('tc',tc),('ac',ac)):
+                    if core in (name,'both'):
+                        metadata.stores['SkillLine'][762][1]=category
+                self.fails('UNSUPPORTED_DEPENDENT_LEARN',lambda:self.convert(
+                    {33943:(1,0)},skills={762:(225,225)},cls=11,tc=tc,ac=ac))
 
     def test_profession_riding_preserve_existing_caps(self):
         skills = {171:(320,450),762:(300,300)}
