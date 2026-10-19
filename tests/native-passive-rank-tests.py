@@ -217,6 +217,26 @@ methods+='\nbool Player::IsNeedCastPassiveSpellAtLearn(SpellInfo const*info)cons
 nurturing.append("void NurturingApply(Player*p,uint32 id){AcNurturing{p,manager.GetSpellInfo(id)}.AfterApply(nullptr,0);}")
 nurturing.append("void NurturingRemove(Player*p,uint32 id){AcNurturing{p,manager.GetSpellInfo(id)}.AfterRemove(nullptr,0);}")
 main=['int main(){ SkillLineAbilityEntry classAbility;']
+for spell in(63680,63644,63645):
+    row=data['Spell'][spell]
+    main.append(f'manager.spells[{spell}].Id={spell};manager.spells[{spell}].root={spell};manager.spells[{spell}].flags={row[4]};')
+    for i in range(3):main.append(f'manager.spells[{spell}].Effects[{i}]={{{row[71+i]},{row[116+i]},{row[95+i]}}};')
+main.append(r"""
+for(uint8 active:{0,1}){
+    Player old;old.m_activeSpec=active;old.session.loading=false;
+    assert(!old._addSpell(63680,3,false)&&old.m_spells.empty()&&old.auras.empty());
+    Player normalized;normalized.m_activeSpec=active;normalized.session.loading=false;
+    assert(normalized._addSpell(63644,3,false)&&normalized._addSpell(63645,3,false));
+    assert(normalized.auras.empty()&&normalized.m_spells.size()==2);
+    assert(normalized.m_spells[63644]->specMask==3&&normalized.m_spells[63645]->specMask==3);
+    auto saved=std::make_shared<Transaction>();normalized._SaveSpells(saved);
+    assert((saved->saved==std::map<uint32,uint32>{{63644,3},{63645,3}}));
+    normalized.m_activeSpec=1-active;
+    Player relog;relog.m_activeSpec=normalized.m_activeSpec;
+    relog._addSpell(63644,3,false);relog._addSpell(63645,3,false);
+    assert(relog.auras.empty()&&relog.m_spells.size()==2);
+}
+""")
 for rank,(parent,helper) in enumerate(((33872,47179),(33873,47180)),1):
     main.append(f'manager.spells[{parent}].Id={parent};manager.spells[{parent}].rank={rank};manager.spells[{parent}].root=33872;')
     main.append(f'manager.spells[{helper}].Id={helper};manager.spells[{helper}].rank={rank};manager.spells[{helper}].root=47179;manager.spells[{helper}].flags=400;manager.spells[{helper}].Stances=1;')

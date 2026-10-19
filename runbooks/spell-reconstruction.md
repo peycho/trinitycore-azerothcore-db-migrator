@@ -94,6 +94,7 @@ schemas and run ID; do not replace code underneath an existing run.
 | Runeforging native skill rewards | Delegate only verified `53428 -> 53341/53343` dependencies (`SKILL`), with existing skill `776` exactly `1/1` and matching eligible native reward metadata |
 | Flight Form's TC world dependency | Materialize `33943 -> 34090` and its verified riding predecessors as persistent ordinary rows only with an explicit active TC world edge and existing riding `762` at `225/225`, or `300/300` with an already known Artisan Riding anchor. Never infer Artisan Riding from Flight Form. |
 | TC dependent learned spells | Reconstruct only verified native-compatible dependencies; unsupported world-only learning relationships block |
+| Hidden dual-spec teacher `63680` | Under v10, retain its original stock row as control disposition `TEACHER` and persist only verified TC-known buttons `63644`/`63645`; require existing two-spec ownership and Generic skill `183`; never cast the wrapper, purchase a spec or infer an absent reverse wrapper |
 | Profession/riding tiers | Preserve existing skill lines, values and caps; block missing skills, incompatible effects or cap/value increases |
 | Recipes and other ordinary spells | Preserve legitimate stored availability; do not infer recipes from trainer catalogs |
 | Unknown IDs, conflicting/gapped chains, cycles, unsupported corrections/scripts | Block with an explicit reason |
@@ -447,6 +448,64 @@ loading remains responsible for its normal rewards.
 Use a new toolkit, fresh target/control schemas and a new run. Keep the cleaned
 source and its retained cleanup archives. An in-place staging repair remains a
 separately reviewed task.
+
+## Dual-spec teaching wrapper (`spell-state-v10`)
+
+TC can retain hidden teaching wrapper `63680` in `character_spell` while omitting
+its dependent spec-switch buttons `63645` and `63644`. Its non-autolearned load
+map restores those buttons. The reviewed AC `_addSpell()` refuses persistent
+spells containing learn effects, so copying the wrapper would lose the buttons.
+This is a verified representation conversion, not a general learn-spell bypass.
+
+For an enabled, active stored TC `63680` anchor, the converter verifies the exact
+two self-target learn effects, effective load edges, attributes, effect values,
+targets, no rank/talent/script/prerequisite dependencies, and both buttons'
+ordinary Generic skill associations. The character must already have exactly
+two specs and existing Generic skill `183`. Missing skills, single-spec state,
+or non-native Generic values/caps block. The character's level is fingerprinted;
+the existing skill must equal native `level × 5` for both value and cap at a
+verified level from 1 through 80, with matching native always-max skill ranges.
+The converter preserves those rows; it never repairs or clamps them. Unsupported
+disabled/inactive wrapper history, changed mechanics and unexpected routes block.
+Equal source/target mutations do not satisfy the explicit profile contract.
+
+The target receives only the two persistent buttons, with ordinary mask `3`.
+They contain cast-only activate-spec effect `162`; loading them casts neither
+button. The migration never executes learn, activate-spec or spec-count effects,
+and never derives purchase spell `63624` (effect `161`). Talent groups, active
+spec, selected talents, action bars and all skill values/caps retain their normal
+preservation checks. The pinned AC trainer consumer recognizes the wrapped
+teaching state through both known buttons, without a stored wrapper.
+
+The original stock wrapper key and flags are retained as committed control
+disposition `TEACHER`, together with the exact children, existing spec/skill
+context and `effects_executed=false`. It emits no target spell row. Report
+`spell-consumed-teachers.tsv` is regenerated from committed provenance alongside
+`spell-reconstruction.tsv`; both commit with the corresponding GUID checkpoint.
+Dedicated validation requires the exact persistent buttons and existing dual-spec
+context, and rejects leaked wrappers or incorrect masks. General exact talent,
+skill and unrelated-data validation remains required.
+
+Reverse conversion preserves the two ordinary buttons. It does not infer that
+AC ever stored `63680`, and never grants that wrapper back to TC. A stored AC
+wrapper remains blocked because the reviewed loader cannot legitimately retain
+it. Thus the semantic round trip is canonical button state, not a byte-for-byte
+restoration of the original wrapper row. Its original stock row remains in the
+forward control/report evidence; source databases remain unchanged. Unsafe or
+unreviewed teaching spells retain the blocking policy; no blanket archive
+override is added.
+
+The new control enum, metadata and policy require a fresh migration run with
+fresh target/control schemas. Existing staging targets need a fresh migration;
+in-place repair is separately reviewed. Keep old preparation toolkits/archives
+for their original restoration guards. Approval remains **UNREVIEWED**.
+
+On staging, check both pre-owned specs: both switch buttons work, active builds,
+talent points and action bars remain correct, and no purchase/count spell is
+triggered. Confirm unchanged Generic/other skills and repeat after save, relog
+and restart; inspect logs for teaching-spell rejection or skill corrections.
+These checks, and the five general gameplay gates below, remain **NOT TESTED**
+until performed on the actual target worldserver.
 
 ## Checkpoints, evidence and validation
 

@@ -15,7 +15,7 @@ import struct
 import subprocess
 import sys
 
-POLICY = 'spell-state-v9'
+POLICY = 'spell-state-v10'
 LEARN, SKILL, SKILL_STEP, DUAL_WIELD = 36, 118, 44, 40
 PASSIVE, HIDDEN = 0x40, 0x80
 
@@ -293,6 +293,7 @@ class Metadata:
         self.native_passive_ranks = profile.get('native_passive_ranks', {})
         self.world_talent_auras = profile.get('world_talent_auras', {})
         self.world_ranked_talent_auras = profile.get('world_ranked_talent_auras', {})
+        self.consumed_teachers = profile.get('consumed_teachers', {})
         self.world_aura_owners = {child: owner for rule in (*self.world_talent_auras.values(),
                                                           *self.world_ranked_talent_auras.values())
                                   for owner,child in zip(rule['owners'],rule['children'])}
@@ -650,7 +651,75 @@ def ranked_world_talent_aura_rule(owner, tc, ac, cls):
     return rule
 
 
-def reconstruct(character, stored, talents, skills, source, target, direction):
+def consumed_teacher_rule(spell, character, flags, skills, tc, ac, direction, level):
+    """A verified TC wrapper becomes its load-derived buttons, without casting.
+
+    Its original stock row remains control provenance. Reverse conversion
+    preserves buttons without inventing an absent TC wrapper.
+    """
+    rule = tc.consumed_teachers[str(spell)]
+    if direction != 'tc-to-ac' or character[3] != rule['spec_count'] or flags != (1,0):
+        reject('UNREPRESENTABLE_TEACHER_STATE',
+               f'{spell}: requires enabled TC stored anchor and existing {rule["spec_count"]} specs; '
+               f'direction={direction}; flags={flags}; groups={character[3]}')
+    def blocked(detail):
+        reject('INCOMPATIBLE_CONSUMED_TEACHER',f'{spell}: {detail}')
+    if rule != ac.consumed_teachers.get(str(spell)):
+        blocked('source/target profile differs')
+    fields = (*range(4,131), *range(208,212))
+    race_mask, class_mask = 1 << (character[0]-1), 1 << (character[1]-1)
+    skill_layouts = []
+    for metadata in (tc,ac):
+        if metadata.learns[spell] != [(child,1,False) for child in rule['children']]:
+            blocked(f'{metadata.core}: effective load dependencies differ')
+        if metadata.effect_learns[spell] != [(child,1,False) for child in rule['children']]:
+            blocked(f'{metadata.core}: self-target teaching effects differ')
+        if metadata.abilities[spell] or metadata.learn_parents[spell]:
+            blocked(f'{metadata.core}: wrapper has a skill or incoming learning route')
+        for member in [spell,*rule['children']]:
+            metadata.check_spell(member)
+            record = metadata.spells[member]
+            shape = rule['mechanics'][str(member)]
+            for field in fields:
+                if record[field] != shape.get(str(field),0):
+                    blocked(f'{metadata.core}: spell={member}: mechanic field={field} differs')
+            if (member in metadata.talents or member in metadata.additional
+                    or metadata.chain(member) != (member,) or metadata.scripts[member]
+                    or metadata.requires[member] or metadata.prerequisite_users[member]
+                    or metadata.talent_learn_owners.get(member)):
+                blocked(f'{metadata.core}: spell={member}: rank/talent/script/prerequisite differs')
+        for child in rule['children']:
+            if metadata.learns[child] or metadata.effect_learns[child]:
+                blocked(f'{metadata.core}: button={child}: unexpected outgoing learning route')
+            expected = [rule['skill'],child,rule['race_mask'],rule['class_mask'],0,0,1,0,2,0,0,0,0]
+            if (len(metadata.abilities[child]) != 1 or metadata.abilities[child][0][1:] != expected
+                    or metadata.stores['SkillLine'].get(rule['skill'],[0,0])[1] != rule['skill_category']):
+                blocked(f'{metadata.core}: button={child}: native Generic skill association differs')
+        infos = sorted(tuple(row[1:7]) for row in metadata.stores['SkillRaceClassInfo'].values()
+                       if row[1] == rule['skill'] and (not row[2] or row[2] & race_mask)
+                       and (not row[3] or row[3] & class_mask))
+        if not infos or any(row[3:] != (1170,0,0) for row in infos):
+            blocked(f'{metadata.core}: native always-max Generic skill range differs')
+        skill_layouts.append(infos)
+    if skill_layouts[0] != skill_layouts[1]:
+        blocked('source/target Generic race/class ranges differ')
+    if rule['skill'] not in skills:
+        reject('SPELL_WOULD_ADD_SKILL',f'{spell}: skill={rule["skill"]}; existing native Generic skill required')
+    if level is None or not 1 <= level <= 80:
+        reject('UNREPRESENTABLE_TEACHER_STATE',f'{spell}: verified character level in 1..80 required')
+    native_skill = level * 5
+    if tuple(skills[rule['skill']]) != (native_skill,native_skill):
+        reject('SPELL_WOULD_CHANGE_SKILL',f'{spell}: skill={rule["skill"]}; stored={skills[rule["skill"]]}; '
+               f'native level={level} requires {native_skill}/{native_skill}')
+    return {'policy':'TC_KNOWN_DUAL_SPEC_TEACHER', 'children':rule['children'],
+            'spec_count':rule['spec_count'], 'skill':rule['skill'],
+            'level':level, 'native_skill':native_skill,
+            'stored_skill':list(skills[rule['skill']]), 'source_flags':list(flags),
+            'target_representation':'PERSISTENT_BUTTONS_WITH_RECORDED_WRAPPER',
+            'effects_executed':False}
+
+
+def reconstruct(character, stored, talents, skills, source, target, direction, level=None):
     """Return one deterministic result per spell, retaining all derivations."""
     race, cls, active_group, groups = character
     if not (1 <= race <= 32 and 1 <= cls <= 32 and groups in (1, 2) and 0 <= active_group < groups):
@@ -677,6 +746,7 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
     seeds = set(stored) | set(owners)
     for metadata in (tc, ac):
         assert_acyclic(metadata, seeds)
+    consumed_teachers = {}
     aura_helpers = defaultdict(dict)
     for spell in stored:
         if (tc.aura_owners.get(spell) or ac.aura_owners.get(spell)
@@ -960,6 +1030,9 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
     result = {}
     def add(spell, mask, anchor, path, reason):
         compatible(spell)
+        if str(spell) in tc.consumed_teachers and spell not in consumed_teachers:
+            consumed_teachers[spell] = consumed_teacher_rule(
+                spell,character,stored.get(spell,()),skills,tc,ac,direction,level)
         allowed = eligible(spell)
         # All sources of provenance may be unioned, but no source can widen
         # the verified specialization authorization.
@@ -1024,6 +1097,8 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
             runtime = spell in temporary_spells
             disposition = ('AURA' if spell in aura_helpers else 'SKILL' if spell in skill_delegates
                            else 'RUNTIME' if runtime else 'PERSISTENT')
+        if spell in consumed_teachers:
+            disposition = 'TEACHER'
         if disposition == 'PERSISTENT' and LEARN in ac.spells[spell][71:74]:
             reject('UNSUPPORTED_PERSISTENT_LEARN_EFFECT', str(spell))
         if direction == 'ac-to-tc' and spell in source_passive_masks:
@@ -1202,6 +1277,12 @@ def reconstruct(character, stored, talents, skills, source, target, direction):
         if spell in ranked_aura_helpers:
             row['authorization']['policy'] = 'TC_WORLD_NATIVE_RANKED_TALENT_AURA'
             row['authorization']['ranked_world_talent_aura'] = ranked_aura_helpers[spell]
+        if spell in consumed_teachers:
+            row['authorization']['policy'] = 'CONSUMED_DUAL_SPEC_TEACHER'
+            row['authorization']['consumed_teacher'] = consumed_teachers[spell]
+        teacher_sources = [parent for parent,proof in consumed_teachers.items() if spell in proof['children']]
+        if teacher_sources:
+            row['authorization']['consumed_teacher_sources'] = teacher_sources
         if spell in persistent_dependencies:
             row['authorization']['persistent_world_dependencies'] = sorted(
                 persistent_dependencies[spell],key=lambda item:(item['parent'],item['child']))
@@ -1254,6 +1335,7 @@ def character_rows(db, schema, direction):
           UNION ALL SELECT guid,1,spell,{talent_mask},0,0 FROM `{schema}`.character_talent
           UNION ALL SELECT guid,2,skill,value,max,0 FROM `{schema}`.character_skills
           UNION ALL SELECT guid,3,spell,{spell_fields},0 FROM `{schema}`.character_spell
+          UNION ALL SELECT guid,4,level,0,0,0 FROM `{schema}`.characters
         ) rows_for_spells ORDER BY guid,kind,a,b,c,d;
     '''
     return db.rows('character-spell-inputs', query)
@@ -1283,7 +1365,7 @@ def main(args):
     with expected_sql.open('w') as sql, expected_tsv.open('w') as tsv:
         tsv.write('guid\tspell\tspec_mask\tactive\tdisabled\tdisposition\tderived\tprovenance\n')
         for guid, group in itertools.groupby(character_rows(db, args.source_characters, args.direction), lambda row: int(row[0])):
-            character, stored, talents, skills = None, {}, defaultdict(int), {}
+            character, level, stored, talents, skills = None, None, {}, defaultdict(int), {}
             for _, kind, a, b, c, d in group:
                 a, b, c, d = map(int, (a, b, c, d))
                 if kind == '0':
@@ -1292,6 +1374,8 @@ def main(args):
                     talents[a] |= b
                 elif kind == '2':
                     skills[a] = (b, c)
+                elif kind == '4':
+                    level = a
                 else:
                     stored[a] = (b, c)
             if not stored and not talents:
@@ -1312,7 +1396,7 @@ def main(args):
                     ac = Metadata('ac', args.ac_dbc, ac_world, profile, db)
                     metadata = (tc, ac)
                 source, target = metadata if args.direction == 'tc-to-ac' else metadata[::-1]
-                rows = reconstruct(character, stored, talents, skills, source, target, args.direction)
+                rows = reconstruct(character, stored, talents, skills, source, target, args.direction, level=level)
                 for spell, row in sorted(rows.items()):
                     proof = json.dumps({'original': row['original'], 'derivations': row['proofs'],
                                         'authorization': row['authorization']}, sort_keys=True, separators=(',', ':'))

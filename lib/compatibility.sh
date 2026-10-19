@@ -113,6 +113,8 @@ write_trinitycore_semantic_manifest() {
 write_azerothcore_semantic_manifest() {
     local destination=$1
     write_path_manifest "$AZEROTHCORE_DIR" "$destination" semantic \
+        src/server/game/Entities/Player/PlayerGossip.cpp \
+        src/server/game/Entities/Player/PlayerUpdates.cpp \
         src/server/database/Database/Implementation/CharacterDatabase.cpp \
         src/server/database/Database/Implementation/CharacterDatabase.h \
         src/server/database/Database/Implementation/LoginDatabase.cpp \

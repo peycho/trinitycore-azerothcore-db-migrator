@@ -69,6 +69,12 @@ the selected mapping registries.
   child representation; superseded TC internal passive entries are recorded in
   provenance rather than persisted in AC. Ordinary trained ranks and selected
   talent ownership retain their existing rules.
+  A reviewed hidden dual-spec teacher `63680` is normalized to its two verified
+  TC-known switch buttons only with existing dual-spec ownership and Generic
+  skill. The original wrapper row is retained in control/report provenance as
+  `TEACHER`; no teaching or spec-count effect is executed. Reverse conversion
+  preserves buttons without inventing an absent wrapper. Other teaching spells
+  remain blocked; see the [exact contract](spell-reconstruction.md#dual-spec-teaching-wrapper-spell-state-v10).
 - Cooldown category/end fields are consolidated with the later expiration time.
 - Instance extension enum value `EXTENDED` becomes the target boolean.
 - Item and money loot tables merge into `item_loot_storage`; money is stored as

@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS `{{CONTROL_SCHEMA}}`.`spell_expected` (
   `spec_mask` tinyint unsigned NOT NULL,
   `active` tinyint unsigned NOT NULL,
   `disabled` tinyint unsigned NOT NULL,
-  `disposition` enum('PERSISTENT','RUNTIME','TALENT','SKILL','AURA') NOT NULL,
+  `disposition` enum('PERSISTENT','RUNTIME','TALENT','SKILL','AURA','TEACHER') NOT NULL,
   `derived` tinyint unsigned NOT NULL,
   `provenance` longtext NOT NULL,
   PRIMARY KEY (`run_id`,`guid`,`spell`)

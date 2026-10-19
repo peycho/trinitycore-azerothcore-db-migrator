@@ -100,6 +100,8 @@ both cores' chains and native runtime behavior before extending support.
 | `UNREPRESENTABLE_INACTIVE_DEPENDENCY` | A learned child is inactive in TC, but the reviewed representation cannot preserve that availability in AC. |
 | `CONDITIONAL_DEPENDENT_LEARN` | A dependency reached through spell effects has stance/aura-state conditions that prevent unconditional reconstruction. |
 | `UNSUPPORTED_PERSISTENT_LEARN_EFFECT` | A spell selected for persistent storage itself contains a learn effect. Safe load-time teaching and side effects have not been established. |
+| `INCOMPATIBLE_CONSUMED_TEACHER` | The exact `63680` wrapper/button contract differs: inspect the named mechanic field, load edge, skill association or excluded route. Matching source/target mutations alone do not authorize conversion. |
+| `UNREPRESENTABLE_TEACHER_STATE` | The reviewed hidden wrapper lacks an enabled stored TC anchor, existing two-spec ownership or verified level `1..80`, or occurs as a persistent AC row. Never purchase another spec, guess ownership or cast a teacher to bypass this failure. |
 | `CONFLICTING_SPELL_REPRESENTATION` | Independent paths assign incompatible persistent/runtime dispositions to the same spell. Review all derivations; mask merging alone cannot resolve it. |
 
 ## Skills, professions and riding
@@ -159,3 +161,12 @@ and AC exact temporary helpers. Unexpected mechanics or incoming/outgoing
 routes remain `INCOMPATIBLE_WORLD_TALENT_AURA`; stored helpers still report
 `UNSUPPORTED_AURA_HELPER_SPELL_ROW`. See the
 [ranked world-helper contract](spell-reconstruction.md#nurturing-instinct-world-helpers-spell-state-v9).
+
+`spell-state-v10` supports only the reviewed `63680` dual-spec teacher by
+recording the wrapper as `TEACHER` and persisting its two verified TC-known
+switch buttons. Existing Generic skill and dual-spec ownership are mandatory;
+missing skills still report `SPELL_WOULD_ADD_SKILL`. Existing Generic
+values/caps differing from native `level × 5` report
+`SPELL_WOULD_CHANGE_SKILL` and require separately reviewed preparation. Other
+learn wrappers remain `UNSUPPORTED_PERSISTENT_LEARN_EFFECT`. See the
+[exact teacher contract](spell-reconstruction.md#dual-spec-teaching-wrapper-spell-state-v10).

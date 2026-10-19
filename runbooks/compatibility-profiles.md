@@ -34,6 +34,15 @@ policy change also invalidates earlier run/checkpoint identities.
 
 ## Reviewing a candidate
 
+`spell-state-v10` adds the exact dual-spec teaching-wrapper contract and control
+disposition `TEACHER`. The two derived buttons must already be justified by TC's
+load map and existing two-spec/skill state; no effect is executed. AC gossip and
+spec-count consumers additionally protect `PlayerGossip.cpp`/`PlayerUpdates.cpp`.
+Both files match the retained AC pin and supplied staging/configured refs byte
+for byte. The protected counts are TC 99 and AC 103. Pins, v1 and UNREVIEWED
+approval remain unchanged. Fresh target/control schemas are required; see the
+[contract](spell-reconstruction.md#dual-spec-teaching-wrapper-spell-state-v10).
+
 `spell-state-v9` adds the bounded Nurturing Instinct ranked world-helper
 contract alongside the existing script-only representation. Existing protected
 files cover its TC dependent/prefix restoration and AC temporary lifecycle;

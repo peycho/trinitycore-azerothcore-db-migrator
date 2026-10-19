@@ -926,6 +926,7 @@ write_final_report() {
               AND disposition='PERSISTENT' AND spec_mask<>3;"
         printf '\n'
         printf 'Reviewed native passive-rank contracts: `spell-native-passive-ranks.tsv` (exact owners, TC predecessor state and target representation).\n\n'
+        printf 'Consumed dual-spec teaching wrappers: `spell-consumed-teachers.tsv` (original flags, exact derived buttons and preserved spec ownership; no teaching effects executed).\n\n'
         printf '## Validation results\n\n'
         printf '| Check | Severity | Observed | Expected | Passed | Detail |\n'
         printf '|---|---:|---:|---:|:---:|---|\n'

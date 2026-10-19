@@ -298,6 +298,18 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     sql("UPDATE item_instance SET charges='1 2 3 4 5 ',enchantments=REPEAT('0 ',36) WHERE guid=200", CHARS)
     sql("INSERT INTO guild_bank_item (guildid,TabId,SlotId,item_guid) VALUES (940,0,0,201)", CHARS)
     print('Checking research and hidden talent-child blockers',flush=True)
+    spell_guard('UNREPRESENTABLE_TEACHER_STATE',
+        f'UPDATE `{CHARS}`.characters SET talentGroupsCount=1 WHERE guid=126',
+        f'UPDATE `{CHARS}`.characters SET talentGroupsCount=2 WHERE guid=126')
+    spell_guard('SPELL_WOULD_ADD_SKILL',
+        f'DELETE FROM `{CHARS}`.character_skills WHERE guid=126 AND skill=183',
+        f'INSERT INTO `{CHARS}`.character_skills VALUES (126,183,400,400)')
+    spell_guard('SPELL_WOULD_CHANGE_SKILL',
+        f'UPDATE `{CHARS}`.character_skills SET value=5,max=350 WHERE guid=126 AND skill=183',
+        f'UPDATE `{CHARS}`.character_skills SET value=400,max=400 WHERE guid=126 AND skill=183')
+    spell_guard('INCOMPATIBLE_CONSUMED_TEACHER',
+        f'INSERT INTO `{WORLD}`.spell_learn_spell VALUES (63680,6603,1)',
+        f'DELETE FROM `{WORLD}`.spell_learn_spell WHERE entry=63680 AND SpellID=6603')
     spell_guard('UNAUTHORIZED_TALENT_SPELL',
         f'INSERT INTO `{CHARS}`.character_spell VALUES (113,900010,1,1)',
         f'DELETE FROM `{CHARS}`.character_spell WHERE guid=113 AND spell=900010')
@@ -390,6 +402,30 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     interrupt(forward, 'sanitize-target', f'DELETE s FROM `{AC_CHARS}`.`pet_spell`')
     phase(forward, 'validate')
     assert_ready(fv)
+    for guid in (126,127):
+        equal(f'SELECT GROUP_CONCAT(CONCAT(spell,":",specMask) ORDER BY spell) FROM `{AC_CHARS}`.character_spell WHERE guid={guid}',
+              '63644:3,63645:3')
+        equal(f"SELECT disposition,derived,JSON_EXTRACT(provenance,'$.original') FROM `{FC}`.spell_provenance "
+              f"WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid={guid} AND spell=63680",'TEACHER\t0\t[1, 0]')
+    teacher_report=TOOLKIT/'reports'/fv['MIGRATION_RUN_ID']/'spell-consumed-teachers.tsv'
+    original_teacher_report=teacher_report.read_bytes()
+    assert b'126\t63680\t[1, 0]' in original_teacher_report
+    teacher_report.write_text('deliberately stale report\n')
+    library(forward,'write_spell_reports')
+    assert teacher_report.read_bytes()==original_teacher_report,'Teacher report must regenerate from committed provenance'
+    sql(f'UPDATE `{AC_CHARS}`.character_spell SET specMask=1 WHERE guid=126 AND spell=63644')
+    library(forward,'validate_character_spells')
+    equal(f"SELECT passed FROM `{FC}`.validation_result WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND check_name='character_spell_consumed_teacher_mismatch'",0)
+    sql(f'UPDATE `{AC_CHARS}`.character_spell SET specMask=3 WHERE guid=126 AND spell=63644')
+    sql(f'INSERT INTO `{AC_CHARS}`.character_spell VALUES (126,63680,3)')
+    library(forward,'validate_character_spells')
+    equal(f"SELECT passed FROM `{FC}`.validation_result WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND check_name='character_spell_unexpected'",0)
+    sql(f'DELETE FROM `{AC_CHARS}`.character_spell WHERE guid=126 AND spell=63680')
+    sql(f'UPDATE `{AC_CHARS}`.character_skills SET value=5,max=350 WHERE guid=126 AND skill=183')
+    library(forward,'validate_character_spells')
+    equal(f"SELECT passed FROM `{FC}`.validation_result WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND check_name='character_spell_consumed_teacher_mismatch'",0)
+    sql(f'UPDATE `{AC_CHARS}`.character_skills SET value=400,max=400 WHERE guid=126 AND skill=183')
+    library(forward,'validate_character_spells')
     equal(f'SELECT EndTime,ShutdownType,IFNULL(ExitCode,\'NULL\'),LENGTH(ShutdownReason) FROM `{AC_AUTH}`.uptime '
           'WHERE starttime=2000000000', '2000000100\t0\tNULL\t0')
     equal(f'SELECT COUNT(*) FROM `{AC_AUTH}`.rbac_permissions WHERE id=945 AND name=\'Command: account info\'', 1)
@@ -531,6 +567,7 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
         sql(f'DELETE FROM {table}', AC_CHARS)
     sql((ROOT / 'tests/fixtures/azerothcore-reverse-data.sql').read_text(), AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (113,674,3),(120,7744,3),(112,37377,3),(113,40081,3),(112,40326,3)',AC_CHARS)
+    sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (126,63644,3),(126,63645,3),(127,63644,3),(127,63645,3)',AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES '+','.join(
         f'(119,{spell},3)' for spell in [*SPELL_FIXTURES.RUNEFORGING,53428]),AC_CHARS)
     sql('INSERT INTO character_talent (guid,spell,specMask) VALUES (115,33872,1),(115,33873,2),(125,33872,1),(125,33873,2)',AC_CHARS)
@@ -596,6 +633,11 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     equal(f'SELECT value,max FROM `{TC_CHARS}`.character_skills WHERE guid=119 AND skill=776','1\t1')
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=119 AND spell IN (53341,53343)',0)
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=115 AND spell IN (47179,47180)',0)
+    for guid in (126,127):
+        equal(f'SELECT GROUP_CONCAT(CONCAT(spell,":",active,":",disabled) ORDER BY spell) FROM `{TC_CHARS}`.character_spell WHERE guid={guid}',
+              '63644:1:0,63645:1:0')
+        equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid={guid} AND spell IN (63680,63624)',0)
+        equal(f'SELECT talentGroupsCount,activeTalentGroup FROM `{TC_CHARS}`.characters WHERE guid={guid}',f'2\t{guid-126}')
     equal(f'SELECT active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid=115 AND spell=33872','1\t0')
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=115 AND spell=33873',0)
     equal(f'SELECT active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid=125 AND spell=33873','1\t0')
@@ -651,6 +693,9 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     sql(f'UPDATE `{CHARS}`.character_spell SET spell=48781 WHERE guid=110 AND spell=48782')
     library(drift,'prepare_spell_snapshot verify','Spell inputs or reconstruction changed')
     sql(f'UPDATE `{CHARS}`.character_spell SET spell=48782 WHERE guid=110 AND spell=48781')
+    sql(f'UPDATE `{CHARS}`.characters SET level=79 WHERE guid=110')
+    library(drift,'prepare_spell_snapshot verify','Spell inputs or reconstruction changed')
+    sql(f'UPDATE `{CHARS}`.characters SET level=80 WHERE guid=110')
     sql(f'UPDATE `{AC_WORLD}`.spell_custom_attr SET attributes=1 WHERE spell_id=6603')
     library(drift,'prepare_spell_snapshot verify','Spell inputs or reconstruction changed')
     sql(f'UPDATE `{AC_WORLD}`.spell_custom_attr SET attributes=0 WHERE spell_id=6603')

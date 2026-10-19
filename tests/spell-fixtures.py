@@ -201,6 +201,21 @@ def stores(profile):
         if spell in (47179,47180):row[40]=21
     data['Spell'][33873][7],data['Spell'][33873][87]=67108864,1
     data['Spell'][47180][75],data['Spell'][47180][81]=1,0xffffffff
+    # Actual hidden dual-spec teaching wrapper and its two cast-only buttons.
+    for spell,shape in {
+        63680:{4:536871296,6:4,7:268632064,28:190,35:101,46:13,68:0xffffffff,
+               71:36,72:36,74:1,75:1,81:0xffffffff,86:1,87:1,116:63645,117:63644},
+        63644:{4:268435584,5:131212,7:536870912,8:65536,28:6,31:15,35:101,46:13,
+               68:0xffffffff,71:162,74:1,75:1,80:1,81:0xffffffff,86:1,87:1},
+        63645:{4:268435584,5:131212,7:536870912,8:65536,28:6,31:15,33:2011151,35:101,
+               46:13,68:0xffffffff,71:162,74:1,75:1,81:0xffffffff,86:1,87:1},
+    }.items():
+        row=record('Spell',spell)
+        for field,value in shape.items():row[field]=value
+    record('SkillLine',183)[1]=12
+    record('SkillRaceClassInfo',183)[1:7]=[183,4095,1535,1170,0,0]
+    for spell in (63644,63645):
+        record('SkillLineAbility',20868 if spell==63644 else 20867)[1:]=[183,spell,4095,1535,0,0,1,0,2,0,0,0,0]
     # Dual Wield is ordinary for warriors/hunters/rogues/death knights, but
     # talent-owned for shamans. Match the supplied stock DBC relationships.
     data['Spell'][674][4],data['Spell'][674][71] = 80,40

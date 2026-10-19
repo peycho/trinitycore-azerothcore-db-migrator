@@ -50,3 +50,13 @@ known persistent parent for `SKILL`, alongside exact skill/talent preservation.
 Their relationship IDs and masks remain in exported reconstruction reports.
 A changed policy requires a fresh target/control schema and run; existing
 control tables are not upgraded by an in-place `CREATE TABLE IF NOT EXISTS`.
+
+`spell-state-v10` adds `TEACHER` for the exact reviewed `63680` normalization.
+It retains the original stock wrapper flags and verified button/spec/skill
+context as control provenance, without a target wrapper row or executed effect.
+The two TC-known spec buttons are ordinary persistent rows. Validation checks
+both exact buttons, mask `3` and existing dual-spec ownership. Reports retain
+the original flags and native Generic skill context. Character level participates
+in the input hash; Generic value and cap must already equal native `level × 5`.
+Reports include `spell-consumed-teachers.tsv`. Reverse preserves buttons without inventing the
+source wrapper. This enum change requires fresh target/control schemas.

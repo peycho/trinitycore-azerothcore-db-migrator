@@ -1,5 +1,21 @@
 # Profile v2 review and acceptance record
 
+The 2026-10-19 `spell-state-v10` amendment normalizes only hidden dual-spec
+teacher `63680` to its exact TC load-derived switch buttons `63644`/`63645`.
+Both existing specs and Generic skill are required. Conversion also requires
+the existing Generic value/cap to match native
+`level × 5`; character level is fingerprinted and native skill-range metadata
+must agree. Non-native existing skills remain blocked rather than corrected.
+Original stock wrapper rows are retained in transactional `TEACHER` provenance;
+no effect is executed,
+skill/spec granted or talent ownership changed. Reverse conversion preserves
+canonical buttons without inventing a wrapper. The new control enum and policy
+require fresh target/control schemas. AC `PlayerGossip.cpp` and
+`PlayerUpdates.cpp` join the protected manifest and match the retained pin,
+staging f089543d and configured cb3d99cd byte for byte. Existing pins, v1 and
+UNREVIEWED approval remain unchanged. Tests and staging acceptance are separate;
+see the [contract](spell-reconstruction.md#dual-spec-teaching-wrapper-spell-state-v10).
+
 The 2026-10-19 `spell-state-v9` amendment handles Nurturing Instinct's hybrid
 script plus inactive TC world-learning representation. Exact selected AC
 temporary helpers replace TC's internal known-helper prefix under a bounded

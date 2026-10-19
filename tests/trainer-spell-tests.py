@@ -105,6 +105,16 @@ Player nativePassive;
 Trainer::Spell internal{16958},wrappedInternal{1016958};
 assert(trainer.GetDefaultSpellState(&nativePassive,&internal)!=SpellState::Known);
 assert(trainer.GetDefaultSpellState(&nativePassive,&wrappedInternal)!=SpellState::Known);
+// The consumed wrapper remains trainer-known through both native learn effects;
+// no persistent wrapper or spec-count purchase effect is needed.
+manager.spells[63680].effects={{36,63645},{36,63644}};
+Trainer::Spell dualTeacher{63680};
+for(uint32 guid:{126,127})for(uint32 spec:{0,1}){
+    Player player=players[guid];player.spec=spec;
+    assert(!player.HasSpell(63680)&&player.HasSpell(63644)&&player.HasSpell(63645));
+    assert(trainer.GetDefaultSpellState(&player,&dualTeacher)==SpellState::Known);
+    player.spells.erase(63644);assert(trainer.GetDefaultSpellState(&player,&dualTeacher)!=SpellState::Known);
+}
 std::cout << "Pinned AC trainer direct/wrapped spell regressions passed\\n";
 }''')
 with tempfile.TemporaryDirectory() as directory:

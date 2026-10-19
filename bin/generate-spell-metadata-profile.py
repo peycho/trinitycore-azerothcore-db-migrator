@@ -132,6 +132,23 @@ REVIEWED_NATIVE_PASSIVE_RANKS = {
              'children':[[50096,61274],[50108,61275],[50109,61276],[50110,61277],[50111,61278]],
              'chains':[[50096,50108,50109,50110,50111],[61274,61275,61276,61277,61278]], 'triggers':{}},
 }
+# TC restores two cast-only spec buttons from this hidden wrapper. AC refuses
+# persistent LEARN spells. No effect is executed by the migration contract.
+REVIEWED_CONSUMED_TEACHERS = {
+    '63680': {'children':[63645,63644], 'spec_count':2, 'skill':183,
+              'skill_category':12, 'race_mask':4095, 'class_mask':1535,
+              'mechanics': {
+                  '63680': {'4':536871296,'6':4,'7':268632064,'28':190,'35':101,'46':13,
+                            '68':4294967295,'71':36,'72':36,'74':1,'75':1,'81':4294967295,
+                            '86':1,'87':1,'116':63645,'117':63644},
+                  '63644': {'4':268435584,'5':131212,'7':536870912,'8':65536,'28':6,
+                            '31':15,'35':101,'46':13,'68':4294967295,'71':162,'74':1,'75':1,
+                            '80':1,'81':4294967295,'86':1,'87':1},
+                  '63645': {'4':268435584,'5':131212,'7':536870912,'8':65536,'28':6,
+                            '31':15,'33':2011151,'35':101,'46':13,'68':4294967295,'71':162,
+                            '74':1,'75':1,'81':4294967295,'86':1,'87':1},
+              }},
+}
 CORRECTION_DEFINITIONS = (
     'src/server/shared/SharedDefines.h',
     'src/server/game/Spells/SpellDefines.h',
@@ -242,6 +259,7 @@ def generate(tc, ac):
     result['persistent_world_dependencies'] = REVIEWED_PERSISTENT_WORLD_DEPENDENCIES
     result['world_talent_auras'] = REVIEWED_WORLD_TALENT_AURAS
     result['world_ranked_talent_auras'] = REVIEWED_WORLD_RANKED_TALENT_AURAS
+    result['consumed_teachers'] = REVIEWED_CONSUMED_TEACHERS
     result['native_passive_ranks'] = REVIEWED_NATIVE_PASSIVE_RANKS
     for name, (table, fmt_name) in STORES.items():
         sql = (ac / f'data/sql/base/db_world/{table}.sql').read_text()

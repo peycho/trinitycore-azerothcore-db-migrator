@@ -268,6 +268,31 @@ validate_character_spells() {
         JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters t ON t.guid=s.guid
         WHERE s.activeTalentGroup<>t.activeTalentGroup OR s.talentGroupsCount<>t.talentGroupsCount;" \
         "Spell conversion must retain specialization count and active group"
+    local teacher_button_state='button.specMask<>3'
+    [[ $MIGRATION_DIRECTION == ac-to-tc ]] && teacher_button_state='button.active<>1 OR button.disabled<>0'
+    check_zero character_spell_consumed_teacher_mismatch "
+        SELECT COUNT(*) FROM (
+          SELECT e.guid,e.spell,e.spec_mask,c.talentGroupsCount,c.level,
+            generic.value generic_value,generic.max generic_cap,
+            COUNT(DISTINCT child.spell) children,
+            SUM(IF(child.spell IS NULL OR child.spell NOT IN (63644,63645)
+              OR expected_button.spell IS NULL OR expected_button.spec_mask<>3
+              OR expected_button.disposition<>'PERSISTENT' OR button.spell IS NULL
+              OR $teacher_button_state,1,0)) invalid_buttons
+          FROM \`$CONTROL_SCHEMA\`.spell_expected e
+          JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=e.guid
+          LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_skills generic ON generic.guid=e.guid AND generic.skill=183
+          LEFT JOIN JSON_TABLE(e.provenance,'$.authorization.consumed_teacher.children[*]'
+            COLUMNS (spell INT UNSIGNED PATH '$')) child ON TRUE
+          LEFT JOIN \`$CONTROL_SCHEMA\`.spell_expected expected_button ON expected_button.run_id=e.run_id
+            AND expected_button.guid=e.guid AND expected_button.spell=child.spell
+          LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_spell button ON button.guid=e.guid AND button.spell=child.spell
+          WHERE e.run_id='$(sql_escape "$RUN_ID")' AND e.disposition='TEACHER'
+          GROUP BY e.guid,e.spell,e.spec_mask,c.talentGroupsCount,c.level,generic.value,generic.max
+        ) contract WHERE '$MIGRATION_DIRECTION'<>'tc-to-ac' OR spell<>63680 OR spec_mask<>3
+            OR talentGroupsCount<>2 OR children<>2 OR invalid_buttons<>0
+            OR generic_value IS NULL OR generic_value<>level*5 OR generic_cap<>level*5;" \
+        "Consumed dual-spec wrappers require both exact persistent buttons and unchanged existing two-spec ownership"
     check_zero character_skill_semantic_mismatch "
         SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_skills s
         JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=s.guid
@@ -290,4 +315,10 @@ write_spell_reports() {
             FROM \`$CONTROL_SCHEMA\`.spell_provenance WHERE run_id='$(sql_escape "$RUN_ID")'
               AND JSON_EXTRACT(provenance,'$.authorization.native_passive_rank') IS NOT NULL ORDER BY guid,spell;"
     } > "$REPORTS_DIR/$RUN_ID/spell-native-passive-ranks.tsv"
+    {
+        printf 'guid\tspell\toriginal_flags\tconsumed_teacher_contract\n'
+        mysql_query -e "SELECT guid,spell,JSON_EXTRACT(provenance,'$.original'),JSON_EXTRACT(provenance,'$.authorization.consumed_teacher')
+            FROM \`$CONTROL_SCHEMA\`.spell_provenance WHERE run_id='$(sql_escape "$RUN_ID")'
+              AND disposition='TEACHER' ORDER BY guid,spell;"
+    } > "$REPORTS_DIR/$RUN_ID/spell-consumed-teachers.tsv"
 }

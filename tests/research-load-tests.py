@@ -16,12 +16,15 @@ tc_branch=tc_source[tc_start:tc_source.index('// update used talent points count
 ac_source=(ac/'src/server/game/Entities/Player/Player.cpp').read_text()
 ac_start=ac_source.index('// xinef: do not add spells with effect learn spell')
 ac_branch=ac_source[ac_start:ac_source.index('// xinef: unapply aura stats',ac_start)]
+start=tc_source.index('// learn dependent spells',tc_source.index('bool Player::AddSpell('))
+tc_dependencies=tc_source[start:tc_source.index('if (!GetSession()->PlayerLoading())',start)]
 mock=r'''
 #include <array>
 #include <cassert>
 #include <cstdint>
 #include <iostream>
 #include <map>
+#include <vector>
 using uint32=uint32_t;
 constexpr int SPELL_EFFECT_LEARN_SPELL=36, SPELL_EFFECT_SKILL_STEP=44;
 constexpr uint32 SPELL_ATTR0_CU_IS_TALENT=0x800000, SPELL_ATTR0_DO_NOT_DISPLAY=128;
@@ -36,8 +39,24 @@ struct SpellInfo {
     bool HasAttribute(uint32 flag) const { return flags & flag; }
     bool IsPassive() const { return flags & 64; }
 };
+struct SpellLearnSpellNode{uint32 Spell;bool Active=false,AutoLearned=false;};
+using SpellLearnSpellMap=std::multimap<uint32,SpellLearnSpellNode>;
+using SpellLearnSpellMapBounds=std::pair<SpellLearnSpellMap::const_iterator,SpellLearnSpellMap::const_iterator>;
+struct SpellMgr{
+ SpellLearnSpellMap rows;
+ SpellLearnSpellMapBounds GetSpellLearnSpellMapBounds(uint32 id)const{return rows.equal_range(id);}
+} manager;SpellMgr*sSpellMgr=&manager;
 struct Player {
-    int casts=0;
+    int casts=0;uint32 groups=2,active=0;
+    std::vector<uint32> restored;
+    bool IsInWorld()const{return false;}
+    void AddSpell(uint32 id,bool visible,bool learning,bool dependent,bool disabled){
+        assert(visible&&learning&&dependent&&!disabled);restored.push_back(id);
+    }
+    void LearnSpell(uint32,bool){assert(false);}
+    void RestoreTcDependencies(uint32 spellId){
+'''+tc_dependencies+r'''
+    }
     std::map<uint32,int> m_spells;
     void CastSpell(Player*,uint32,bool) { ++casts; }
     bool HandlePassiveSpellLearn(SpellInfo const*) const { return true; }
@@ -51,6 +70,21 @@ return true;
 }
 };
 int main() {
+    manager.rows.emplace(63680,SpellLearnSpellNode{63645,true,false});
+    manager.rows.emplace(63680,SpellLearnSpellNode{63644,true,false});
+    for(uint32 active:{0,1}){
+        Player tc,oldAc;tc.active=oldAc.active=active;
+        SpellInfo teacher;teacher.Id=63680;teacher.flags=536871296;teacher.effects={36,36,0};
+        assert(tc.TcLoad(&teacher,true));tc.RestoreTcDependencies(63680);
+        assert((tc.restored==std::vector<uint32>{63645,63644}));
+        assert(!oldAc.AcLoad(&teacher));assert(tc.casts==0&&oldAc.casts==0);
+        for(uint32 id:{63644,63645}){
+            SpellInfo button;button.Id=id;button.flags=268435584;button.effects={162,0,0};
+            Player normalized;normalized.active=active;
+            assert(normalized.TcLoad(&button,true)&&normalized.AcLoad(&button));
+            assert(normalized.casts==0&&normalized.groups==2&&normalized.active==active);
+        }
+    }
     for (uint32 id:{60893,61177,61288}) {
         SpellInfo research; research.Id=id;
         Player tc,ac;
@@ -74,7 +108,7 @@ int main() {
     Player tcStep,acStep;
     assert(!tcStep.TcLoad(&step,true) && !acStep.AcLoad(&step));
     assert(tcStep.casts==1 && acStep.casts==1);
-    std::cout << "Protected TC/AC loader auto-cast branches: research and Runeforging uncast; passive/stance/skill-step controls passed\n";
+    std::cout << "Protected TC/AC loader auto-cast branches: dual-spec teacher dependencies and uncast buttons, research and Runeforging uncast; passive/stance/skill-step controls passed\n";
 }
 '''
 with tempfile.TemporaryDirectory() as directory:

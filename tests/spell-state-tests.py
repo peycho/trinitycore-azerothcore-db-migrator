@@ -211,11 +211,11 @@ class SpellTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.temporary.cleanup()
-    def convert(self,stored,talents=None,skills=None,cls=2,active=0,reverse=False,tc=None,ac=None,race=1):
+    def convert(self,stored,talents=None,skills=None,cls=2,active=0,reverse=False,tc=None,ac=None,race=1,level=80):
         tc,ac = tc or self.tc,ac or self.ac
         return reconstruct((race,cls,active,2),stored,talents or {},fixtures.CLASS_SKILLS if skills is None else skills,
                            ac if reverse else tc,tc if reverse else ac,
-                           'ac-to-tc' if reverse else 'tc-to-ac')
+                           'ac-to-tc' if reverse else 'tc-to-ac',level=level)
     def fails(self,reason,call):
         with self.assertRaises(Unsupported) as error:
             call()
@@ -717,6 +717,95 @@ class SpellTests(unittest.TestCase):
         tc=self.nurturing_world()
         tc.learns[47179].append((33873,1,False))
         self.fails('CYCLIC_SPELL_RELATIONSHIP',lambda:self.convert({}, {33873:1},cls=11,tc=tc))
+
+    def test_dual_spec_teacher_restores_only_verified_buttons_and_records_original(self):
+        for cls in (1,2,6,11):
+            for active in (0,1):
+                result=self.convert({63680:(1,0)},cls=cls,active=active)
+                self.assertEqual(set(result),{63680,63644,63645})
+                self.assertEqual((result[63680]['disposition'],result[63680]['mask']),('TEACHER',3))
+                self.assertEqual(result[63680]['original'],[1,0])
+                proof=result[63680]['authorization']['consumed_teacher']
+                self.assertFalse(proof['effects_executed'])
+                self.assertEqual(proof['spec_count'],2)
+                for child in (63644,63645):
+                    self.assertEqual((result[child]['disposition'],result[child]['mask']),('PERSISTENT',3))
+                    self.assertEqual(result[child]['authorization']['consumed_teacher_sources'],[63680])
+                    self.assertIn([63680,[63680,child],'TC_DEPENDENT_LEARN'],result[child]['proofs'])
+
+    def test_dual_spec_teacher_overlap_and_reverse_canonical_round_trip(self):
+        skills={183:(400,400),171:(320,450),762:(300,300)}
+        for active in (0,1):
+            for buttons in ({},{63644:(1,0)},{63645:(1,0)},{63644:(1,0),63645:(1,0)}):
+                stored={63680:(1,0),**buttons};before=copy.deepcopy((stored,skills))
+                forward=self.convert(stored,skills=skills,active=active)
+                ac_rows={s:(r['mask'],0) for s,r in forward.items() if r['disposition']=='PERSISTENT'}
+                reverse=self.convert(ac_rows,skills=skills,active=active,reverse=True)
+                self.assertEqual(set(reverse),{63644,63645})
+                again=self.convert({s:(r['active'],r['disabled']) for s,r in reverse.items()},skills=skills,active=active)
+                self.assertEqual({s:(r['disposition'],r['mask']) for s,r in again.items()},
+                                 {s:(r['disposition'],r['mask']) for s,r in forward.items() if s!=63680})
+                self.assertEqual((stored,skills),before)
+                self.assertEqual(forward,self.convert(dict(reversed(list(stored.items()))),skills=skills,active=active))
+
+    def test_dual_spec_teacher_old_conversion_regression_and_unreviewed_control(self):
+        tc=copy.deepcopy(self.tc);tc.consumed_teachers={}
+        self.fails('UNSUPPORTED_PERSISTENT_LEARN_EFFECT',lambda:self.convert({63680:(1,0)},tc=tc))
+        self.assertEqual(self.convert({63680:(1,0)})[63680]['disposition'],'TEACHER')
+        tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+        for m in(tc,ac):m.spells[900011][71]=36
+        self.fails('UNSUPPORTED_PERSISTENT_LEARN_EFFECT',lambda:self.convert({900011:(1,0)},tc=tc,ac=ac))
+
+    def test_dual_spec_teacher_never_grants_specs_skills_or_enabled_history(self):
+        for flags,reason in (((0,0),'UNREPRESENTABLE_INACTIVE_SPELL'),((1,1),'UNREPRESENTABLE_DISABLED_SPELL'),
+                             ((0,1),'UNREPRESENTABLE_DISABLED_SPELL'),((2,0),'INVALID_TC_SPELL_FLAGS')):
+            self.fails(reason,lambda:self.convert({63680:flags}))
+        self.fails('UNREPRESENTABLE_TEACHER_STATE',lambda:reconstruct((1,2,0,1),{63680:(1,0)}, {},
+                   fixtures.CLASS_SKILLS,self.tc,self.ac,'tc-to-ac'))
+        self.fails('UNREPRESENTABLE_TEACHER_STATE',lambda:self.convert({63680:(3,0)},reverse=True))
+        self.fails('SPELL_WOULD_ADD_SKILL',lambda:self.convert({63680:(1,0)},skills={}))
+        self.fails('UNREPRESENTABLE_AC_SPELL_MASK',lambda:self.convert({63644:(1,0)},reverse=True))
+
+    def test_dual_spec_teacher_exact_metadata_and_paired_mutations_remain_blocked(self):
+        for core in ('tc','ac','both'):
+            for spell,field in ((63680,71),(63680,116),(63680,86),(63680,4),(63680,12),
+                                (63644,71),(63645,80),(63645,4),(63644,116),(63644,20)):
+                tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+                for m in ([tc,ac] if core=='both' else [tc if core=='tc' else ac]):m.spells[spell][field]^=1
+                with self.subTest(core=core,spell=spell,field=field):
+                    self.fails('INCOMPATIBLE_CONSUMED_TEACHER',lambda:self.convert({63680:(1,0)},tc=tc,ac=ac))
+
+    def test_dual_spec_teacher_routes_cycles_and_skill_metadata_remain_blocked(self):
+        for mutation in ('map','auto','extra','button_learn','required','ability','category','incoming','chain'):
+            tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+            if mutation=='map':tc.learns[63680].clear()
+            elif mutation=='auto':tc.learns[63680][0]=(63645,1,True)
+            elif mutation=='extra':tc.learns[63680].append((6603,1,False))
+            elif mutation=='button_learn':tc.learns[63645].append((6603,1,False))
+            elif mutation=='required':ac.requires[63644].add(6603)
+            elif mutation=='ability':ac.abilities[63644][0][9]=1
+            elif mutation=='category':
+                tc.stores['SkillLine'][183][1]=ac.stores['SkillLine'][183][1]=7
+            elif mutation=='incoming':tc.learn_parents[63680].add(6603)
+            else:ac.chains[63644]=(63644,63645)
+            with self.subTest(mutation=mutation):
+                self.fails('INCOMPATIBLE_CONSUMED_TEACHER',lambda:self.convert({63680:(1,0)},tc=tc,ac=ac))
+        tc=copy.deepcopy(self.tc);tc.learns[63645].append((63680,1,False))
+        self.fails('CYCLIC_SPELL_RELATIONSHIP',lambda:self.convert({63680:(1,0)},tc=tc))
+
+    def test_dual_spec_teacher_preserves_native_generic_value_and_cap_at_verified_level(self):
+        for level in (1,20,80):
+            result=self.convert({63680:(1,0)},skills={183:(level*5,level*5)},level=level)
+            self.assertEqual(result[63680]['authorization']['consumed_teacher']['native_skill'],level*5)
+        for value,cap in ((1,400),(5,350),(400,450),(400,399),(5,5)):
+            self.fails('SPELL_WOULD_CHANGE_SKILL',lambda:self.convert({63680:(1,0)},skills={183:(value,cap)},level=80))
+        for level in (None,0,81):
+            self.fails('UNREPRESENTABLE_TEACHER_STATE',lambda:self.convert({63680:(1,0)},level=level))
+        for m in ('tc','ac','both'):
+            tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+            for metadata in ([tc,ac] if m=='both' else [tc if m=='tc' else ac]):
+                metadata.stores['SkillRaceClassInfo'][183][4]=1171
+            self.fails('INCOMPATIBLE_CONSUMED_TEACHER',lambda:self.convert({63680:(1,0)},tc=tc,ac=ac))
 
     def test_native_aliases_and_enum_field_copy_corrections(self):
         for metadata in [self.tc,self.ac]:

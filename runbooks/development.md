@@ -35,6 +35,21 @@ command. It does not change migration mappings or loader behavior.
 
 ## Static checks
 
+Dual-spec teacher v10 units cover exact `63680` load-derived buttons, both active
+specs, overlapping stored buttons, deterministic proofs and canonical reverse
+round trips. Old-conversion and unreviewed-wrapper controls must still fail.
+Missing Generic skill, single spec, unsupported flags/masks, metadata mutations,
+non-native Generic values/caps, unknown levels and same-count level drift,
+cycles and unexpected routes remain blocked. The full MySQL suite checks the
+`TEACHER` control enum, original flags, committed/report-regenerated provenance,
+incorrect masks, leaked wrappers, unchanged skills/talents/specs and both
+directions through interruption/resume/rerun/rollback and input-drift checks.
+Protected loader bodies verify TC restores both buttons without casting and AC
+refuses the wrapper but loads/saves both buttons. The AC trainer function checks
+the wrapper is known through both buttons. `dual-spec-effect-tests.py` executes
+both cores' switch/count effects, including a purchase-effect negative control.
+State, DB sinks and scheduling are mocked; full gameplay remains NOT TESTED.
+
 Nurturing Instinct v9 units cover realistic inactive world edges, both selected
 ranks/specs, overlapping anchors, exact masks, forward/reverse semantic round
 trips, forbidden persistent helpers and mutations of the lower known prefix.
