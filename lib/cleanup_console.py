@@ -54,7 +54,8 @@ def toolkit_hashes():
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
-           'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','lib/cleanup_talent_relations.py','lib/cleanup_selected_rank_history.py','lib/cleanup_migration_evidence.py','lib/cleanup_trained_history.py','tools/disabled-talent-history.sql.in')
+           'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','lib/cleanup_talent_relations.py','lib/cleanup_selected_rank_history.py','lib/cleanup_migration_evidence.py','lib/cleanup_trained_history.py','tools/disabled-talent-history.sql.in',
+           'lib/cleanup_native_skills.py','tools/native-skill-repair.sql.in')
     hashes={}
     for name in names:
         path=ROOT/name
@@ -540,7 +541,8 @@ def command_plan(settings, work, args):
     settings.check_paths()
     batch_id=token(args.kind)
     output=work.session/'batches'/batch_id
-    plan(settings,work,args,output)
+    if plan(settings,work,args,output) is False:
+        return  # Explicit read-only preview creates no package or active-batch pointer.
     write_json(work.session/'active-batch.json',{'batch':batch_id})
     manifest=json.loads((output/'manifest.json').read_text())
     print('CANDIDATE '+batch_id+'\nArchive: '+manifest['archive_schema']+'\nReview: '+str(output/'README.md'))
@@ -550,7 +552,8 @@ def command_action(settings, work, args):
     path,manifest=work.batch(args.batch)
     settings.safety()
     from cleanup_disabled_history import POLICIES, check_metadata
-    if manifest.get('policy') in POLICIES:
+    from cleanup_native_skills import POLICY as NATIVE_SKILLS_POLICY
+    if manifest.get('policy') in (*POLICIES,NATIVE_SKILLS_POLICY):
         check_metadata(settings,manifest)
     for name,expected_hash in manifest.get('dbc_sha256',{}).items():
         if not re.fullmatch(r'[A-Za-z0-9]+\.dbc',name) or sha(settings.paths['tc_dbc']/name)!=expected_hash:
@@ -600,6 +603,9 @@ def command_action(settings, work, args):
             error.hint=('The skill policy needs the writer column privilege. An administrator can run: '
                 f"GRANT UPDATE (`value`) ON `{settings.schemas['characters']}`.`character_skills` TO {principal[0]}@{principal[1]}; "
                 'Then retry this batch. Source privileges were not added automatically.')
+        if manifest.get('policy')==NATIVE_SKILLS_POLICY and any(text in str(error) for text in ('INSERT command denied','DELETE command denied')):
+            error.hint=('Native skill repair needs INSERT on character_skills for apply and DELETE for exact restore. '
+                'Have the preparation administrator grant only those privileges to the configured writer; no source grants were added automatically.')
         raise
     (work.operation/'result.tsv').write_text(result)
     status=settings.sql(contents['04-status.sql'].decode(),'write',headers=True)
@@ -652,6 +658,12 @@ def parser():
     skills=types.add_parser('skills',help='Clamp exact audited over-cap values to their existing positive stored maximum')
     skills.add_argument('--audit',help='Full audit ID in this session; defaults to latest completed audit')
     skills.add_argument('--expect-rows',type=int,required=True)
+    native_skills=types.add_parser('native-skills',help='Review insertion of missing native Generic/Runeforging skill rows from already known enabled spells')
+    native_skills.add_argument('--migration-inspection',help='Sealed migration blocker context ID; defaults to latest captured context in this session')
+    native_skills.add_argument('--skills',nargs='+',choices=('generic','runeforging'),default=['generic','runeforging'])
+    native_mode=native_skills.add_mutually_exclusive_group(required=True)
+    native_mode.add_argument('--expect-rows',type=int,help='Exact eligible insertion count from preview')
+    native_mode.add_argument('--preview',action='store_true',help='Review the captured selection without a SQL package, active-batch change or source writes')
     history=types.add_parser('disabled-talent-history',help='Archive eligible disabled direct talent history; selected families and enabled spells excluded')
     evidence=history.add_mutually_exclusive_group(required=True)
     evidence.add_argument('--inspection',help='Retained spell-history inspection ID in this session')

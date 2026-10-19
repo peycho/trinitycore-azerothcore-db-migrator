@@ -96,6 +96,7 @@ def readme(manifest):
         'tc-invalid-talent-rank-v1':'Removes only verified non-rank talent records. No replacement rank or talent points are guessed.',
         'tc-single-character-native-talent-reset-v1':'Archives/removes the reviewed unavailable group and sets only at_login bit 4. APPLIED means FREE NATIVE RESET PENDING NEXT LOGIN. Active ownership stays until the core unlearns its spells and dependencies. Other login flags are preserved.',
         'tc-skill-clamp-stored-cap-v1':'Reduces only the exact audited over-cap skill values to their existing positive stored maximum. Caps, skill ownership, profession slots, spells, recipes and character state remain unchanged. No GM status or replacement cap is inferred. Full original skill rows are retained for exact restoration.',
+        'tc-missing-native-skills-v1':'Inserts only absent Generic 183 and/or Runeforging 776 rows justified by reviewed enabled known spell anchors. Generic uses native level*5 for value and cap (ALWAYS_MAX_VALUE metadata); Runeforging uses 1/1 for death knights. Existing skills, spells, talents, profession slots and login flags are unchanged. No riding or primary profession is added. This is an explicit preparation exception to exact skill preservation, not a migration grant rule. Native Runeforging skill loading may restore its default enchantments; SQL does not insert recipes/spells. Full original affected state and absence evidence are archived; restore deletes only inserted rows and refuses any affected-state drift.',
         'tc-zero-container-recovery-v1':'Moves only the exact inventory references into native recovery mail, with at most 12 attachments per mail and normal 30-day expiry. Item instances, custom attributes and zero-entry containers remain unchanged. Collect the items during isolated gameplay acceptance before expiry.'}[policy]
     return f'''# Reviewed cleanup candidate
 
@@ -343,6 +344,9 @@ def plan_items(settings,work,args,output):
 
 
 def plan(settings,work,args,output):
+    if args.kind=='native-skills':
+        from cleanup_native_skills import plan_native_skills
+        return plan_native_skills(settings,work,args,output)
     if args.kind=='disabled-talent-history':
         from cleanup_disabled_history import plan_history
         return plan_history(settings,work,args,output)

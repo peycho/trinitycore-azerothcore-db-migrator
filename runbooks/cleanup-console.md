@@ -97,6 +97,7 @@ never added automatically. The source privileges are:
 | Policy | Apply | Exact restore |
 |---|---|---|
 | Invalid talent values | DELETE on character_talent | INSERT on character_talent |
+| Missing native Generic/Runeforging skills | INSERT on character_skills | DELETE on character_skills |
 | Scoped pending talent reset | DELETE on character_talent and UPDATE(at_login) on characters | INSERT on character_talent and UPDATE(at_login) on characters |
 | Item recovery | DELETE on character_inventory; INSERT on mail and mail_items | INSERT on character_inventory; DELETE on mail and mail_items |
 | Active-build pending reset with reviewed foreign spell | DELETE on character_spell and UPDATE(at_login) on characters | INSERT on character_spell and UPDATE(at_login) on characters |
@@ -859,3 +860,15 @@ operator operation. This console neither deploys services nor enables
 CleanCharacterDB. A clean audit, APPLIED batch or migrated database READY state
 is separate from native gameplay and release acceptance. The compatibility
 profile stays **UNREVIEWED** until all existing acceptance gates actually pass.
+
+## Repair missing native skill rows
+
+Use `python3 console plan native-skills --preview` to inspect absent Generic
+and Runeforging skills justified by already known enabled native anchors. It
+uses the latest migration-blocker context in this session, prints its ID and
+creates no SQL package or active-batch change. After reviewing the preview,
+use `plan native-skills --expect-rows COUNT` to create the exact candidate.
+See [missing native skill preparation repair](native-skill-repair.md) for
+eligibility, explicit INSERT/DELETE grants, full archives, guarded restoration,
+fresh-import repetition and native gameplay acceptance. The earlier
+`plan skills` policy still only clamps over-cap values to their stored caps.

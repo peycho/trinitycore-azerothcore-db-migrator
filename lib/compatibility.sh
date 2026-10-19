@@ -76,6 +76,7 @@ write_trinitycore_semantic_manifest() {
         src/server/game/Chat/Channels/ChannelMgr.h \
         src/server/game/Entities/Player/Player.cpp \
         src/server/game/Entities/Player/Player.h \
+        src/server/game/Entities/Unit/Unit.h \
         src/server/game/Handlers/PetitionsHandler.cpp \
         src/server/game/Instances/InstanceSaveMgr.cpp \
         src/server/game/Maps/Map.cpp \
@@ -128,6 +129,7 @@ write_azerothcore_semantic_manifest() {
         src/server/game/Entities/Player/Player.cpp \
         src/server/game/Entities/Player/Player.h \
         src/server/game/Entities/Player/PlayerStorage.cpp \
+        src/server/game/Entities/Unit/Unit.h \
         src/server/game/Handlers/PetitionsHandler.cpp \
         src/server/game/Instances/InstanceSaveMgr.cpp \
         src/server/game/Petitions/PetitionMgr.cpp \

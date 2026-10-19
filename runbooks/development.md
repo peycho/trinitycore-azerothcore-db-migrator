@@ -450,3 +450,19 @@ reruns, target schema fingerprints, restored indexes, and zero validation
 errors. Run checks again against the final toolkit identity after approval or
 protected content changes. CI pins the reviewed core revisions and uses the
 MySQL 8.4 server baseline.
+
+### Missing native skill repair
+
+`native-skill-tests.py` tests known enabled anchors, absent-only selection,
+levels/specs/classes, deterministic merging, metadata mutations and exclusion
+of existing skills and arbitrary recipes. `native-skill-runtime-tests.py`
+executes the protected TC/AC default-skill bodies, native acquisition conditions
+and both protected Unit maximum formulas with recording state sinks. Generic
+is tested at levels 1/70/80 with both AlwaysMaxSkill settings; Runeforging stays
+1/1. This does not test a running worldserver.
+
+`native-skill-mysql-tests.py` runs the real console on disposable MySQL 8.4:
+read-only context/preview/planning, exact row counts, source/schema/world drift,
+narrow writer grants, full custom/binary/timestamp preservation, late rollback,
+interruption/resume, reruns, changed-state restoration refusal and exact inverse.
+It creates only uniquely named disposable fixtures, never an operator repair.

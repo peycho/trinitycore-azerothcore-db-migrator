@@ -252,3 +252,9 @@ before source edits. The [migration guide](migration-guide.md) and
 [spell reconstruction gates](spell-reconstruction.md) remain mandatory.
 Database `READY` and a clean audit do not approve production cutover. The
 compatibility profile remains `UNREVIEWED` until its acceptance gates pass.
+
+Missing skills are separate from over-cap skills. The optional
+[missing native skill repair](native-skill-repair.md) can insert only absent
+Generic or Runeforging rows justified by known enabled native anchors. It uses
+sealed migration-blocker context, explicit review and full restoration evidence;
+it does not infer primary professions, riding, recipes or talent ownership.

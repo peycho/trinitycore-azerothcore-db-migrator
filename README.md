@@ -32,6 +32,7 @@ is historical and requires the corresponding older toolkit release.
 | [Source inspection and preparation](runbooks/source-preparation.md) | Read-only legacy-data audit and reviewed cleanup workflow |
 | [Private snapshot sharing](runbooks/sharing-character-snapshot.md) | Redact a disposable character dump while preserving migration evidence |
 | [Cleanup shell console](runbooks/cleanup-console.md) | One config, private sessions, talent/item/skill plans, apply and exact restore |
+| [Missing native skills](runbooks/native-skill-repair.md) | Reviewed preparation repair for absent Generic/Runeforging skills |
 | [Invalid talent cleanup](runbooks/talent-cleanup.md) | Generate exact-row archive, apply and restore SQL from an audit |
 | [Migration behavior](runbooks/migration-behavior.md) | Data policies and semantic transforms |
 | [Spell reconstruction](runbooks/spell-reconstruction.md) | Omitted ranks, specialization safety and gameplay checks |

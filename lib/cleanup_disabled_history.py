@@ -244,7 +244,7 @@ def enabled_ids_query(source):
             'WHERE disabled=0) enabled_spells ORDER BY spell')
 
 
-def check_sets(meta, source, archive, counts):
+def check_sets(meta, source, archive, counts, changed_table='character_spell'):
     blocks = {}
     for phase in ('original','archive','applied'):
         lines = []
@@ -255,7 +255,7 @@ def check_sets(meta, source, archive, counts):
             if phase == 'archive':
                 query = query.replace(f'`{db}`.`{table}`',f'`{db}`.`{actual_table}`')
             expected = 'expected_snapshot'
-            if phase == 'applied' and table == 'character_spell':
+            if phase == 'applied' and table == changed_table:
                 expected = 'expected_after'
             lines.append(f''' IF (SELECT COUNT(*) FROM `{db}`.`{actual_table}` s WHERE s.guid IN (SELECT guid FROM affected))<>
      (SELECT COALESCE(SUM(row_count),0) FROM {expected} WHERE table_name='{table}')

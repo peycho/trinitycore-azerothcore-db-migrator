@@ -547,3 +547,18 @@ target/control schemas and a fresh run after the policy/profile change; keep
 the preparation toolkit and archives for guarded restoration. V1, core C++ and
 release approval are unchanged. All native gameplay and production-sized
 acceptance gates remain required; approval is **UNREVIEWED**.
+
+## Missing native skills preparation policy
+
+`tc-missing-native-skills-v1` is an explicit preparation exception, separate
+from migration skill preservation. It permits only absent Generic 183 and
+Runeforging 776 rows with reviewed enabled native anchors, exact category/range
+metadata, eligible characters and bounded values. Existing skills, ownership,
+spells, profession slots and character state are preserved. Pending resets,
+single-spec switch-only authority and unsupported metadata defer. Complete
+originals and missing-row evidence are archived, transactions bind insert and
+checkpoint, and exact restore deletes only inserted keys after full-state checks.
+Both native Unit.h maximum consumers are now protected against the retained
+pins. v1, core C++ and PROFILE_APPROVAL=UNREVIEWED are unchanged. See the
+[operator procedure](native-skill-repair.md) and development checks; gameplay
+and production-sized acceptance remain separate gates.

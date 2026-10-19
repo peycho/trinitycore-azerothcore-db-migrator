@@ -76,3 +76,9 @@ CI pins reviewed core revisions. When introducing a later profile, update those
 pins together with its manifests and review evidence. The test entrypoints
 accept `TRINITYCORE_DIR`, `AZEROTHCORE_DIR`, and `COMPATIBILITY_PROFILE` overrides;
 all inventory sorting uses the C locale.
+
+The missing-native-skill preparation policy additionally protects both cores'
+`Entities/Unit/Unit.h`, which supplies the reviewed level-times-five maximum.
+The retained pins and v1 stay unchanged; the extra v2 manifest entries do not
+grant release approval. Retain older cleanup toolkits with their old archives
+for exact restoration under their original metadata contracts.
