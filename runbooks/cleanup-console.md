@@ -442,6 +442,62 @@ ranks remain untouched. All enabled-history findings require separate review.
 smaller than the reviewed population. This policy is separate from the migrator's
 legitimate missing-lower-rank reconstruction and changes no migration blocker rule.
 
+For disabled **trained** talent ranks left after their direct talent roots were
+removed, use a retained migration context inspection rather than the direct-rank
+audit. This is a separate policy, `tc-disabled-unselected-trained-talent-history-v6`:
+
+```bash
+python3 console plan disabled-talent-history \
+  --migration-inspection MIGRATION_CONTEXT_INSPECTION_ID \
+  --expect-review-rows 1000
+```
+
+Use the exact number of disabled non-direct stored spells whose verified TC rank
+chain starts at a direct talent, across all characters captured in that inspection.
+This is not the number of first failures or the direct-talent audit count. The
+command reports count mismatches without source writes. `--migration-inspection`
+selects v6 and cannot be combined with the other policy flags or evidence options.
+No new full audit or migration preflight is required when captured inputs match.
+
+V6 reviews the whole verified talent/rank/dependency group, even when every
+direct talent root is absent from `character_spell`. All present group rows must
+be disabled and no related talent may be selected in either specialization.
+Online characters, pending resets, invalid talent ownership, foreign-class
+families, enabled related spells and independent learning/default/skill routes
+defer the whole group. The same bounded graph, reviewed script, correction,
+cycle and profession/riding/skill guards used by v3/v4 apply. The exact reviewed
+teacher contracts from v4 retain their existing conditions. It does not expand
+unverified indirect dependencies whose rank root is not a direct talent.
+
+Review `relationship-review.tsv` and `relationship-edges.tsv`, all selected keys
+and every exclusion. Absent roots/predecessors are `ABSENT_NO_GRANT`. Existing
+disabled direct roots or dependent rows may also be selected if the whole group
+qualifies; the manifest separates direct and related counts. Selected ownership,
+enabled availability, skills/caps, points and login flags receive no writes.
+
+The sealed context must match the current source UUID/schema, producer, profile,
+DBC assets, effective TC world inputs and source column layouts. Planning rechecks
+**all** captured spell flags, talent groups, skill values/caps and character
+semantic fields, including deferred characters, before emitting a candidate.
+It then archives/fingerprints complete affected rows, including custom fields,
+through the existing prepare/apply/restore transaction. The context is evidence;
+it is never used as a restoration archive. Same-count changes reject stale
+planning, and post-prepare full-row or metadata changes block apply/restore.
+Earlier policies and archived batches retain their original behavior.
+
+This policy removes reviewed unavailable history. It does not resolve valid
+temporary talent-chain representation differences, grant missing skills/forms,
+delete enabled unowned abilities, or complete a pending native reset. Keep those
+migration blockers separate. Release approval remains `UNREVIEWED`.
+
+Archiving these rows also discards their stored future-reactivation history.
+TC can re-enable disabled higher ranks when a talent is learned again. After
+cleanup, future talent changes use native learning/retraining behavior, which may
+require learning those ranks again. Current selected builds are protected, but
+this policy does not promise to preserve every past training purchase. Exact
+archive restoration is guarded and must precede later affected-state/gameplay
+changes. Include this consequence in candidate review before apply.
+
 Review the generated candidate's `README.md`, `manifest.json`, exact
 `selected-rows.tsv`, exclusions and `metadata.json`. Only then use the existing
 batch workflow:

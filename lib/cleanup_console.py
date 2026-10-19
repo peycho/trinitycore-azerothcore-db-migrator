@@ -54,7 +54,7 @@ def toolkit_hashes():
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
-           'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','lib/cleanup_talent_relations.py','lib/cleanup_selected_rank_history.py','lib/cleanup_migration_evidence.py','tools/disabled-talent-history.sql.in')
+           'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','lib/cleanup_talent_relations.py','lib/cleanup_selected_rank_history.py','lib/cleanup_migration_evidence.py','lib/cleanup_trained_history.py','tools/disabled-talent-history.sql.in')
     hashes={}
     for name in names:
         path=ROOT/name
@@ -656,6 +656,7 @@ def parser():
     evidence=history.add_mutually_exclusive_group(required=True)
     evidence.add_argument('--inspection',help='Retained spell-history inspection ID in this session')
     evidence.add_argument('--audit',help='Full audit ID in this session; create a fresh read-only spell-history inspection before planning')
+    evidence.add_argument('--migration-inspection',help='Use v6: sealed migration blocker context ID; review disabled trained talent ranks even with absent direct roots')
     history.add_argument('--expect-review-rows',type=int,required=True,help='Exact inspection total for the chosen disabled-history category; additional exclusions reported')
     history.add_argument('--include-reviewed-scripts',action='store_true',
         help='Use v2 policy for families whose every binding has the protected NO_SPELLBOOK_MUTATION contract; other exclusions remain')

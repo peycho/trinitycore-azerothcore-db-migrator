@@ -53,6 +53,13 @@ without granting them. Enabled unselected siblings, learning/skill dependencies,
 ambiguous metadata and pending resets defer cleanup. Review
 `selected-rank-review.tsv` and exclusions; do not combine this mode with the
 earlier policy flags. Native loading of retained builds still needs acceptance.
+For disabled trained talent abilities whose direct roots are absent, v6 uses
+`--migration-inspection` with a sealed blocker context. It reviews wholly disabled
+rank/dependency groups against both existing talent builds and all learning/skill
+routes, then rechecks the entire captured semantic scope live. See the
+[history policies](cleanup-console.md#archive-eligible-disabled-direct-talent-history).
+Absent roots are not granted; selected families, enabled related rows and pending
+resets remain deferred. Complete affected originals are archived before apply.
 
 ## Run a standalone read-only audit
 

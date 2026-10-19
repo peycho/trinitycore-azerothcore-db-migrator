@@ -428,6 +428,15 @@ not ordinary lower-rank reconstruction and does not relax migration checks.
 Resolving one blocker can expose another for the same character. A successful
 focused regression does not clear every record in a production-sized source.
 
+Preparation policy v6 `tc-disabled-unselected-trained-talent-history-v6` addresses
+disabled trained ranks whose direct talent roots are absent from persistence.
+It uses sealed full-context evidence and verified TC rank/dependency groups,
+preserves both selected builds, enabled availability and skills, and records
+absent roots without grants. It retains all route/script/skill/cycle guards and
+rechecks complete captured semantic state before producing exact-row archives.
+This is source history cleanup; it does not relax the migrator's rejection of
+unsupported temporary ranked talent children or other unsafe representations.
+
 The final report summarizes persistent, runtime-owned, direct-talent, native
 aura and native skill-reward rows separately.
 Validation compares exact spell IDs/masks or TC flags, rejects unexpected grants,

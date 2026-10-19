@@ -35,6 +35,7 @@ python3 "$ROOT/tests/disabled-history-tests.py"
 python3 "$ROOT/tests/talent-relations-tests.py"
 python3 "$ROOT/tests/selected-rank-history-tests.py"
 python3 "$ROOT/tests/migration-evidence-tests.py"
+python3 "$ROOT/tests/trained-history-tests.py"
 
 for mapping in "$ROOT"/mappings/{tc-to-ac,ac-to-tc}/{auth,characters}.csv; do
     awk -F, 'NF != 10 { print FILENAME ":" FNR ": expected 10 CSV fields, found " NF; bad=1 }

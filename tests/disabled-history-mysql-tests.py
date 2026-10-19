@@ -465,6 +465,52 @@ backup_reference=disposable-synthetic-fixture
             assert checksum()==baseline
             assert ((session()/'active-batch.json').read_bytes() if (session()/'active-batch.json').exists() else None)==active_before
             passed('saved migration blocker context with SELECT-only credentials: complete ordinary/direct spell, both-spec talent and skill rows; TC world/DBC fingerprints; source/auth/world and active batch unchanged; no executable cleanup')
+            sql(f'''INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,online,activeTalentGroup,talentGroupsCount,at_login)
+              VALUES(50,1,'TrainedOld','',1,9,80,0,0,2,0),(51,1,'TrainedOwned','',1,9,80,0,0,2,0),
+              (52,1,'TdEnabled','',1,9,80,0,0,1,0),(53,1,'TdPending','',1,9,80,0,0,1,4),
+              (54,1,'TdForeign','',1,1,80,0,0,1,0),(55,1,'TrainedRoot','',1,9,80,0,0,1,0),
+              (56,1,'TdBadOwner','',1,9,80,0,0,1,0);
+              INSERT INTO `{source}`.character_spell VALUES
+              (50,47827,1,1,0x0001),(50,18867,0,1,0x0002),(50,6603,1,0,0x0003),
+              (51,47827,1,1,NULL),(52,47827,1,1,NULL),(52,17877,1,0,0x0004),
+              (53,47827,1,1,NULL),(54,47827,1,1,NULL),(55,18867,1,1,NULL),(55,17877,1,1,0x0005),
+              (56,47827,1,1,NULL);
+              INSERT INTO `{source}`.character_talent VALUES(51,17877,1),(56,130,0);
+              INSERT INTO `{source}`.character_skills VALUES(50,171,450,450);''')
+            sql(f'INSERT INTO `{world}`.spell_ranks VALUES '+','.join(f'(17877,{s},{i+1})' for i,s in enumerate(assets.CHAINS[9])))
+            trained_baseline=checksum();other_before=sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')
+            trained_report=work/'trained-blockers.tsv'
+            trained_report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(f'{g}\t*\tUNAUTHORIZED_TALENT_SPELL\t47827: stored_flags=(1, 1)\n' for g in range(50,57)))
+            captured=run('inspect-migration-blockers','--report',str(trained_report))
+            evidence=Path(captured.stdout.split('Reports: ',1)[1].strip())
+            for update,restore in (
+                (f'UPDATE `{source}`.character_spell SET active=0 WHERE guid=50 AND spell=6603',f'UPDATE `{source}`.character_spell SET active=1 WHERE guid=50 AND spell=6603'),
+                (f'UPDATE `{source}`.character_talent SET talentGroup=0 WHERE guid=51',f'UPDATE `{source}`.character_talent SET talentGroup=1 WHERE guid=51')):
+                sql(update);drift=checksum();failed=run('plan','disabled-talent-history','--migration-inspection',evidence.name,'--expect-review-rows','8',code=2)
+                assert 'HISTORY_INPUT_DRIFT' in failed.stderr,failed.stderr
+                assert checksum()==drift;sql(restore)
+            run('plan','disabled-talent-history','--migration-inspection',evidence.name,'--expect-review-rows','8')
+            data=json.loads((package()/'manifest.json').read_text());trained_archive=data['archive_schema'];owned.append(trained_archive)
+            assert data['policy']=='tc-disabled-unselected-trained-talent-history-v6',data
+            assert data['selected_rows']==4 and data['selected_anchor_rows']==3 and data['selected_direct_rows']==1 and data['excluded_rows']==5,data
+            assert 'ABSENT_NO_GRANT' in (package()/'relationship-review.tsv').read_text()
+            assert checksum()==trained_baseline
+            run('prepare');run('prepare');assert checksum()==trained_baseline
+            sql(f'UPDATE `{source}`.character_spell SET custom_blob=0xaa WHERE guid=50 AND spell=6603')
+            drift=checksum();run('apply',code=2);assert checksum()==drift
+            sql(f'UPDATE `{source}`.character_spell SET custom_blob=0x0003 WHERE guid=50 AND spell=6603')
+            sql(f"CREATE TRIGGER `{trained_archive}`.fail_commit BEFORE UPDATE ON `{trained_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='trained-late-error'; END IF; END")
+            assert 'trained-late-error' in run('apply',code=2).stderr;assert checksum()==trained_baseline
+            sql(f'DROP TRIGGER `{trained_archive}`.fail_commit')
+            run('apply');run('apply');run('status')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid IN (50,55)')=='1'
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=51 AND spell=47827')=='1'
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==other_before
+            run('restore');run('restore');assert checksum()==trained_baseline
+            passed('v6 trained history with absent/direct roots: both-spec ownership, enabled siblings, pending resets, foreign/invalid owners deferred; full context drift, custom-field guards, late rollback, rerun, exact restore and unrelated source/auth/world preservation')
+            sql(f'DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 50 AND 56; DELETE FROM `{source}`.character_talent WHERE guid BETWEEN 50 AND 56; DELETE FROM `{source}`.character_skills WHERE guid=50; DELETE FROM `{source}`.characters WHERE guid BETWEEN 50 AND 56;')
+            sql(f'DELETE FROM `{world}`.spell_ranks WHERE first_spell_id=17877')
+            assert checksum()==baseline
             scale=int(os.environ.get('HISTORY_SCALE_ROWS','0'))
             if scale:
                 assert 1<=scale<=200000

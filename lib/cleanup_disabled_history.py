@@ -13,10 +13,11 @@ from cleanup_spell_history import audit_inputs, classify
 from spells import Metadata, Unsupported
 import cleanup_talent_relations as relations
 import cleanup_selected_rank_history as selected_history
+import cleanup_trained_history as trained_history
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
-POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY)
+POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -270,25 +271,38 @@ def check_sets(meta, source, archive, counts):
 
 
 def plan_history(settings, work, args, output):
+    trained_mode = bool(getattr(args,'migration_inspection',None))
     selected_mode = getattr(args,'selected_rank_history',False)
+    if trained_mode and any(getattr(args,field,False) for field in ('include_reviewed_scripts','include_inert_relations','include_reviewed_routes','selected_rank_history')):
+        fail('HISTORY_POLICY_CONFLICT','--migration-inspection selects v6 and cannot be combined with other history modes')
     if selected_mode and any(getattr(args,field,False) for field in ('include_reviewed_scripts','include_inert_relations','include_reviewed_routes')):
         fail('HISTORY_POLICY_CONFLICT','--selected-rank-history cannot be combined with another history mode')
     inspection_id = args.inspection
     if getattr(args,'audit',None):
         from cleanup_spell_history import inspect_history
         inspection_id = inspect_history(settings,work,args).name
-    path, report, state, rows, audit = inspection(settings,work,inspection_id)
+    if trained_mode:
+        path,report,state,context,audit,captured_world,captured_layout,capture_report=trained_history.inspection(settings,work,args.migration_inspection)
+        rows=[]
+    else:
+        path, report, state, rows, audit = inspection(settings,work,inspection_id)
     inspection_sha = sha(path/'SHA256SUMS')
     print('Reviewing effective TC world/DBC learning routes (read-only)',flush=True)
     effective, world = read_world(settings)
+    if trained_mode and (world!=captured_world or effective.hashes!=capture_report['dbc_sha256']):
+        fail('HISTORY_METADATA_DRIFT','Effective TC metadata differs from the captured migration context')
     state['enabled_ids'] = snapshot(settings,[('ids',enabled_ids_query(settings.schemas['characters']))])['ids']
     include_routes = getattr(args,'include_reviewed_routes',False)
-    include_relations = getattr(args,'include_inert_relations',False) or include_routes
+    include_relations = getattr(args,'include_inert_relations',False) or include_routes or trained_mode
     include_scripts = getattr(args,'include_reviewed_scripts',False) or include_relations or selected_mode
-    policy = selected_history.POLICY if selected_mode else relations.ROUTE_POLICY if include_routes else relations.POLICY if include_relations else SCRIPT_POLICY if include_scripts else POLICY
+    policy = trained_history.POLICY if trained_mode else selected_history.POLICY if selected_mode else relations.ROUTE_POLICY if include_routes else relations.POLICY if include_relations else SCRIPT_POLICY if include_scripts else POLICY
     relation_rows,relation_proof,relation_summary,relation_edges = [],[],{},[]
     rank_proof = []
-    if selected_mode:
+    if trained_mode:
+        check_retained_scripts(state,effective)
+        relation_rows=context['character_spell']
+        selected,excluded,relation_proof,relation_summary,relation_edges=trained_history.select(context,effective,args.expect_review_rows)
+    elif selected_mode:
         check_retained_scripts(state,effective)
         selected,excluded,rank_proof = selected_history.select(rows,state,effective,args.expect_review_rows)
     elif include_relations:
@@ -315,6 +329,8 @@ def plan_history(settings, work, args, output):
     selector = ','.join(map(str,guids))
     source = settings.schemas['characters']
     meta = metadata(settings,TABLES)
+    if trained_mode and dict(meta)!=captured_layout:
+        fail('HISTORY_SCHEMA_DRIFT','Source layout differs from the captured migration context')
     inspected_meta = {key:[row for row in value if row[0] in ('characters','character_talent','character_spell')]
                       for key,value in meta.items()}
     if sha_json(inspected_meta) != report.get('metadata_sha256'):
@@ -330,16 +346,23 @@ def plan_history(settings, work, args, output):
         query = aggregate(meta,table,source,f's.guid IN ({selector})')
         queries.append(('sets',f"SELECT JSON_ARRAY('{table}',guid,n,h) row_value FROM ({query}) a ORDER BY guid"))
     # Exact live inspection inputs reject same-count ownership/flags changes.
+    scope = ' WHERE guid IN ('+','.join(str(r[0]) for r in context['characters'])+')' if trained_mode else ''
     for label, fields, table in (
             ('characters','guid,race,class,activeTalentGroup,talentGroupsCount,online,at_login','characters'),
             ('talents','guid,spell,talentGroup','character_talent')):
-        queries.append((label,f'SELECT JSON_ARRAY({fields}) row_value FROM `{source}`.{table} ORDER BY {fields}'))
+        queries.append((label,f'SELECT JSON_ARRAY({fields}) row_value FROM `{source}`.{table}{scope} ORDER BY {fields}'))
     catalog = ','.join(map(str,sorted(effective.talents)))
     queries.append(('spells',f'SELECT JSON_ARRAY(guid,spell,active,disabled) row_value FROM `{source}`.character_spell '
-                    f'WHERE spell IN ({catalog}) ORDER BY guid,spell'))
+                    f'WHERE spell IN ({catalog})'+(' AND'+scope.removeprefix(' WHERE') if trained_mode else '')+' ORDER BY guid,spell'))
     queries.append(('enabled_ids',enabled_ids_query(source)))
     if include_relations:
         queries.append(('relation_spells',relations.stored_query(source,guids)))
+    if trained_mode:
+        from cleanup_migration_evidence import FIELDS
+        for table,fields in FIELDS.items():
+            columns=','.join('`'+field+'`' for field in fields)
+            keys={'characters':'guid','character_spell':'guid,spell','character_talent':'guid,talentGroup,spell','character_skills':'guid,skill'}[table]
+            queries.append(('context_'+table,f'SELECT JSON_ARRAY({columns}) row_value FROM `{source}`.`{table}`{scope} ORDER BY {keys} LIMIT {relations.MAX_ROWS+1}'))
     # Generate the post-delete digest by excluding exact selected pairs using
     # bounded row-valued IN lists grouped by GUID, never a spell-wide DELETE.
     by_guid = defaultdict(list)
@@ -362,6 +385,8 @@ def plan_history(settings, work, args, output):
     if any(live[label] != state[label] for label in ('characters','talents','spells','enabled_ids')):
         fail('HISTORY_INPUT_DRIFT','Live ownership/character state/direct spell flags differ from inspection',
              'Retain this inspection. After source edits, run a new full audit and inspection; no preflight is needed.')
+    if trained_mode and any(live['context_'+table]!=context[table] for table in context):
+        fail('HISTORY_INPUT_DRIFT','Full semantic source context changed; capture a new migration blocker inspection before planning')
     if include_relations and live['relation_spells'] != [r for r in relation_rows if r[0] in guid_set]:
         fail('HISTORY_INPUT_DRIFT','Related spell keys/flags changed between relationship review and full-row fingerprinting')
     cells = sorted(tuple(row) for row in live['sets'])
@@ -432,6 +457,9 @@ def plan_history(settings, work, args, output):
         manifest['script_contract'] = 'NO_SPELLBOOK_MUTATION on every related member; isolated wholly disabled group; no enabled availability, selected ownership, conflicting incoming routes or skill effects'
         if include_routes:
             manifest['script_contract'] = 'NO_SPELLBOOK_MUTATION; exact reviewed teaching wrappers; wholly disabled removals; shared 674 and skill 118 preserved for inert shaman 30798 root-only exception'
+    if trained_mode:
+        manifest.update(migration_inspection_id=path.name,source_context_sha256=capture_report['source_state_sha256'],
+                        reviewed_character_scope=len(context['characters']))
     status = f'''SELECT * FROM `{archive}`.batch;
 SELECT 'expected' AS object,COUNT(*) rows_found FROM `{archive}`.expected_spells
 UNION ALL SELECT 'characters_before',COUNT(*) FROM `{archive}`.characters_before
@@ -464,7 +492,9 @@ FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.g
     write_json(output/'metadata.json',world)
     from cleanup_console import seal
     seal(output)
-    if include_relations:
+    if trained_mode:
+        print(f'Reviewed {args.expect_review_rows} disabled trained rows; selected {len(selected)} exact rows; deferred {len(excluded)} trained rows; no source changes')
+    elif include_relations:
         print(f'Reviewed {args.expect_review_rows} disabled direct rows; selected {relation_summary["selected_root_rows"]} direct and '
               f'{relation_summary["selected_related_rows"]} related rows; deferred {len(excluded)} direct rows; no source changes')
     else:

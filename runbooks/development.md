@@ -158,6 +158,15 @@ Python policy units run in static CI.
 
 ## Disposable MySQL fixture rehearsals
 
+Trained-history v6 units cover absent direct roots, lower/higher disabled ranks,
+selected ownership in either spec, enabled related rows, pending/online/foreign
+characters, invalid ownership, independent routes, skills, scripts, corrections,
+cycles, deterministic proofs and exact-count/flag bounds. Its MySQL cycle captures
+real blocker evidence through the SELECT-only reader, rejects same-count full
+context drift, archives complete custom fields and checks late rollback,
+apply/rerun/exact restore, preservation of deferred/selected/enabled state and
+unchanged unrelated source/auth/world tables. Existing v1-v5 cycles still run.
+
 Saved migration-blocker context units cover strict TSV parsing, duplicate GUIDs,
 numeric and size bounds, literal untrusted details, deterministic grouping,
 private sealed output, missing source characters and incomplete evidence after
