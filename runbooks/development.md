@@ -33,6 +33,23 @@ idempotency and an actual dump/restore. See the
 [snapshot sharing guide](sharing-character-snapshot.md) for its dedicated-server
 command. It does not change migration mappings or loader behavior.
 
+## Generic preparation v2 checks
+
+Native-skill units preserve insertion-only v1 and test explicit Generic-only v2,
+exact teacher routes, stored old/new values, both spec states, overlapping
+anchors, zero-value deferral, the 127-slot target bound and metadata mutations.
+The protected `generic-skill-runtime-tests.py` executes both cores' skill-load
+range switches and level-update bodies for levels 1/20/80 and stale value/cap
+pairs, with mocked state/getters. It also checks protected native slot limits.
+This consumer harness is separate from full gameplay acceptance.
+
+The real console MySQL suite exercises mixed, insertion-only and update-only
+v2 packages with narrow source grants. It checks old v1 restoration, private
+custom/binary/timestamp snapshots, source/world and same-count level drift,
+direct SQL guard enforcement, late-error/disconnect rollback, commit/rerun,
+exact old-value and absence restoration, and unchanged unrelated data. The full
+bidirectional rehearsal remains required on the final behavior tree.
+
 ## Static checks
 
 Dual-spec teacher v10 units cover exact `63680` load-derived buttons, both active

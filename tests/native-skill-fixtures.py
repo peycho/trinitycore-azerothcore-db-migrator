@@ -15,8 +15,9 @@ def stores(profile):
         if r[1]==183:del data['SkillRaceClassInfo'][ident]
     row('SkillRaceClassInfo',5)[1:7]=[183,0xffffffff,262143,1170,0,0]
     for ident,effects,ability in [(2382,[25,60,0],1441),(63644,[162,0,0],20868),(63645,[162,0,0],20867)]:
-        r=row('Spell',ident);r[71:74]=effects
+        r=data['Spell'].get(ident) or row('Spell',ident);r[71:74]=effects
         a=row('SkillLineAbility',ability);a[1],a[2],a[9]=183,ident,2
+        if ident in (63644,63645):a[1:]=[183,ident,4095,1535,0,0,1,0,2,0,0,0,0]
     return data
 
 base.stores=stores

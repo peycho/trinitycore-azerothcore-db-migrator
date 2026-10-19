@@ -29,6 +29,7 @@ python3 "$ROOT/tests/feral-swiftness-runtime-tests.py" "$TRINITYCORE_DIR" "$AZER
 python3 "$ROOT/tests/skill-reward-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/riding-dependency-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/native-skill-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
+python3 "$ROOT/tests/generic-skill-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/native-skill-mysql-tests.py"
 python3 "$ROOT/tests/reviewed-script-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/temporary-rank-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"

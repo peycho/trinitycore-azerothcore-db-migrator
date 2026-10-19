@@ -1,4 +1,4 @@
-# Missing native skill preparation repair
+# Native skill preparation repairs
 
 `tc-missing-native-skills-v1` is a separate, explicitly selected **TC preparation
 repair**. The migrator still preserves skills exactly and blocks spells that
@@ -15,7 +15,7 @@ all files from the same new toolkit release; a source reimport or a new cleanup
 session is not needed merely to install this policy. Migration targets/control
 and run IDs remain separate from cleanup sessions.
 
-## Reviewed native state
+## V1: missing native state
 
 | Skill | Required authority | Inserted value/cap |
 | --- | --- | --- |
@@ -42,6 +42,87 @@ Runeforging's native skill loader can restore default Cinderglacier/Razorice
 enchantments after login; these are the same verified native consequences of
 the existing anchor. The SQL repair inserts only the skill row, never spells
 or recipes. No game spell or research/teaching wrapper is executed during repair.
+
+## V2: reviewed Generic normalization
+
+`tc-native-generic-skills-v2` is an explicit, Generic-only preparation policy.
+Select it with **both** `--skills generic --normalize-generic`. Without these
+options, the insertion-only v1 policy remains unchanged, including its existing
+packages and exact restoration. Retain the original toolkit for earlier batches.
+
+V2 accepts the same enabled Generic anchors as v1 and additionally the exact
+stored, active/enabled `63680` teacher on a character that already owns two
+specs. The protected TC `AddSpell` load path restores buttons `63645` and `63644`
+from that teacher; their verified acquisition method creates Generic. The
+converter's bounded teacher contract checks the effective dependencies, exact
+numeric mechanics, skill associations, race/class flags, and lack of extra
+rank/talent/script/prerequisite routes. Preparation checks **TC metadata only**;
+AC compatibility remains the migrator's separate responsibility. It executes
+no spell, spec purchase or switch, and inserts no spell row.
+
+For existing nonzero Generic rows, the pinned TC and AC `_LoadSkills` fixed
+range and `UpdateSkillsForLevel` bodies establish the native result: value and
+cap both equal character level × 5. V2 may increase **or decrease** these two
+fields to that exact result. This is an explicit preparation exception to
+preserving skill values/caps; it applies only to internal skill `183` with a
+verified enabled anchor. Other existing skills, including Runeforging, Dual
+Wield, riding and primary professions, are preserved. Talent selections, spec
+count, spells, recipes, profession slots and character flags are preserved.
+
+Already-native rows are no-ops. Zero-valued existing Generic is deferred because
+native loading deletes a zero-valued skill before the level update; V2 does not
+guess a replacement. Invalid levels/specs, online characters, pending resets,
+inactive/disabled anchors, unsupported metadata, custom skill-table columns,
+and a resulting skill count over AC's 127-slot limit also defer or block. A
+single-spec `63680` wrapper cannot establish second-spec ownership.
+
+After any previous preparation apply, capture current state once using the
+**saved blocker report**, without rerunning migration preflight:
+
+```bash
+python3 console inspect-migration-blockers --report "$BLOCKER_REPORT" --bundle
+python3 console plan native-skills --skills generic --normalize-generic --preview
+```
+
+Set `BLOCKER_REPORT` to your saved `spell-state-blockers.tsv`. The printed
+inspection ID identifies this newly captured state. Preview reports
+`inserted_rows`, `normalized_rows`, their sum `selected_rows`, and deferrals.
+These are source-state-dependent counts; do not reuse a count from an older
+snapshot. Review `native-skill-review.json` in the operation directory, then
+use the preview's **total selected count** (replace `COUNT`):
+
+```bash
+python3 console plan native-skills --skills generic --normalize-generic --expect-rows COUNT
+```
+
+The candidate records old/new values, INSERT versus NORMALIZE_GENERIC, native
+anchors and teacher proof. Apply uses separate INSERT and narrow
+`UPDATE(value,max)` statements; prepare archives full affected character,
+spell, talent and skill originals plus exact prior selected skill values.
+Source changes, expected-result verification and the APPLIED checkpoint commit
+together. Exact restore deletes only inserted rows and restores original
+Generic values/caps. Drift in any affected row, schema, DBC or world metadata
+blocks apply/restore, including direct SQL procedure calls for SQL-visible
+inputs. Direct SQL cannot independently hash local DBC files; use the console
+for their checks. No new archive override exists.
+
+V2 mixed batches need INSERT and DELETE on `character_skills`, plus
+`UPDATE(value,max)`. Update-only batches need just that column UPDATE grant;
+insert-only batches need no UPDATE grant. SELECT is required in every case.
+The console reports missing grants without adding them. For example, the
+preparation administrator can grant the additional column permission, replacing
+the schema and authenticated writer account with configured values:
+
+```sql
+GRANT UPDATE (`value`,`max`) ON `preparation_characters`.`character_skills`
+TO 'cleanup_writer'@'localhost';
+```
+
+Use the existing prepare/status/apply/restore commands below with the exact new
+batch ID. A source reimport or new cleanup session is unnecessary after an
+ordinary toolkit update. After a fresh database import, initialize a new
+session, recapture evidence and regenerate each needed plan; do not replay old
+SQL packages against the new import.
 
 ## Preview, review and plan
 
@@ -76,7 +157,7 @@ python3 console plan native-skills --expect-rows 3
 Planning revalidates the sealed producer/profile/DBC/source identity and the
 entire captured spell/talent/skill/character semantic context, including deferred
 characters. Effective TC world rows and layouts must match. Changes with equal
-row counts still reject stale evidence. Up to 10,000 insertions are supported
+row counts still reject stale evidence. Up to 10,000 selected skill changes are supported
 per reviewed package. A candidate cannot silently truncate a larger selection.
 
 Review its `README.md`, `manifest.json`, `selected-rows.tsv`,
@@ -103,7 +184,8 @@ python3 console status --batch BATCH_ID
 ```
 
 Prepare archives complete affected originals and their missing-row evidence;
-it does not edit source data. Apply inserts only the selected absent keys.
+it does not edit source data. V1 apply inserts only selected absent keys. V2 additionally updates only reviewed
+existing Generic values/caps as described above.
 The source insert, full expected-result verification and APPLIED checkpoint
 commit together. A failure or killed connection before commit rolls back;
 status reconciles uncertainty. Completed apply reruns verify the same result.
@@ -114,7 +196,8 @@ Before gameplay or further preparation, the exact inverse is:
 python3 console restore --batch BATCH_ID
 ```
 
-Restore deletes only the inserted rows, verifies all original affected rows and
+V1 restore deletes only inserted rows; V2 also restores archived Generic values
+and caps. Both verify all original affected rows and
 absences exactly, and retains the archive. Any changed affected character,
 spell, talent or skill state—including a changed inserted value—blocks restore.
 World/DBC/schema drift also blocks. Restore reruns verify RESTORED state;
@@ -122,8 +205,8 @@ apply-after-restore is refused. Do not weaken guards or reuse/drop archives.
 
 After application, use a fresh migration toolkit/run and fresh target/control
 schemas against the cleaned preparation source. Other spell blockers need their
-own reviewed policies; this repair does not resolve Feral Swiftness native aura
-mapping, stored teaching wrappers or unsafe talent ownership. Following a fresh
+own reviewed policies; these preparation repairs do not establish compatibility for unreviewed teaching
+wrappers, skill conflicts outside their scope or unsafe talent ownership. Following a fresh
 database import, create a new console session and capture new evidence before
 planning; old APPLIED batches are not reusable repairs for a new import.
 

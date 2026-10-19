@@ -146,8 +146,90 @@ backup_reference=dedicated-disposable-native-skill-fixture
             run('restore');assert checksum()==baseline;run('restore');assert checksum()==baseline
             assert sql(f'SELECT state FROM `{archive}`.batch')=='RESTORED'
             passed('guarded exact inverse removes only inserted rows; original absences, full unrelated data, custom fields and worlds restored/preserved; restore rerun passes')
+            # V2 is explicit and separate from the still-restorable v1 archive.
+            for g in range(11,19):
+                level=1 if g==18 else 80;groups=1 if g==14 else 2;login=4 if g==15 else 32
+                sql(f"INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,talentGroupsCount,at_login) VALUES({g},1,'Generic{g}','',1,1,{level},{groups},{login});")
+                sql(f"INSERT INTO `{source}`.character_spell(guid,spell,active,disabled) VALUES({g},63680,1,{1 if g==16 else 0});")
+            sql(f"INSERT INTO `{source}`.character_skills VALUES(12,183,5,350),(13,183,400,400),(17,183,0,400),(18,183,400,400);")
+            v2baseline=checksum()
+            report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(f'{g}\t*\tSPELL_WOULD_CHANGE_SKILL\t63680: skill=183\n'for g in range(1,19)))
+            captured=run('inspect-migration-blockers','--report',str(report));v2inspection=Path(captured.stdout.split('Reports: ',1)[1].strip()).name
+            v2plan=['plan','native-skills','--migration-inspection',v2inspection,'--skills','generic','--normalize-generic']
+            assert 'NATIVE_SKILL_POLICY_SCOPE' in run('plan','native-skills','--normalize-generic','--preview',code=2).stderr
+            preview=run(*v2plan,'--preview');assert '"normalized_rows": 3' in preview.stdout and '"inserted_rows": 3' in preview.stdout,preview.stdout
+            run(*v2plan,'--expect-rows','6')
+            v2package=session/'batches'/json.loads((session/'active-batch.json').read_text())['batch']
+            v2manifest=json.loads((v2package/'manifest.json').read_text());v2archive=v2manifest['archive_schema'];owned.append(v2archive)
+            assert v2manifest['policy']=='tc-native-generic-skills-v2' and v2manifest['normalized_rows']==3
+            assert checksum()==v2baseline
+            run('prepare');run('prepare');assert checksum()==v2baseline
+            assert 'UPDATE(value,max)' in run('apply',code=2).stderr
+            sql(f"GRANT UPDATE(value,max) ON `{source}`.character_skills TO '{writer}'@'%';")
+            for update,inverse in (
+                (f'UPDATE `{source}`.characters SET level=79 WHERE guid=12',f'UPDATE `{source}`.characters SET level=80 WHERE guid=12'),
+                (f'UPDATE `{source}`.character_skills SET max=349 WHERE guid=12 AND skill=183',f'UPDATE `{source}`.character_skills SET max=350 WHERE guid=12 AND skill=183'),
+                (f'UPDATE `{source}`.character_spell SET disabled=1 WHERE guid=11',f'UPDATE `{source}`.character_spell SET disabled=0 WHERE guid=11'),
+                (f'UPDATE `{world}`.spell_custom_attr SET attributes=1 WHERE entry=6603',f'UPDATE `{world}`.spell_custom_attr SET attributes=0 WHERE entry=6603')):
+                sql(update);run('apply',code=2)
+                denied=subprocess.run(['mysql',*base,'--user=root'],input=f"SET @skill_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';CALL `{v2archive}`.apply_batch();",text=True,capture_output=True)
+                assert denied.returncode!=0,denied.stdout
+                sql(inverse);assert checksum()==v2baseline
+            for alteration,inverse in (
+                (f'ALTER TABLE `{world}`.spell_custom_attr ADD fixture_extra INT',f'ALTER TABLE `{world}`.spell_custom_attr DROP COLUMN fixture_extra'),
+                (f'ALTER TABLE `{world}`.spell_custom_attr ENGINE=MyISAM',f'ALTER TABLE `{world}`.spell_custom_attr ENGINE=InnoDB')):
+                sql(alteration);run('apply',code=2)
+                denied=subprocess.run(['mysql',*base,'--user=root'],input=f"SET @skill_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';CALL `{v2archive}`.apply_batch();",text=True,capture_output=True)
+                assert denied.returncode!=0 and 'world layout or engine drift' in denied.stderr,denied.stderr
+                sql(inverse);assert checksum()==v2baseline
+            sql(f"CREATE TRIGGER `{v2archive}`.late_error BEFORE UPDATE ON `{v2archive}`.batch FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fixture late error';")
+            run('apply',code=2);assert checksum()==v2baseline and sql(f'SELECT state FROM `{v2archive}`.batch')=='PREPARED'
+            sql(f'DROP TRIGGER `{v2archive}`.late_error;')
+            sql(f"CREATE TRIGGER `{v2archive}`.pause_commit BEFORE UPDATE ON `{v2archive}`.batch FOR EACH ROW DO SLEEP(30);")
+            worker=subprocess.Popen(command+['apply'],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            killed=False
+            for _ in range(400):
+                if worker.poll() is not None:
+                    stdout,stderr=worker.communicate();raise AssertionError(stdout+stderr)
+                row=sql(f"SELECT ID FROM information_schema.PROCESSLIST WHERE DB='{v2archive}' AND STATE='User sleep' LIMIT 1;")
+                if row:sql('KILL CONNECTION '+row+';');killed=True;break
+                time.sleep(0.05)
+            assert killed;worker.communicate(timeout=20);worker=None
+            assert checksum()==v2baseline and sql(f'SELECT state FROM `{v2archive}`.batch')=='PREPARED'
+            sql(f'DROP TRIGGER `{v2archive}`.pause_commit;')
+            run('apply');v2applied=checksum();run('apply');assert checksum()==v2applied
+            assert sql(f'SELECT value,max FROM `{source}`.character_skills WHERE guid=11 AND skill=183')=='400\t400'
+            assert sql(f'SELECT value,max FROM `{source}`.character_skills WHERE guid=12 AND skill=183')=='400\t400'
+            assert sql(f'SELECT value,max FROM `{source}`.character_skills WHERE guid=18 AND skill=183')=='5\t5'
+            assert sql(f'SELECT value,max FROM `{source}`.character_skills WHERE guid=17 AND skill=183')=='0\t400'
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_skills WHERE skill=183 AND guid IN (14,15,16)')=='0'
+            passed('v2 explicit teacher-derived insertions plus native Generic updates; zero/single-spec/reset/disabled excluded; same-count source/world/direct-SQL drift and both late-error/disconnect rollback; commit/rerun exact')
+            sql(f'UPDATE `{source}`.character_skills SET value=399 WHERE guid=12 AND skill=183;');run('restore',code=2)
+            sql(f'UPDATE `{source}`.character_skills SET value=400 WHERE guid=12 AND skill=183;')
+            run('restore');run('restore');assert checksum()==v2baseline
+            assert sql(f'SELECT value,max FROM `{source}`.character_skills WHERE guid=12 AND skill=183')=='5\t350'
+            assert sql(f'SELECT value,max FROM `{source}`.character_skills WHERE guid=18 AND skill=183')=='400\t400'
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_skills WHERE guid=11 AND skill=183')=='0'
+            passed('v2 exact inverse restores old Generic values/caps and original absences; all other custom state, skills, ownership and worlds preserved; old v1 archive retained')
+            # Update-only packages need neither source INSERT nor DELETE.
+            update_report=work/'update-only.tsv';update_report.write_text('guid\tspell\treason_code\tdetail\n3\t*\tSPELL_WOULD_CHANGE_SKILL\t63644: skill=183\n')
+            captured=run('inspect-migration-blockers','--report',str(update_report));update_id=Path(captured.stdout.split('Reports: ',1)[1].strip()).name
+            run('plan','native-skills','--migration-inspection',update_id,'--skills','generic','--normalize-generic','--expect-rows','1')
+            update_package=session/'batches'/json.loads((session/'active-batch.json').read_text())['batch'];owned.append(json.loads((update_package/'manifest.json').read_text())['archive_schema'])
+            sql(f"REVOKE INSERT,DELETE ON `{source}`.character_skills FROM '{writer}'@'%';")
+            run('prepare');run('apply');run('restore');assert checksum()==v2baseline
+            passed('update-only v2 package works with SELECT plus UPDATE(value,max), no source INSERT/DELETE')
+            # Insert-only v2 packages have an empty expected_prior and no source UPDATE.
+            insert_report=work/'insert-only.tsv';insert_report.write_text('guid\tspell\treason_code\tdetail\n11\t*\tSPELL_WOULD_ADD_SKILL\t63680: skill=183\n')
+            captured=run('inspect-migration-blockers','--report',str(insert_report));insert_id=Path(captured.stdout.split('Reports: ',1)[1].strip()).name
+            run('plan','native-skills','--migration-inspection',insert_id,'--skills','generic','--normalize-generic','--expect-rows','1')
+            insert_package=session/'batches'/json.loads((session/'active-batch.json').read_text())['batch'];owned.append(json.loads((insert_package/'manifest.json').read_text())['archive_schema'])
+            sql(f"REVOKE UPDATE(value,max) ON `{source}`.character_skills FROM '{writer}'@'%';")
+            sql(f"GRANT INSERT,DELETE ON `{source}`.character_skills TO '{writer}'@'%';")
+            run('prepare');run('apply');run('restore');assert checksum()==v2baseline
+            passed('insert-only v2 package with empty prior set works with SELECT plus INSERT/DELETE, no source UPDATE')
             original=(package/'02-apply.sql').read_text();(package/'02-apply.sql').write_text(original+'SELECT 1;\n')
-            assert 'PACKAGE_CHANGED'in run('apply',code=2).stderr
+            assert 'PACKAGE_CHANGED'in run('apply','--batch',package.name,code=2).stderr
             passed('sealed-package tampering rejected; archives retained until owned-fixture teardown')
     finally:
         if worker:

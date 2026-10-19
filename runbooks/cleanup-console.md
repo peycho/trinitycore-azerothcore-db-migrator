@@ -97,7 +97,8 @@ never added automatically. The source privileges are:
 | Policy | Apply | Exact restore |
 |---|---|---|
 | Invalid talent values | DELETE on character_talent | INSERT on character_talent |
-| Missing native Generic/Runeforging skills | INSERT on character_skills | DELETE on character_skills |
+| Missing native Generic/Runeforging skills (v1) | INSERT on character_skills | DELETE on character_skills |
+| Explicit Generic normalization (v2) | UPDATE(value,max); INSERT if missing rows selected | UPDATE(value,max); DELETE if inserted rows selected |
 | Scoped pending talent reset | DELETE on character_talent and UPDATE(at_login) on characters | INSERT on character_talent and UPDATE(at_login) on characters |
 | Item recovery | DELETE on character_inventory; INSERT on mail and mail_items | INSERT on character_inventory; DELETE on mail and mail_items |
 | Active-build pending reset with reviewed foreign spell | DELETE on character_spell and UPDATE(at_login) on characters | INSERT on character_spell and UPDATE(at_login) on characters |
@@ -861,7 +862,7 @@ CleanCharacterDB. A clean audit, APPLIED batch or migrated database READY state
 is separate from native gameplay and release acceptance. The compatibility
 profile stays **UNREVIEWED** until all existing acceptance gates actually pass.
 
-## Repair missing native skill rows
+## Repair native skill rows
 
 Use `python3 console plan native-skills --preview` to inspect absent Generic
 and Runeforging skills justified by already known enabled native anchors. It
@@ -872,3 +873,16 @@ See [missing native skill preparation repair](native-skill-repair.md) for
 eligibility, explicit INSERT/DELETE grants, full archives, guarded restoration,
 fresh-import repetition and native gameplay acceptance. The earlier
 `plan skills` policy still only clamps over-cap values to their stored caps.
+
+The explicit Generic-only v2 option also reviews `63680` load-derived anchors
+and existing non-native Generic values/caps:
+
+```bash
+python3 console plan native-skills --skills generic --normalize-generic --preview
+```
+
+Capture fresh migration-blocker context after earlier preparation changes. Use
+the preview's total `selected_rows` with the same options and `--expect-rows`;
+review insertion/update counts and exact old/new values before prepare/apply.
+The [native skill guide](native-skill-repair.md#v2-reviewed-generic-normalization)
+covers extra column grants, exact inverse restoration and fresh-import repetition.

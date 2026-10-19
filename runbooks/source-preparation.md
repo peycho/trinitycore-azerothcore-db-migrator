@@ -255,6 +255,9 @@ compatibility profile remains `UNREVIEWED` until its acceptance gates pass.
 
 Missing skills are separate from over-cap skills. The optional
 [missing native skill repair](native-skill-repair.md) can insert only absent
-Generic or Runeforging rows justified by known enabled native anchors. It uses
+Generic or Runeforging rows justified by known enabled native anchors. Its
+explicit Generic-only v2 option can also normalize existing nonzero Generic
+values/caps to the verified native level × 5 result and accept a verified
+two-spec teaching-wrapper anchor. It uses
 sealed migration-blocker context, explicit review and full restoration evidence;
 it does not infer primary professions, riding, recipes or talent ownership.

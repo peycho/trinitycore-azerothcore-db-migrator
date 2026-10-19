@@ -55,7 +55,7 @@ def toolkit_hashes():
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
            'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','lib/cleanup_talent_relations.py','lib/cleanup_selected_rank_history.py','lib/cleanup_migration_evidence.py','lib/cleanup_trained_history.py','tools/disabled-talent-history.sql.in',
-           'lib/cleanup_native_skills.py','tools/native-skill-repair.sql.in')
+           'lib/cleanup_native_skills.py','tools/native-skill-repair.sql.in','tools/native-generic-repair.sql.in')
     hashes={}
     for name in names:
         path=ROOT/name
@@ -552,8 +552,8 @@ def command_action(settings, work, args):
     path,manifest=work.batch(args.batch)
     settings.safety()
     from cleanup_disabled_history import POLICIES, check_metadata
-    from cleanup_native_skills import POLICY as NATIVE_SKILLS_POLICY
-    if manifest.get('policy') in (*POLICIES,NATIVE_SKILLS_POLICY):
+    from cleanup_native_skills import POLICY as NATIVE_SKILLS_POLICY, POLICIES as NATIVE_SKILL_POLICIES, GENERIC_POLICY
+    if manifest.get('policy') in (*POLICIES,*NATIVE_SKILL_POLICIES):
         check_metadata(settings,manifest)
     for name,expected_hash in manifest.get('dbc_sha256',{}).items():
         if not re.fullmatch(r'[A-Za-z0-9]+\.dbc',name) or sha(settings.paths['tc_dbc']/name)!=expected_hash:
@@ -606,6 +606,8 @@ def command_action(settings, work, args):
         if manifest.get('policy')==NATIVE_SKILLS_POLICY and any(text in str(error) for text in ('INSERT command denied','DELETE command denied')):
             error.hint=('Native skill repair needs INSERT on character_skills for apply and DELETE for exact restore. '
                 'Have the preparation administrator grant only those privileges to the configured writer; no source grants were added automatically.')
+        if manifest.get('policy')==GENERIC_POLICY and any(text in str(error) for text in ('INSERT command denied','DELETE command denied','UPDATE command denied')):
+            error.hint=('Generic v2 needs UPDATE(value,max) for normalization, plus INSERT/DELETE if the package includes absent rows. Source grants were not added automatically; see runbooks/native-skill-repair.md.')
         raise
     (work.operation/'result.tsv').write_text(result)
     status=settings.sql(contents['04-status.sql'].decode(),'write',headers=True)
@@ -661,8 +663,9 @@ def parser():
     native_skills=types.add_parser('native-skills',help='Review insertion of missing native Generic/Runeforging skill rows from already known enabled spells')
     native_skills.add_argument('--migration-inspection',help='Sealed migration blocker context ID; defaults to latest captured context in this session')
     native_skills.add_argument('--skills',nargs='+',choices=('generic','runeforging'),default=['generic','runeforging'])
+    native_skills.add_argument('--normalize-generic',action='store_true',help='Opt in to v2: verified dual-spec teacher anchors and exact native level*5 normalization of existing Generic only; requires --skills generic')
     native_mode=native_skills.add_mutually_exclusive_group(required=True)
-    native_mode.add_argument('--expect-rows',type=int,help='Exact eligible insertion count from preview')
+    native_mode.add_argument('--expect-rows',type=int,help='Exact eligible skill change count from preview')
     native_mode.add_argument('--preview',action='store_true',help='Review the captured selection without a SQL package, active-batch change or source writes')
     history=types.add_parser('disabled-talent-history',help='Archive eligible disabled direct talent history; selected families and enabled spells excluded')
     evidence=history.add_mutually_exclusive_group(required=True)

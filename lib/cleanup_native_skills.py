@@ -1,4 +1,4 @@
-"""Explicit preparation exception: insert absent native bookkeeping skills only."""
+"""Explicit preparation policies for absent skills and reviewed Generic normalization."""
 from collections import Counter, defaultdict
 import hashlib
 import json
@@ -12,16 +12,18 @@ from cleanup_disabled_history import aggregate, check_sets, read_world
 from cleanup_trained_history import inspection
 from cleanup_migration_evidence import FIELDS
 from cleanup_plans import snapshot
-from spells import Unsupported
+from spells import Unsupported, consumed_teacher_rule
 
 POLICY = 'tc-missing-native-skills-v1'
+GENERIC_POLICY = 'tc-native-generic-skills-v2'
+POLICIES = (POLICY, GENERIC_POLICY)
 ANCHORS = {183:{2382:(25,60,0),63644:(162,0,0),63645:(162,0,0)},
            776:{53428:(47,0,0),53341:(53,3,0),53343:(53,3,0)}}
 NAMES = {'generic':183,'runeforging':776}
 
 
-def select(state, effective, requested):
-    """Known enabled anchors authorize only the exact native missing skill row."""
+def select(state, effective, requested, normalize_generic=False):
+    """V1 inserts absent rows; explicit v2 also normalizes authorized Generic only."""
     chosen = {NAMES[name] for name in requested}
     chars = {r[0]:r for r in state['characters']}
     books,skills = defaultdict(dict),defaultdict(dict)
@@ -33,14 +35,19 @@ def select(state, effective, requested):
     for guid,c in sorted(chars.items()):
         _,race,cls,level,active,groups,online,login = c
         for skill in sorted(chosen):
-            if skill in skills[guid]:
-                continue  # Existing rows, including malformed rows, are never changed.
-            anchors = sorted(set(books[guid]) & ANCHORS[skill].keys())
+            original = skills[guid].get(skill)
+            if original is not None and (not normalize_generic or skill != 183 or original == (level*5,level*5)):
+                continue
+            anchors = sorted(set(books[guid]) & (set(ANCHORS[skill]) | ({63680} if normalize_generic and skill == 183 else set())))
             if not anchors:
                 continue
             reason = ''
             if cls not in (1,2,3,4,5,6,7,8,9,11) or not 1<=race<=32 or not 1<=level<=80 or groups not in (1,2) or not 0<=active<groups:
                 reason='DEFER_NATIVE_SKILL_CHARACTER_STATE'
+            elif normalize_generic and len(skills[guid]) + (original is None) > 127:
+                reason='DEFER_NATIVE_SKILL_SLOT_LIMIT'
+            elif original is not None and original[0] == 0:
+                reason='DEFER_ZERO_VALUE_NATIVE_SKILL'
             elif online:
                 reason='DEFER_ONLINE_CHARACTER'
             elif login & 4:
@@ -48,6 +55,7 @@ def select(state, effective, requested):
             elif skill==776 and cls!=6:
                 reason='DEFER_FOREIGN_CLASS_SKILL'
             valid=[]
+            teacher_proof=None
             for anchor in anchors:
                 if reason:
                     break
@@ -56,6 +64,18 @@ def select(state, effective, requested):
                     continue
                 if anchor in (63644,63645) and groups!=2:
                     continue  # A switch button alone never establishes dual-spec ownership.
+                if anchor == 63680:
+                    if groups != 2:
+                        continue
+                    try:
+                        # Preparation proves TC's native load route only. Supply the proposed
+                        # skill to the contract to check mechanics without mutating source state.
+                        teacher_proof = consumed_teacher_rule(anchor,(race,cls,active,groups),flags,
+                            {183:(level*5,level*5)},effective,effective,'tc-to-ac',level)
+                    except (Unsupported, KeyError):
+                        reason='DEFER_NATIVE_SKILL_TEACHER_CONTRACT';break
+                    valid.append((anchor,[],[]))
+                    continue
                 record=effective.spells.get(anchor,[])
                 if (not record or tuple(record[71:74])!=ANCHORS[skill][anchor]
                         or record[12] or record[20] or any(record[116:119])
@@ -75,7 +95,7 @@ def select(state, effective, requested):
                 if (not abilities or not infos or not line or line[1]!=(12 if skill==183 else 7)
                         or any(r[6] in effective.stores['SkillTiers'] for r in infos)
                         or any(r[6]!=0 for r in infos)
-                        or (skill==183 and any(r[4]!=1170 for r in infos))
+                        or (skill==183 and any(r[4]!=1170 or normalize_generic and r[5]!=0 for r in infos))
                         or (skill==776 and any(r[4]!=128 or r[3]!=32 for r in infos))):
                     reason='DEFER_NATIVE_SKILL_METADATA';break
                 valid.append((anchor,sorted(r[0] for r in abilities),sorted(r[0] for r in infos)))
@@ -85,10 +105,18 @@ def select(state, effective, requested):
                 excluded.append((guid,skill,reason));continue
             value=level*5 if skill==183 else 1
             selected.append((guid,skill,value,value))
-            proof.append({'guid':guid,'skill':skill,'value':value,'cap':value,'original':'ABSENT',
+            proof.append({'guid':guid,'skill':skill,'value':value,'cap':value,'original':'ABSENT' if original is None else list(original),
+                'action':'INSERT' if original is None else 'NORMALIZE_GENERIC',
+                **({'teacher_contract':teacher_proof} if teacher_proof else {}),
                 'level':level,'anchors':[{'spell':s,'flags':[1,0],'ability_ids':a,'race_class_ids':r} for s,a,r in valid],
                 'native_policy':'ALWAYS_MAX_LEVEL_TIMES_FIVE' if skill==183 else 'DEATH_KNIGHT_MONO_1_1'})
     return selected,excluded,proof
+
+
+def render_skill_sql(text, values):
+    for key in ('SOURCE','PRIOR_COUNT','INSERT_COUNT'):
+        text=text.replace('@'+key+'@',str(values[key]))
+    return text
 
 
 def skill_cells(rows):
@@ -102,8 +130,12 @@ def skill_cells(rows):
 
 
 def plan_native_skills(settings,work,args,output):
+    normalize_generic=getattr(args,'normalize_generic',False)
+    policy=GENERIC_POLICY if normalize_generic else POLICY
+    if normalize_generic and args.skills!=['generic']:
+        fail('NATIVE_SKILL_POLICY_SCOPE','--normalize-generic requires --skills generic; existing other skills are outside this policy')
     if (not args.preview and not 1<=(args.expect_rows or 0)<=10000) or len(set(args.skills))!=len(args.skills):
-        fail('NATIVE_SKILL_SELECTION_MISMATCH','Select distinct skill policies and expect between 1 and 10000 insertions')
+        fail('NATIVE_SKILL_SELECTION_MISMATCH','Select distinct skill policies and expect between 1 and 10000 skill changes')
     if not args.migration_inspection:
         captures=sorted(p.name for p in (work.session/'inspections').glob('*-migration-blockers-*') if p.is_dir())
         if not captures:
@@ -114,16 +146,18 @@ def plan_native_skills(settings,work,args,output):
     effective,world=read_world(settings)
     if world!=captured_world or effective.hashes!=report['dbc_sha256']:
         fail('NATIVE_SKILL_METADATA_DRIFT','Effective TC world/DBC differs from the captured migration context')
-    selected,excluded,proof=select(context,effective,args.skills)
-    summary={'selected_rows':len(selected),'by_skill':dict(Counter(r[1] for r in selected)),
+    selected,excluded,proof=select(context,effective,args.skills,normalize_generic)
+    prior=[(p['guid'],p['skill'],*p['original']) for p in proof if p['original']!='ABSENT']
+    inserted=len(selected)-len(prior)
+    summary={'inserted_rows':inserted,'normalized_rows':len(prior),'selected_rows':len(selected),'by_skill':dict(Counter(r[1] for r in selected)),
              'deferred':dict(Counter(r[2] for r in excluded)),'scope_characters':len(context['characters'])}
     (work.operation/'native-skill-review.json').write_text(json.dumps({'summary':summary,'proofs':proof,'excluded':excluded},indent=2)+'\n')
-    print('Native missing-skill review (read-only): '+json.dumps(summary,sort_keys=True),flush=True)
+    print('Native skill review (read-only): '+json.dumps(summary,sort_keys=True),flush=True)
     if args.preview:
         print('PREVIEW: captured evidence only; no SQL package, active batch or source changes. Details: '+str(work.operation/'native-skill-review.json'),flush=True)
         return False
     if len(selected)!=args.expect_rows:
-        fail('NATIVE_SKILL_SELECTION_MISMATCH',f'Expected {args.expect_rows} insertions; review selected {len(selected)} exact rows',
+        fail('NATIVE_SKILL_SELECTION_MISMATCH',f'Expected {args.expect_rows} skill changes; review selected {len(selected)} exact rows',
              'Inspect native-skill-review.json in this operation; no cleanup package or source changes were made.')
     source=settings.schemas['characters'];guids=sorted({r[0]for r in selected});guid_set=set(guids)
     meta=metadata(settings,TABLES)
@@ -161,12 +195,13 @@ def plan_native_skills(settings,work,args,output):
     old_skills=[r for r in context['character_skills'] if r[0]in guid_set]
     if skill_cells(old_skills)!=[r for r in cells if r[0]=='character_skills']:
         fail('NATIVE_SKILL_INPUT_DRIFT','Native skill row fingerprints differ from captured numeric fields')
-    after=skill_cells(old_skills+[list(r)for r in selected])
+    selected_keys={(r[0],r[1]) for r in selected}
+    after=skill_cells([r for r in old_skills if (r[0],r[1]) not in selected_keys]+[list(r)for r in selected])
     counts={table:sum(r[2]for r in cells if r[0]==table)for table in TABLES}
     if counts['characters']!=len(guids) or sum(counts.values())>5000000 or any(r[2]>10000 or not re.fullmatch('[a-f0-9]{64}',str(r[3]))for r in cells+after):
         fail('NATIVE_SKILL_SNAPSHOT_BOUND','Full affected snapshots exceed safe bounds or lack valid digests')
-    template=ROOT/'tools/native-skill-repair.sql.in';inspection_sha=sha(path/'SHA256SUMS')
-    batch=sha_json({'policy':POLICY,'inspection':inspection_sha,'selected':selected,'proof':proof,'world':world,'metadata':meta,'template':sha(template),'id':output.name})
+    template=ROOT/('tools/native-generic-repair.sql.in' if normalize_generic else 'tools/native-skill-repair.sql.in');inspection_sha=sha(path/'SHA256SUMS')
+    batch=sha_json({'policy':policy,'inspection':inspection_sha,'selected':selected,'proof':proof,'world':world,'metadata':meta,'template':sha(template),'id':output.name})
     archive='tc_native_skills_'+uuid.uuid4().hex[:20]
     blocks=check_sets(meta,source,archive,counts,changed_table='character_skills')
     values={'SOURCE':source,'ARCHIVE':archive,'UUID':work.current()['identity']['uuid'],'BATCH':batch,
@@ -179,7 +214,39 @@ def plan_native_skills(settings,work,args,output):
         'COLUMN_INSERT':planner.insert_values('reviewed_columns',meta['columns']),'GUID_INSERT':planner.insert_values('affected',[(g,)for g in guids]),
         'CHECK_ORIGINAL':blocks['original'],'CHECK_ARCHIVE':blocks['archive'],'CHECK_APPLIED':blocks['applied'],
         'ARCHIVE_INSERT':'\n'.join(f'  INSERT INTO {table}_before SELECT s.* FROM `{source}`.{table} s JOIN affected g ON g.guid=s.guid;'for table in TABLES)}
+    if normalize_generic:
+        values.update({'PRIOR_INSERT':planner.insert_values('expected_prior',prior) if prior else '',
+            'PRIOR_COUNT':len(prior),'PRIOR_HASH':planner.key_hash(prior) if prior else hashlib.sha256(b'').hexdigest(),
+            'INSERT_COUNT':inserted,
+            'APPLY_UPDATE':('''  UPDATE `@SOURCE@`.character_skills s JOIN expected_prior p ON p.guid=s.guid AND p.skill=s.skill
+   JOIN expected_skills e ON e.guid=s.guid AND e.skill=s.skill SET s.value=e.value,s.max=e.cap;
+  IF ROW_COUNT()<>@PRIOR_COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Generic normalization count differs'; END IF;''' if prior else ''),
+            'APPLY_INSERT':('''  INSERT INTO `@SOURCE@`.character_skills(guid,skill,value,max)
+   SELECT e.guid,e.skill,e.value,e.cap FROM expected_skills e LEFT JOIN expected_prior p ON p.guid=e.guid AND p.skill=e.skill
+   WHERE p.guid IS NULL ORDER BY e.guid,e.skill;
+  IF ROW_COUNT()<>@INSERT_COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Native skill insertion count differs'; END IF;''' if inserted else ''),
+            'RESTORE_UPDATE':('''  UPDATE `@SOURCE@`.character_skills s JOIN expected_prior p ON p.guid=s.guid AND p.skill=s.skill SET s.value=p.value,s.max=p.cap;
+  IF ROW_COUNT()<>@PRIOR_COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Generic inverse update count differs'; END IF;''' if prior else ''),
+            'RESTORE_DELETE':('''  DELETE s FROM `@SOURCE@`.character_skills s JOIN expected_skills e ON e.guid=s.guid AND e.skill=s.skill
+   LEFT JOIN expected_prior p ON p.guid=e.guid AND p.skill=e.skill WHERE p.guid IS NULL;
+  IF ROW_COUNT()<>@INSERT_COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Native skill inverse deletion count differs'; END IF;''' if inserted else '')})
+        # Render nested SQL fragments before the enclosing template, in a fixed order.
+        for key in ('APPLY_UPDATE','APPLY_INSERT','RESTORE_UPDATE','RESTORE_DELETE'):
+            values[key]=render_skill_sql(values[key],values)
     checks=[]
+    if normalize_generic:
+        names=','.join("'"+row[0]+"'" for row in world['layout']['tables'])
+        column_hash=planner.key_hash(world['layout']['columns'])
+        table_hash=planner.key_hash(world['layout']['tables'])
+        schema=settings.schemas['world']
+        checks.append(f""" IF (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME IN ({names}))<>{len(world['layout']['columns'])}
+ OR NOT ((SELECT SHA2(COALESCE(GROUP_CONCAT(CONCAT_WS(':',TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,ORDINAL_POSITION,EXTRA)
+     ORDER BY BINARY TABLE_NAME,ORDINAL_POSITION SEPARATOR '|'),''),256) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME IN ({names}))<=>'{column_hash}')
+ OR (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME IN ({names}))<>{len(world['layout']['tables'])}
+ OR NOT ((SELECT SHA2(COALESCE(GROUP_CONCAT(CONCAT_WS(':',TABLE_NAME,ENGINE,TABLE_TYPE) ORDER BY BINARY TABLE_NAME SEPARATOR '|'),''),256)
+     FROM information_schema.TABLES WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME IN ({names}))<=>'{table_hash}') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Native skill world layout or engine drift'; END IF;""")
     for table,count,checksum in world['digests']:
         fields=[r[1]for r in world['layout']['columns']if r[0]==table]
         hashed="SHA2(CONCAT_WS('|',"+','.join(f"IFNULL(HEX(`{f}`),'N')"for f in fields)+'),256)'
@@ -189,15 +256,21 @@ def plan_native_skills(settings,work,args,output):
     if metadata(settings,TABLES)!=meta or final_world!=world or final_effective.hashes!=effective.hashes or sha(path/'SHA256SUMS')!=inspection_sha:
         fail('NATIVE_SKILL_METADATA_DRIFT','Source metadata or sealed context changed while planning')
     verify(path)
-    manifest={'policy':POLICY,'archive_schema':archive,'batch_key':batch,'selected_rows':len(selected),
+    manifest={'policy':policy,'archive_schema':archive,'batch_key':batch,'selected_rows':len(selected),
         'affected_characters':len(guids),'character_guids':guids,'inspection_id':path.name,'inspection_sha256':inspection_sha,
         'audit_sha256':report['source_state_sha256'],'world_sha256':sha_json(world),'semantic_dbc_sha256':effective.hashes,
         'dbc_sha256':{name.removeprefix('tc.'):h for name,h in effective.hashes.items()},'metadata_profile_sha256':sha(PROFILE/'spell-metadata.json'),
         'expected_sha256':values['EXPECTED_HASH'],'template_sha256':sha(template),'archived_rows':counts,
-        'requested_skills':args.skills,'skill_counts':summary['by_skill'],'excluded_rows':len(excluded),'excluded_reason_counts':summary['deferred'],
-        'native_skill_proofs':proof,'skill_policy':'Insert absent reviewed native skill rows only; no updates to existing skills, no spell or talent changes'}
+        'inserted_rows':inserted,'normalized_rows':len(prior),'requested_skills':args.skills,'skill_counts':summary['by_skill'],'excluded_rows':len(excluded),'excluded_reason_counts':summary['deferred'],
+        'native_skill_proofs':proof,'skill_policy':('Normalize only reviewed Generic 183 to native level*5; insert justified absent Generic; no other skill/spell/talent changes' if normalize_generic else 'Insert absent reviewed native skill rows only; no updates to existing skills, no spell or talent changes')}
     status=f"SELECT * FROM `{archive}`.batch;\nSELECT e.*,s.value current_value,s.max current_cap FROM `{archive}`.expected_skills e LEFT JOIN `{source}`.character_skills s ON s.guid=e.guid AND s.skill=e.skill ORDER BY e.guid,e.skill;\n"
-    tsv='guid\tskill\tnew_value\tnew_cap\n'+''.join('\t'.join(map(str,r))+'\n'for r in selected)
+    if normalize_generic:
+        status=(f"SELECT * FROM `{archive}`.batch;\n"
+            f"SELECT e.guid,e.skill,IF(p.guid IS NULL,'INSERT','NORMALIZE_GENERIC') action,p.value original_value,p.cap original_cap,"
+            f"e.value expected_value,e.cap expected_cap,s.value current_value,s.max current_cap FROM `{archive}`.expected_skills e "
+            f"LEFT JOIN `{archive}`.expected_prior p ON p.guid=e.guid AND p.skill=e.skill "
+            f"LEFT JOIN `{source}`.character_skills s ON s.guid=e.guid AND s.skill=e.skill ORDER BY e.guid,e.skill;\n")
+    tsv='guid\tskill\told_value\told_cap\tnew_value\tnew_cap\taction\n'+''.join('\t'.join(map(str,(p['guid'],p['skill'],*(('ABSENT','ABSENT') if p['original']=='ABSENT' else p['original']),p['value'],p['cap'],p['action'])))+'\n'for p in proof)
     finish(settings,work,output,manifest,render(template,values),tsv,status,'skill_cleanup_ack')
     # Extra diagnostics are part of the same sealed candidate, never an apply selection by themselves.
     from cleanup_console import seal
