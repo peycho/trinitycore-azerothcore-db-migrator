@@ -76,6 +76,7 @@ for relative in src/server/game/Entities/Item/Item.h \
     src/server/game/Loot/LootItemStorage.cpp src/server/game/Battlegrounds/ArenaTeam.cpp \
     src/server/game/Guilds/GuildMgr.cpp src/server/game/Spells/SpellMgr.cpp \
     src/server/game/Spells/SpellInfo.cpp src/server/shared/DataStores/DBCfmt.h \
+    src/server/game/World/World.cpp \
     src/server/game/Entities/Creature/Trainer.cpp \
     src/server/game/Spells/SpellDefines.h src/server/game/Spells/Auras/SpellAuraDefines.h \
     src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp \

@@ -10,6 +10,10 @@ core = tc
 characters = tc_characters_prep
 auth = tc_auth_prep
 world = tc_world_snapshot
+# Optional operator assertion of the effective TC worldserver setting.
+# Blank means unknown; used only with plan disabled-spell-history --inactive-custom-defaults.
+# Verify PlayerStart.AllSpells before setting 0; it is not detected automatically.
+player_start_all_spells =
 
 [paths]
 tc_dbc = /secure/assets/tc-dbc

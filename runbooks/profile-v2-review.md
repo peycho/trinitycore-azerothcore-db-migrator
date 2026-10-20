@@ -1,5 +1,21 @@
 # Profile v2 review and acceptance record
 
+The 2026-10-20 ordinary-history preparation v2 extension permits only an inactive
+`playercreateinfo_spell_custom` route under the explicit operator assertion
+`PlayerStart.AllSpells=0`. All other ordinary cleanup guards remain. The
+configuration contract, whole-family row proofs and selected/deferred counts are
+retained; console actions and direct SQL require matching assertions. Native
+config/learning consumers are compiled with mocked state/DB sinks, separately
+from native gameplay acceptance. The TC semantic manifest adds `World.cpp`,
+matching retained TC pin `92127cd...` and the configured checkout byte for byte.
+Protected counts are now 100 TC / 103 AC. AC pin `1cd97629...`, staging `f089543d...`
+and configured `cb3d99cd...` still match the AC manifest; no revision is replaced.
+The v1 profile, migration policy `spell-state-v12`, metadata and control-schema
+contract stay unchanged. The changed profile digest requires new migration
+runs/target/control schemas. Retain earlier cleanup toolkits for their original
+batches. No GM exclusion is introduced. Release approval stays **UNREVIEWED**;
+the five staging gameplay gates remain **NOT TESTED** until executed.
+
 The 2026-10-19 `spell-state-v12` amendment fixes an overstrict skill check for
 Shaman Dual Wield selected only in the inactive spec. Under the exact reviewed
 `30798 -> 674` contract, an absent skill `118` stays absent and the unpersisted

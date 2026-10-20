@@ -94,6 +94,43 @@ class OrdinaryHistoryTests(unittest.TestCase):
         self.meta.check_spell=fail
         self.assertEqual({r[2] for r in self.review()[1]},{'DEFER_RELATION_UNSUPPORTED_CORE_CORRECTION'})
 
+    def test_inactive_custom_defaults_require_explicit_separate_policy(self):
+        self.meta.history_default_spells={200}
+        self.assertFalse(self.review()[0])  # Old policy remains a failing control.
+        selected,excluded,proof,summary,_=ordinary.select(
+            self.state,self.meta,3,inactive_custom_defaults=True)
+        self.assertEqual(selected,[(1,200,0,1),(1,201,1,1),(2,201,1,1)])
+        self.assertFalse(excluded)
+        self.assertEqual(summary['selected_custom_default_rows'],3)
+        self.assertIn((2,200,200,'ORDINARY_RANK_INACTIVE_CUSTOM_DEFAULT','ABSENT_NO_GRANT','',''),proof)
+        args=parser().parse_args(['plan','disabled-spell-history','--migration-inspection','latest',
+                                '--inactive-custom-defaults','--preview'])
+        self.assertTrue(args.inactive_custom_defaults)
+        for value in ('','1','false','unknown'):
+            with self.assertRaises(CleanupError) as e:
+                ordinary.configuration_contract(SimpleNamespace(get=lambda *args:value))
+            self.assertEqual(e.exception.code,'ORDINARY_HISTORY_CONFIG_REQUIRED')
+        self.assertEqual(ordinary.configuration_contract(SimpleNamespace(get=lambda *args:'0'))['value'],0)
+
+    def test_inactive_defaults_preserve_all_other_route_and_state_guards(self):
+        self.meta.history_default_spells={200}
+        def review():return ordinary.select(self.state,self.meta,None,preview=True,inactive_custom_defaults=True)
+        skill=[0]*14;skill[1]=1;skill[9]=2
+        self.meta.abilities[200]=[skill]
+        self.assertEqual({r[2] for r in review()[1]},{'DEFER_SKILL_REWARD_ROUTE'})
+        self.meta.abilities.clear();self.meta.learns[201]=[(400,1,False)]
+        self.assertEqual({r[2] for r in review()[1]},{'DEFER_LEARNING_OR_REQUIREMENT_ROUTE'})
+        self.meta.learns.clear();self.meta.spells[200][71]=40
+        self.assertEqual({r[2] for r in review()[1]},{'DEFER_LEARN_OR_SKILL_EFFECT'})
+        self.meta.spells[200][71]=0;self.meta.scripts[200].add('unreviewed')
+        self.assertEqual({r[2] for r in review()[1]},{'DEFER_SCRIPTED_SPELL_FAMILY'})
+        self.meta.scripts.clear();self.state['character_spell'][0]=[1,200,0,0]
+        selected,excluded,*_=review()
+        self.assertEqual(selected,[(2,201,1,1)])
+        self.assertEqual({r[2] for r in excluded},{'DEFER_ENABLED_RELATED_SPELL'})
+        self.state['characters'][1][7]=4
+        self.assertFalse(review()[0])
+
     def test_character_and_both_spec_ownership_validation(self):
         for field,value,reason in ((6,1,'DEFER_ONLINE_CHARACTER'),(7,4,'DEFER_PENDING_NATIVE_RESET'),
             (1,0,'DEFER_INVALID_CHARACTER_STATE'),(2,0,'DEFER_INVALID_CHARACTER_STATE'),

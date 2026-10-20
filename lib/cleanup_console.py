@@ -182,7 +182,7 @@ class Settings:
         if set(self.ini.sections())-allowed:
             fail('CONFIG_UNKNOWN_SECTION', 'Unknown configuration section: '+','.join(sorted(set(self.ini.sections())-allowed)))
         fields = {
-            'workspace':{'directory'}, 'source':{'core','characters','auth','world'},
+            'workspace':{'directory'}, 'source':{'core','characters','auth','world','player_start_all_spells'},
             'paths':{'tc_dbc','ac_dbc','tc_source','ac_source'},
             'safety':{'preparation_copy','writers_stopped','backup_reference'},
             'mysql':{'host','port','socket','user','password','defaults_file','ssl_mode','connect_timeout'},
@@ -197,6 +197,8 @@ class Settings:
             fail('CONFIG_SCHEMAS', 'Auth, characters and world must be distinct schemas')
         if self.get('source','core','tc')!='tc':
             fail('UNSUPPORTED_SOURCE', 'Preparation cleanup currently supports TrinityCore sources only; AC paths are compatibility inputs, not an AC cleanup policy')
+        if self.get('source','player_start_all_spells') not in ('','0','1'):
+            fail('CONFIG_VALUE','[source] player_start_all_spells must be blank, 0 or 1')
         self.paths = {key:self.path('paths',key,required=key in ('tc_dbc','tc_source')) for key in ('tc_dbc','ac_dbc','tc_source','ac_source')}
         self.secrets = [self.ini[s].get('password','') for s in ('mysql','mysql_audit','mysql_admin') if s in self.ini]
         self.secrets = [s for s in self.secrets if s]
@@ -588,8 +590,12 @@ def command_action(settings, work, args):
     ack=manifest.get('ack_variable','talent_cleanup_ack')
     if ack not in ('talent_cleanup_ack','recovery_ack','skill_cleanup_ack'):
         fail('INVALID_POLICY','Unknown cleanup acknowledgement variable')
+    configuration_ack = ''
+    from cleanup_ordinary_history import INACTIVE_DEFAULT_POLICY
+    if manifest.get('policy') == INACTIVE_DEFAULT_POLICY:
+        configuration_ack = 'SET @ordinary_history_all_spells=0;\n'
     try:
-        result=settings.sql(f"SET @{ack}='STOPPED_PREPARATION_COPY_ONLY';\n"+scripts[action],'write',headers=True)
+        result=settings.sql(f"SET @{ack}='STOPPED_PREPARATION_COPY_ONLY';\n"+configuration_ack+scripts[action],'write',headers=True)
     except CleanupError as error:
         if manifest.get('policy') in POLICIES and any(
                 text in str(error) for text in ('DELETE command denied','INSERT command denied')):
@@ -688,6 +694,7 @@ def parser():
     ordinary=types.add_parser('disabled-spell-history',help='Opt-in archive of isolated wholly disabled ordinary ranks; preserve enabled and talent-linked families')
     ordinary.set_defaults(ordinary_spell_history=True,inspection=None,audit=None)
     ordinary.add_argument('--migration-inspection',required=True,help='Sealed migration-blocker inspection ID or latest in this session')
+    ordinary.add_argument('--inactive-custom-defaults',action='store_true',help='Explicit v2: allow inactive custom-start routes only with [source] player_start_all_spells=0; other guards remain')
     ordinary_review=ordinary.add_mutually_exclusive_group(required=True)
     ordinary_review.add_argument('--preview',action='store_true',help='Read-only review; no SQL package, source change or active-batch change')
     ordinary_review.add_argument('--expect-review-rows',type=int,help='Exact reviewed_candidate_rows from this policy preview, including exclusions')

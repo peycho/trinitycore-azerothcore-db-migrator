@@ -98,6 +98,7 @@ write_trinitycore_semantic_manifest() {
         src/server/game/Entities/Creature/Trainer.cpp \
         src/server/game/Globals/ObjectMgr.cpp \
         src/server/game/Globals/ObjectMgr.h \
+        src/server/game/World/World.cpp \
         src/server/game/Spells/SpellEffects.cpp \
         src/server/game/Scripting/ScriptMgr.cpp \
         src/server/game/Scripting/ScriptMgr.h \

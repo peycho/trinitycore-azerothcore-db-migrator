@@ -681,6 +681,81 @@ and regenerate plans. After applying preparation edits, use a fresh migration
 run and target/control schemas. Native gameplay and release acceptance remain
 separate; approval remains **UNREVIEWED**.
 
+### Inactive custom starting-spell routes (ordinary v2)
+
+Use this separate opt-in policy only after verifying that the **effective TC
+worldserver configuration** has `PlayerStart.AllSpells = 0`. Record that fact in
+the existing private cleanup config:
+
+```ini
+[source]
+player_start_all_spells = 0
+```
+
+Edit the existing `[source]` section; do not duplicate it. Blank means unknown;
+only literal `0` or `1` is accepted. This is an operator assertion, not automatic
+detection of a server configuration. Do not upload a whole worldserver config
+containing credentials. This setting does not change the session endpoint, so
+the existing preparation session can continue.
+
+Pinned TC `Player::LearnCustomSpells()` returns immediately when
+`CONFIG_START_ALL_SPELLS` is false. `World::LoadConfigSettings()` reads that flag
+from `PlayerStart.AllSpells`. Thus `playercreateinfo_spell_custom` does not supply
+a login learning route under this assertion. `LearnDefaultSkills()` and other
+reward/learning routes are separate and retain their guards.
+
+```bash
+python3 console plan disabled-spell-history \
+  --migration-inspection latest --inactive-custom-defaults --preview
+```
+
+Review the new `ordinary-spell-review.json`. The distinct policy is
+`tc-disabled-ordinary-inactive-custom-defaults-v2`. Its `configuration_contract`
+records the exact setting, value and `OPERATOR_ASSERTION` evidence.
+`selected_custom_default_rows` counts selected stored rows in families with an
+inactive custom-start route. `relationship-review.tsv` labels their proof rows
+`ORDINARY_RANK_INACTIVE_CUSTOM_DEFAULT`, including absent ranks receiving no
+grant. Skill rewards, professions/riding/Runeforging, talents, every dependency
+direction, enabled family rows, scripts, invalid states and pending resets
+retain the v1 guards. Staff characters receive the same reviewed policies as
+other characters; there is no automatic GM exclusion or migration exemption.
+
+Generate a candidate with **reviewed_candidate_rows**, including exclusions:
+
+```bash
+python3 console plan disabled-spell-history \
+  --migration-inspection INSPECTION_ID --inactive-custom-defaults \
+  --expect-review-rows COUNT
+```
+
+Review, prepare, apply and restore with the exact printed batch ID as above.
+The assertion is hashed into the batch and rechecked before every console
+prepare/apply/restore. Unknown/enabled settings fail with
+`ORDINARY_HISTORY_CONFIG_REQUIRED`; a differing recorded contract fails with
+`ORDINARY_HISTORY_CONFIG_DRIFT`. No source action is attempted after either
+error. Old v1 behavior is unchanged, even when this config value is zero.
+
+Direct SQL calls require both fresh-session assertions before **each** action:
+
+```sql
+SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';
+SET @ordinary_history_all_spells=0;
+CALL `ARCHIVE_SCHEMA`.apply_batch();
+```
+
+Replace `ARCHIVE_SCHEMA` with the exact owned archive. Use `prepare_batch()` or
+`restore_batch()` for those actions. Missing/nonzero assertions reject, and
+live world fingerprints also protect the custom-start table against same-count
+changes. SQL cannot prove what a separate worldserver configuration contains;
+the operator must retain and honor the asserted configuration. Exact restore
+requires that same assertion and unchanged archived state. Restore in reverse
+application order before gameplay or other edits, or restore the baseline dump.
+
+The v2 semantic manifest additionally protects TC `World.cpp` (100 TC / 103 AC
+files) at the retained pins; v1 and release approval are unchanged. Earlier
+migration runs need fresh target/control schemas because profile hashes changed.
+This preparation extension adds no migration grants or validation exceptions.
+
 ## Recover items without replacing them
 
 For example, after reviewing containers 100 and 200:

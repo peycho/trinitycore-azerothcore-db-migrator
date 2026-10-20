@@ -59,6 +59,22 @@ backup_reference=verified-backup-01
         with self.assertRaisesRegex(console.CleanupError,'private file'):
             self.settings()
 
+    def test_start_all_spells_is_optional_strict_assertion_outside_endpoint_identity(self):
+        self.assertEqual(self.settings().get('source','player_start_all_spells'),'')
+        identities=[]
+        for value in ('0','1',''):
+            text=self.config.read_text()
+            self.config.write_text(text.replace('[source]\n','[source]\nplayer_start_all_spells='+value+'\n'))
+            settings=self.settings()
+            self.assertEqual(settings.get('source','player_start_all_spells'),value)
+            with patch.object(settings,'sql',return_value='eba72438-8907-11f1-8504-0cc47a421e26\t8.4.10\n'):
+                identities.append(settings.identity())
+            self.config.write_text(text)
+        self.assertEqual(identities,[identities[0]]*3)
+        self.config.write_text(self.config.read_text().replace('[source]\n','[source]\nplayer_start_all_spells=false\n'))
+        with self.assertRaises(console.CleanupError) as e:self.settings()
+        self.assertEqual(e.exception.code,'CONFIG_VALUE')
+
     def test_unknown_settings_do_not_silently_disable_guards(self):
         with self.config.open('a') as stream:
             stream.write('writers_stoped=yes\n')

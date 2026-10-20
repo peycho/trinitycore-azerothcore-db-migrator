@@ -34,6 +34,7 @@ python3 "$ROOT/tests/generic-skill-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROT
 python3 "$ROOT/tests/native-skill-mysql-tests.py"
 python3 "$ROOT/tests/reviewed-script-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/temporary-rank-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
+python3 "$ROOT/tests/custom-default-runtime-tests.py" "$TRINITYCORE_DIR"
 python3 "$ROOT/tests/native-passive-rank-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/spell-metadata-tests.py"
 python3 "$ROOT/tests/source-audit-mysql-tests.py"

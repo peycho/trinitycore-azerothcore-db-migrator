@@ -674,6 +674,60 @@ backup_reference=disposable-synthetic-fixture
             sql(f'UPDATE `{source}`.character_skills SET max=450 WHERE guid=70 AND skill=171')
             run('restore');run('restore');assert checksum()==ordinary_baseline;run('apply',code=2)
             passed('ordinary policy preview/old-policy controls; whole disabled ranks, enabled/online/reset/invalid/foreign exclusions, both-spec ownership and profession preservation; full-scope/custom/world drift, direct SQL guards, late/disconnect rollback, commit/rerun and exact restoration')
+            # V2 changes only the inactive custom-default route. The same
+            # disabled book remains blocked under v1, even with config=0.
+            sql(f'INSERT INTO `{world}`.playercreateinfo_spell_custom(racemask,classmask,Spell) VALUES(0,0,10308)')
+            default_baseline=checksum();other_before=sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')
+            captured=run('inspect-migration-blockers','--report',str(ordinary_report))
+            evidence=Path(captured.stdout.split('Reports: ',1)[1].strip())
+            default_args=('plan','disabled-spell-history','--migration-inspection',evidence.name,'--inactive-custom-defaults')
+            old_config=config.read_text()
+            for setting in ('','1'):
+                config.write_text(old_config.replace('[source]\n','[source]\nplayer_start_all_spells='+setting+'\n'))
+                assert 'ORDINARY_HISTORY_CONFIG_REQUIRED' in run(*default_args,'--preview',code=2).stderr
+            config.write_text(old_config.replace('[source]\n','[source]\nplayer_start_all_spells=0\n'))
+            preview=run('plan','disabled-spell-history','--migration-inspection',evidence.name,'--preview')
+            review=json.loads(Path(preview.stdout.split('Details: ',1)[1].splitlines()[0]).read_text())
+            assert review['summary']['selected_rows']==0,review
+            before_pointer=(session()/'active-batch.json').read_bytes()
+            preview=run(*default_args,'--preview')
+            review=json.loads(Path(preview.stdout.split('Details: ',1)[1].splitlines()[0]).read_text())
+            assert review['summary']['selected_rows']==2 and review['summary']['selected_custom_default_rows']==2,review
+            assert review['configuration_contract']['value']==0 and review['configuration_contract']['evidence']=='OPERATOR_ASSERTION'
+            assert before_pointer==(session()/'active-batch.json').read_bytes() and checksum()==default_baseline
+            run(*default_args,'--expect-review-rows','7')
+            default_data=json.loads((package()/'manifest.json').read_text());default_archive=default_data['archive_schema'];owned.append(default_archive)
+            assert default_data['policy']=='tc-disabled-ordinary-inactive-custom-defaults-v2'
+            assert default_data['configuration_contract']==review['configuration_contract']
+            run('prepare');run('prepare');assert checksum()==default_baseline
+            for phase in ('prepare','apply','restore'):
+                config.write_text(old_config.replace('[source]\n','[source]\nplayer_start_all_spells=1\n'))
+                assert 'ORDINARY_HISTORY_CONFIG_REQUIRED' in run(phase,code=2).stderr
+                assert checksum()==default_baseline
+            config.write_text(old_config.replace('[source]\n','[source]\nplayer_start_all_spells=0\n'))
+            for assertion in ('','SET @ordinary_history_all_spells=1;','SET @ordinary_history_all_spells=\'false\';'):
+                direct=subprocess.run(['mysql',*base,'--user='+writer],text=True,capture_output=True,input=
+                    f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';{assertion} CALL `{default_archive}`.apply_batch();")
+                assert direct.returncode!=0 and 'PlayerStart.AllSpells=0 assertion required' in direct.stderr,direct.stderr
+                assert checksum()==default_baseline
+            sql(f'UPDATE `{world}`.playercreateinfo_spell_custom SET racemask=1 WHERE Spell=10308')
+            drift=checksum();assert 'HISTORY_METADATA_DRIFT' in run('apply',code=2).stderr;assert checksum()==drift
+            direct=subprocess.run(['mysql',*base,'--user='+writer],text=True,capture_output=True,input=
+                f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';SET @ordinary_history_all_spells=0;CALL `{default_archive}`.apply_batch();")
+            assert direct.returncode!=0 and 'World metadata content changed' in direct.stderr,direct.stderr
+            sql(f'UPDATE `{world}`.playercreateinfo_spell_custom SET racemask=0 WHERE Spell=10308')
+            sql(f"CREATE TRIGGER `{default_archive}`.fail_commit BEFORE UPDATE ON `{default_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='defaults-late-error'; END IF; END")
+            run('apply',code=2);assert checksum()==default_baseline
+            assert sql(f'SELECT state FROM `{default_archive}`.batch')=='PREPARED'
+            sql(f'DROP TRIGGER `{default_archive}`.fail_commit')
+            run('apply');run('apply');run('status')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=70')=='1'
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==other_before
+            run('restore');run('restore');assert checksum()==default_baseline;run('apply',code=2)
+            config.write_text(old_config)
+            sql(f'DELETE FROM `{world}`.playercreateinfo_spell_custom WHERE Spell=10308')
+            assert checksum()==ordinary_baseline
+            passed('ordinary v2 explicit config assertion; v1 refusal; preview and counts, changed config/direct SQL assertion guards, same-count defaults drift, late rollback, rerun and exact restore with unrelated state preserved')
             sql(f'DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 70 AND 75; DELETE FROM `{source}`.character_talent WHERE guid BETWEEN 70 AND 75; DELETE FROM `{source}`.character_skills WHERE guid=70; DELETE FROM `{source}`.characters WHERE guid BETWEEN 70 AND 75;')
             sql(f'DELETE FROM `{world}`.spell_ranks WHERE first_spell_id=853');assert checksum()==baseline
             scale=int(os.environ.get('HISTORY_SCALE_ROWS','0'))

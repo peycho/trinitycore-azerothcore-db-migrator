@@ -26,6 +26,10 @@ talent ancestry, enabled siblings, all learning/prerequisite routes, defaults,
 skill/profession/riding routes and unsupported metadata. Full originals and
 guarded exact restoration remain mandatory. Migration rejection rules stay
 unchanged; unavailable history retirement does not establish gameplay approval.
+Its separate [inactive-custom-default extension](cleanup-console.md#inactive-custom-starting-spell-routes-ordinary-v2)
+requires an explicit effective TC `PlayerStart.AllSpells=0` assertion and keeps
+all other learning/skill/talent/state guards. No staff characters are exempted
+from cleanup safety checks or migration validation.
 
 After a full audit, `python3 console inspect-spell-history` produces a read-only
 review of direct talent history against both talent groups, using the existing

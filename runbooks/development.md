@@ -6,6 +6,17 @@ production-sized rehearsal or native gameplay acceptance.
 
 ## CI coverage
 
+Ordinary-history v2 tests keep v1 as a failing control and require an explicit
+config assertion before allowing an inactive custom-start route. Units retain
+skill/reward/dependency/flag/script/reset guards. MySQL tests cover preview,
+missing/enabled config, direct SQL assertions, same-count default-table drift,
+late rollback, reruns and exact restoration with unrelated data unchanged.
+`custom-default-runtime-tests.py` compiles TC's protected config assignment and
+full custom-spell learning function: config-off performs no lookup or grant;
+config-on calls native add/learn paths. Config, player state and sinks are
+mocked; gameplay remains a separate gate. The full rehearsal includes this
+consumer harness and the existing interruption/resume tests.
+
 The isolated ordinary-history preparation policy has fast regressions for
 deterministic whole-rank selection, old-policy refusal, both-spec ownership,
 enabled/inactive versus disabled state, absent-rank no-grant proof, ancestry,

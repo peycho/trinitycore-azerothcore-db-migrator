@@ -18,7 +18,7 @@ import cleanup_ordinary_history as ordinary_history
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
-POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY)
+POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -124,6 +124,9 @@ def read_world(settings):
 
 
 def check_metadata(settings, manifest):
+    if manifest.get('policy') == ordinary_history.INACTIVE_DEFAULT_POLICY:
+        if ordinary_history.configuration_contract(settings) != manifest.get('configuration_contract'):
+            fail('ORDINARY_HISTORY_CONFIG_DRIFT','Configuration contract differs from the reviewed ordinary-history batch')
     settings.check_paths()
     if sha(PROFILE/'spell-metadata.json') != manifest.get('metadata_profile_sha256'):
         fail('HISTORY_METADATA_DRIFT','Spell metadata policy differs from the reviewed batch')
@@ -275,6 +278,8 @@ def plan_history(settings, work, args, output):
     trained_mode = bool(getattr(args,'migration_inspection',None))
     child_mode = getattr(args,'orphaned_talent_children',False)
     ordinary_mode = getattr(args,'ordinary_spell_history',False)
+    inactive_defaults = getattr(args,'inactive_custom_defaults',False)
+    config_contract = ordinary_history.configuration_contract(settings) if inactive_defaults else None
     preview = getattr(args,'preview',False)
     if child_mode and not trained_mode:
         fail('HISTORY_POLICY_CONFLICT','--orphaned-talent-children requires --migration-inspection')
@@ -309,7 +314,7 @@ def plan_history(settings, work, args, output):
     if child_mode:
         policy = trained_history.CHILD_POLICY
     if ordinary_mode:
-        policy = ordinary_history.POLICY
+        policy = ordinary_history.INACTIVE_DEFAULT_POLICY if inactive_defaults else ordinary_history.POLICY
     relation_rows,relation_proof,relation_summary,relation_edges = [],[],{},[]
     rank_proof = []
     if trained_mode:
@@ -317,7 +322,7 @@ def plan_history(settings, work, args, output):
         relation_rows=context['character_spell']
         if ordinary_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ordinary_history.select(
-                context,effective,args.expect_review_rows,preview=preview)
+                context,effective,args.expect_review_rows,preview=preview,inactive_custom_defaults=inactive_defaults)
         else:
             selected,excluded,relation_proof,relation_summary,relation_edges=trained_history.select(
                 context,effective,args.expect_review_rows,orphan_children=child_mode,preview=preview)
@@ -329,6 +334,8 @@ def plan_history(settings, work, args, output):
                     'deferred':dict(Counter(row[2] for row in excluded)),
                     'limitations':['Captured-state review, not a live full-row verification or cleanup approval',
                                    'Planning rechecks the complete captured semantic scope and full affected originals']}
+            if config_contract is not None:
+                review['configuration_contract'] = config_contract
             write_json(work.operation/review_name,review)
             print(review_label+' review (read-only): '+json.dumps({**relation_summary,'deferred':review['deferred']},sort_keys=True),flush=True)
             if preview:
@@ -433,8 +440,11 @@ def plan_history(settings, work, args, output):
     if counts['characters'] != len(guids) or sum(counts.values())>5_000_000:
         fail('HISTORY_SNAPSHOT_BOUND','Missing affected characters or more than 5000000 archived rows')
     template = ROOT/'tools/disabled-talent-history.sql.in'
-    batch = sha_json({'policy':policy,'inspection':sha(path/'SHA256SUMS'),'snapshot':cells,'after':after,
-                     'selection':selected,'world':world,'meta':meta,'template':sha(template),'id':output.name})
+    batch_inputs = {'policy':policy,'inspection':sha(path/'SHA256SUMS'),'snapshot':cells,'after':after,
+                    'selection':selected,'world':world,'meta':meta,'template':sha(template),'id':output.name}
+    if config_contract is not None:
+        batch_inputs['configuration_contract'] = config_contract
+    batch = sha_json(batch_inputs)
     archive = 'tc_disabled_history_'+uuid.uuid4().hex[:20]
     blocks = check_sets(meta,source,archive,counts)
     values = {'SOURCE':source,'ARCHIVE':archive,'UUID':work.current()['identity']['uuid'],
@@ -459,6 +469,10 @@ def plan_history(settings, work, args, output):
      FROM `{settings.schemas['world']}`.`{table}`)<=>'{checksum}') THEN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='World metadata content changed: {table}'; END IF;''')
     values['WORLD_CHECKS'] = '\n'.join(world_checks)
+    if config_contract is not None:
+        values['WORLD_CHECKS'] = """IF NOT (BINARY @ordinary_history_all_spells <=> BINARY '0') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit PlayerStart.AllSpells=0 assertion required for ordinary history v2'; END IF;
+""" + values['WORLD_CHECKS']
     final_effective, final_world = read_world(settings)
     if metadata(settings,TABLES)!=meta or final_world!=world or final_effective.hashes!=effective.hashes:
         fail('HISTORY_METADATA_DRIFT','Source schema/world metadata changed while planning')
@@ -477,6 +491,8 @@ def plan_history(settings, work, args, output):
         'excluded_reason_counts':dict(Counter(row[2] for row in excluded)),
         'template_sha256':sha(template),
         'native_policy':'Disabled direct talent ranks only; no selected family in either spec; no activation, talent reset or grants'}
+    if config_contract is not None:
+        manifest['configuration_contract'] = config_contract
     if include_scripts:
         manifest.update(reviewed_script_bindings=reviewed,
             scripted_selected_rows=sum(row[1] in effective.talents and effective.talents[row[1]][0] in scripted_families for row in selected),

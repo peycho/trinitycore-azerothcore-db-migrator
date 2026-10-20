@@ -34,6 +34,14 @@ policy change also invalidates earlier run/checkpoint identities.
 
 ## Reviewing a candidate
 
+Ordinary-history preparation v2 additionally protects TC `World.cpp` for the
+`PlayerStart.AllSpells` configuration gate. Its content matches retained pin
+`92127cd...`; protected counts become 100 TC / 103 AC. AC pins, v1, spell-state-v12,
+metadata and control-schema definitions remain unchanged. Profile hashes change,
+requiring fresh migration runs and target/control schemas. The preparation
+assertion is explicit, independently hashed and does not relax migration checks.
+See [ordinary history v2](cleanup-console.md#inactive-custom-starting-spell-routes-ordinary-v2).
+
 `spell-state-v12` recognizes the native inactive-spec gate for Shaman Dual Wield
 without granting skill `118` or changing talent selections. The protected player,
 skill-manager and storage consumers already cover this behavior. Metadata

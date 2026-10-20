@@ -6,9 +6,21 @@ from cleanup_talent_relations import Relations, validate_stored, MAX_ROWS
 from spells import Unsupported
 
 POLICY = 'tc-isolated-disabled-ordinary-spell-history-v1'
+INACTIVE_DEFAULT_POLICY = 'tc-disabled-ordinary-inactive-custom-defaults-v2'
 
 
-def select(state, meta, expected, *, preview=False):
+def configuration_contract(settings):
+    """An explicit operator assertion, never inferred from missing config."""
+    if settings.get('source','player_start_all_spells') != '0':
+        fail('ORDINARY_HISTORY_CONFIG_REQUIRED',
+             '--inactive-custom-defaults requires [source] player_start_all_spells = 0',
+             'Verify PlayerStart.AllSpells in the effective stopped TC configuration. '
+             'This setting is an operator assertion; the console cannot inspect the running server configuration.')
+    return {'setting':'PlayerStart.AllSpells','value':0,'evidence':'OPERATOR_ASSERTION',
+            'scope':'TC playercreateinfo_spell_custom only; all other learning routes retain their guards'}
+
+
+def select(state, meta, expected, *, preview=False, inactive_custom_defaults=False):
     stored = state['character_spell']
     validate_stored(stored)
     graph = Relations(meta)
@@ -71,7 +83,7 @@ def select(state, meta, expected, *, preview=False):
             reason = 'DEFER_PROFESSION_OR_RIDING_RELATION'
         elif nodes & graph.unknown_skill_spells or nodes & graph.unsupported:
             reason = 'DEFER_UNSUPPORTED_RELATION_METADATA'
-        elif nodes & getattr(meta,'history_default_spells',set()):
+        elif nodes & getattr(meta,'history_default_spells',set()) and not inactive_custom_defaults:
             reason = 'DEFER_CUSTOM_DEFAULT_ROUTE'
         for spell in sorted(nodes) if not reason else ():
             if set(meta.spells[spell][71:74]) & {36,40,44,47,118}:
@@ -120,7 +132,9 @@ def select(state, meta, expected, *, preview=False):
             continue
         for spell in sorted(nodes):
             flags = present.get(spell)
-            proof.append((guid,root,spell,'ORDINARY_RANK',
+            route = ('ORDINARY_RANK_INACTIVE_CUSTOM_DEFAULT' if inactive_custom_defaults
+                     and nodes & meta.history_default_spells else 'ORDINARY_RANK')
+            proof.append((guid,root,spell,route,
                           'SELECTED_DISABLED' if flags else 'ABSENT_NO_GRANT',*(flags or ('',''))))
             if flags:
                 selected.append((guid,spell,*flags))
@@ -136,4 +150,9 @@ def select(state, meta, expected, *, preview=False):
         'deferred_candidate_rows':len(excluded),
         'reviewed_script_binding_count':len(bindings),
         'native_policy':'Archive isolated wholly disabled ordinary rank families; no talent, enabled spell, skill, grant or login-flag change; stored future reactivation/retraining history is discarded'}
+    if inactive_custom_defaults:
+        summary['selected_custom_default_rows'] = sum(
+            bool(graph.members.get(graph.component[row[1]],set()) & meta.history_default_spells)
+            for row in selected)
+        summary['native_policy'] += '; custom starting-spell route is inactive under explicitly asserted PlayerStart.AllSpells=0'
     return sorted(selected), sorted(excluded), proof, summary, sorted(graph.edges)
