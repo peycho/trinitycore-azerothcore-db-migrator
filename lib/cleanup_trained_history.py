@@ -6,12 +6,20 @@ from cleanup_console import ROOT, PROFILE, fail, local_id, sha, verify
 from cleanup_talent_relations import Relations, validate_stored, MAX_ROWS
 
 POLICY = 'tc-disabled-unselected-trained-talent-history-v6'
+CHILD_POLICY = 'tc-disabled-unselected-talent-child-history-v7'
 
 
 def inspection(settings, work, inspection_id):
     """A semantic context snapshot is evidence, never an executable cleanup."""
     from cleanup_migration_evidence import FIELDS
     from cleanup_plans import sha_json
+    if inspection_id=='latest':
+        captures=sorted(p.name for p in (work.session/'inspections').glob('*-migration-blockers-*')
+                        if p.is_dir() and not p.is_symlink())
+        if not captures:
+            fail('MIGRATION_INSPECTION_REQUIRED','Capture a read-only migration blocker context in this session first')
+        inspection_id=captures[-1]
+        print('Using migration inspection: '+inspection_id,flush=True)
     path=work.session/'inspections'/local_id(inspection_id)
     contents=verify(path)
     required={'README.md','character-context.jsonl','groups.tsv','inspection.json','source-layout.json',
@@ -53,12 +61,45 @@ def inspection(settings, work, inspection_id):
     return path,adapted,state,raw,audit,world,layout,report
 
 
-def select(state, meta, expected):
+def child_candidates(stored, meta, graph):
+    """Find disabled non-talent children, including rank siblings, from TC only.
+
+    V6's trained roots are deliberately excluded. A candidate relationship is
+    evidence for review, never permission to remove it: the complete family
+    still has to pass the existing wholly-disabled, unowned closure checks.
+    """
+    catalog={}
+    related=defaultdict(set)
+    total=0
+    for family in sorted(graph.families):
+        if not graph.families[family] <= graph.component.keys():
+            fail('HISTORY_RELATION_METADATA','Incomplete direct talent catalog')
+        nodes,reason=graph.family(family,True)
+        total+=len(nodes)
+        if reason=='DEFER_RELATION_BOUND' or total>MAX_ROWS:
+            fail('HISTORY_RELATION_BOUND','Talent child catalog exceeds the verified closure bound')
+        catalog[family]=(nodes,reason)
+        for spell in nodes:
+            if spell not in meta.talents and meta.first(spell) not in meta.talents:
+                related[spell].add(family)
+    candidates=[r for r in stored if r[3]==1 and r[1] in related]
+    return candidates,related,catalog
+
+
+def select(state, meta, expected, *, orphan_children=False, preview=False):
     stored=state['character_spell'];validate_stored(stored)
-    candidates=[r for r in stored if r[3]==1 and r[1] not in meta.talents and meta.first(r[1]) in meta.talents]
-    if not 1<=expected<=500000 or len(candidates)!=expected:
-        fail('TRAINED_HISTORY_SELECTION_MISMATCH','--expect-review-rows must equal all disabled trained talent-rank rows in the captured character scope')
     graph=Relations(meta)
+    if orphan_children:
+        candidates,related,catalog=child_candidates(stored,meta,graph)
+    else:
+        candidates=[r for r in stored if r[3]==1 and r[1] not in meta.talents and meta.first(r[1]) in meta.talents]
+    if preview and orphan_children:
+        expected=len(candidates)
+    if (not (preview and orphan_children and expected==0)
+            and (expected is None or not 1<=expected<=500000 or len(candidates)!=expected)):
+        if orphan_children:
+            fail('HISTORY_CHILD_SELECTION_MISMATCH','--expect-review-rows must equal all disabled talent-child candidate rows printed by the preview, not selected rows or affected characters')
+        fail('TRAINED_HISTORY_SELECTION_MISMATCH','--expect-review-rows must equal all disabled trained talent-rank rows in the captured character scope')
     chars={r[0]:r for r in state['characters']}
     owners=defaultdict(set);invalid=set();group_owners=set()
     for guid,spell,group in state['character_talent']:
@@ -73,12 +114,21 @@ def select(state, meta, expected):
         group_owners.add(key);owners[guid].add(spell)
     by_guid=defaultdict(dict)
     for g,s,a,d in stored:by_guid[g][s]=(a,d)
-    grouped=defaultdict(list)
-    for row in candidates:grouped[row[0],meta.talents[meta.first(row[1])][0]].append(row)
-    catalog={family:graph.family(family,True) for family in sorted({f for _,f in grouped})}
+    grouped=defaultdict(list);excluded=[]
+    if orphan_children:
+        for row in candidates:
+            families=related[row[1]]
+            if len(families)!=1:
+                excluded.append((row[0],row[1],'DEFER_AMBIGUOUS_TALENT_DERIVATION'))
+            else:
+                grouped[row[0],next(iter(families))].append(row)
+        catalog={family:catalog[family] for family in sorted({f for _,f in grouped})}
+    else:
+        for row in candidates:grouped[row[0],meta.talents[meta.first(row[1])][0]].append(row)
+        catalog={family:graph.family(family,True) for family in sorted({f for _,f in grouped})}
     if sum(len(nodes) for nodes,_ in catalog.values())>MAX_ROWS:
         fail('HISTORY_RELATION_BOUND','Trained talent relationship review exceeds its node bound')
-    selected={};excluded=[];proof=[];accepted=[]
+    selected={};proof=[];accepted=[]
     for (guid,family),anchors in sorted(grouped.items()):
         nodes,reason=catalog[family];char=chars.get(guid)
         if char is None or char[2] not in (1,2,3,4,5,6,7,8,9,11) or char[5] not in (1,2) or not 0<=char[4]<char[5]:
@@ -111,7 +161,7 @@ def select(state, meta, expected):
             if flags:selected[guid,spell]=(guid,spell,*flags)
         if len(proof)>MAX_ROWS or len(selected)>500000:
             fail('HISTORY_RELATION_BOUND','Trained talent history selection/evidence exceeds its bound')
-    if not selected:
+    if not selected and not (preview and orphan_children):
         counts=', '.join(f'{r}={n}' for r,n in sorted(Counter(r[2] for r in excluded).items()))
         fail('HISTORY_NO_ELIGIBLE_ROWS','No disabled trained talent history group qualifies: '+counts)
     summary={'reviewed_trained_rows':len(candidates),'selected_anchor_rows':len(accepted),
@@ -119,4 +169,10 @@ def select(state, meta, expected):
              'selected_direct_rows':sum(s in meta.talents for _,s in selected),
              'selected_related_rows':sum(s not in meta.talents for _,s in selected),
              'native_policy':'Archive wholly disabled unselected trained talent rank/dependency groups even with absent direct roots; no enabled spells, selected owners, skill changes, grants or resets'}
+    if orphan_children:
+        summary.pop('reviewed_trained_rows')
+        summary.update(reviewed_candidate_rows=len(candidates),selected_rows=len(selected),
+                       selected_characters=len({g for g,s in selected}),
+                       deferred_candidate_rows=len(excluded),
+                       native_policy='Archive wholly disabled unselected TC talent-child families even with absent direct and trained roots; never remove enabled spells or selected ownership, or change skills')
     return sorted(selected.values()),sorted(excluded),proof,summary,sorted(graph.edges)

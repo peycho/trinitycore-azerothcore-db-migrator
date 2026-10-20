@@ -17,7 +17,7 @@ import cleanup_trained_history as trained_history
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
-POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY)
+POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -272,9 +272,15 @@ def check_sets(meta, source, archive, counts, changed_table='character_spell'):
 
 def plan_history(settings, work, args, output):
     trained_mode = bool(getattr(args,'migration_inspection',None))
+    child_mode = getattr(args,'orphaned_talent_children',False)
+    preview = getattr(args,'preview',False)
+    if child_mode and not trained_mode:
+        fail('HISTORY_POLICY_CONFLICT','--orphaned-talent-children requires --migration-inspection')
+    if preview and not child_mode:
+        fail('HISTORY_POLICY_CONFLICT','--preview is supported only with --migration-inspection and --orphaned-talent-children')
     selected_mode = getattr(args,'selected_rank_history',False)
     if trained_mode and any(getattr(args,field,False) for field in ('include_reviewed_scripts','include_inert_relations','include_reviewed_routes','selected_rank_history')):
-        fail('HISTORY_POLICY_CONFLICT','--migration-inspection selects v6 and cannot be combined with other history modes')
+        fail('HISTORY_POLICY_CONFLICT','--migration-inspection cannot be combined with other direct-history modes')
     if selected_mode and any(getattr(args,field,False) for field in ('include_reviewed_scripts','include_inert_relations','include_reviewed_routes')):
         fail('HISTORY_POLICY_CONFLICT','--selected-rank-history cannot be combined with another history mode')
     inspection_id = args.inspection
@@ -296,12 +302,26 @@ def plan_history(settings, work, args, output):
     include_relations = getattr(args,'include_inert_relations',False) or include_routes or trained_mode
     include_scripts = getattr(args,'include_reviewed_scripts',False) or include_relations or selected_mode
     policy = trained_history.POLICY if trained_mode else selected_history.POLICY if selected_mode else relations.ROUTE_POLICY if include_routes else relations.POLICY if include_relations else SCRIPT_POLICY if include_scripts else POLICY
+    if child_mode:
+        policy = trained_history.CHILD_POLICY
     relation_rows,relation_proof,relation_summary,relation_edges = [],[],{},[]
     rank_proof = []
     if trained_mode:
         check_retained_scripts(state,effective)
         relation_rows=context['character_spell']
-        selected,excluded,relation_proof,relation_summary,relation_edges=trained_history.select(context,effective,args.expect_review_rows)
+        selected,excluded,relation_proof,relation_summary,relation_edges=trained_history.select(
+            context,effective,args.expect_review_rows,orphan_children=child_mode,preview=preview)
+        if child_mode:
+            review={'policy':policy,'migration_inspection':path.name,'scope_characters':len(context['characters']),
+                    'summary':relation_summary,'selected':selected,'excluded':excluded,
+                    'deferred':dict(Counter(row[2] for row in excluded)),
+                    'limitations':['Captured-state review, not a live full-row verification or cleanup approval',
+                                   'Planning rechecks the complete captured semantic scope and full affected originals']}
+            write_json(work.operation/'talent-child-review.json',review)
+            print('Talent-child review (read-only): '+json.dumps({**relation_summary,'deferred':review['deferred']},sort_keys=True),flush=True)
+            if preview:
+                print('PREVIEW: captured evidence only; no SQL package, active batch or source changes. Details: '+str(work.operation/'talent-child-review.json'),flush=True)
+                return False
     elif selected_mode:
         check_retained_scripts(state,effective)
         selected,excluded,rank_proof = selected_history.select(rows,state,effective,args.expect_review_rows)
@@ -321,6 +341,8 @@ def plan_history(settings, work, args, output):
         bindings = sorted(set(bindings) | {(family,spell,name,'') for _,family,spell,*_ in relation_proof
                                          for name in effective.scripts[spell]})
     selected_families = {effective.talents[row[1]][0] for row in selected if row[1] in effective.talents}
+    if child_mode:
+        selected_families |= {row[1] for row in relation_proof}
     reviewed = [row[:3] for row in bindings if row[0] in selected_families]
     scripted_families = {entry[0] for entry in reviewed}
     guids = sorted({row[0] for row in selected})
@@ -492,7 +514,9 @@ FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.g
     write_json(output/'metadata.json',world)
     from cleanup_console import seal
     seal(output)
-    if trained_mode:
+    if child_mode:
+        print(f'Reviewed {args.expect_review_rows} disabled talent-child candidates; selected {len(selected)} exact rows; deferred {len(excluded)} candidate rows; no source changes')
+    elif trained_mode:
         print(f'Reviewed {args.expect_review_rows} disabled trained rows; selected {len(selected)} exact rows; deferred {len(excluded)} trained rows; no source changes')
     elif include_relations:
         print(f'Reviewed {args.expect_review_rows} disabled direct rows; selected {relation_summary["selected_root_rows"]} direct and '

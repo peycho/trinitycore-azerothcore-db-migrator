@@ -671,8 +671,12 @@ def parser():
     evidence=history.add_mutually_exclusive_group(required=True)
     evidence.add_argument('--inspection',help='Retained spell-history inspection ID in this session')
     evidence.add_argument('--audit',help='Full audit ID in this session; create a fresh read-only spell-history inspection before planning')
-    evidence.add_argument('--migration-inspection',help='Use v6: sealed migration blocker context ID; review disabled trained talent ranks even with absent direct roots')
-    history.add_argument('--expect-review-rows',type=int,required=True,help='Exact inspection total for the chosen disabled-history category; additional exclusions reported')
+    evidence.add_argument('--migration-inspection',help='Sealed migration blocker context ID or latest in this session; v6 trained ranks or explicit v7 talent children')
+    history_review=history.add_mutually_exclusive_group(required=True)
+    history_review.add_argument('--expect-review-rows',type=int,help='Exact candidate total for the chosen category; v7 uses the preview reviewed_candidate_rows, not selected rows or characters')
+    history_review.add_argument('--preview',action='store_true',help='V7 only: review captured talent-child state without creating a SQL package or changing the active batch')
+    history.add_argument('--orphaned-talent-children',action='store_true',
+        help='Use v7 with --migration-inspection: wholly disabled unselected talent-child families, including absent direct/trained roots; enabled rows remain untouched')
     history.add_argument('--include-reviewed-scripts',action='store_true',
         help='Use v2 policy for families whose every binding has the protected NO_SPELLBOOK_MUTATION contract; other exclusions remain')
     history.add_argument('--include-inert-relations',action='store_true',

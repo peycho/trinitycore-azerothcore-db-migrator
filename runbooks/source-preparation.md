@@ -61,6 +61,13 @@ routes, then rechecks the entire captured semantic scope live. See the
 Absent roots are not granted; selected families, enabled related rows and pending
 resets remain deferred. Complete affected originals are archived before apply.
 
+For disabled children learned by talents whose own rank root is not a direct
+talent, the explicit v7 `--orphaned-talent-children` mode adds a read-only preview
+and uses the same whole-family archive/apply/exact-restore guards. It preserves
+both-spec selections and every enabled row; ambiguous routes and pending resets
+remain deferred. See the [repeatable preview procedure](cleanup-console.md#review-orphaned-disabled-talent-children).
+This is a separately chosen preparation policy, not an automatic migration cleanup.
+
 ## Run a standalone read-only audit
 
 For private reproduction outside your environment, use the separate

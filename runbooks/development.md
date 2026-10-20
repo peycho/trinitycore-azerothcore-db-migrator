@@ -291,6 +291,22 @@ Python policy units run in static CI.
 
 ## Disposable MySQL fixture rehearsals
 
+Talent-child v7 units include the v6 failing control, absent roots, overlapping
+child-rank closures, both-spec selections, enabled siblings, pending/foreign and
+invalid ownership, ambiguous/incoming/default/skill/script routes, cycles,
+determinism, zero preview and exact-count guards. The compiled rank consumer
+executes protected TC predecessor calls, disabled-effect guard and HasSpell with
+mocked stores: disabled child prefixes remain unknown before/after removal, and
+enabled controls stay known. This is not full worldserver gameplay.
+
+The real console MySQL cycle verifies that preview changes no active batch or
+database, `latest` resolves to a recorded inspection, candidate and selected
+counts differ correctly, and deferred characters participate in live planning
+drift checks. It exercises full custom/binary originals, direct SQL world guards,
+late/disconnect rollback, status/resume, reruns, enabled/selected preservation,
+skill drift rejection and exact restoration. All earlier history policies and
+the full bidirectional migration suite remain required on the final tree.
+
 Trained-history v6 units cover absent direct roots, lower/higher disabled ranks,
 selected ownership in either spec, enabled related rows, pending/online/foreign
 characters, invalid ownership, independent routes, skills, scripts, corrections,

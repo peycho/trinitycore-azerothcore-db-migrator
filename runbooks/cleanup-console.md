@@ -458,7 +458,8 @@ Use the exact number of disabled non-direct stored spells whose verified TC rank
 chain starts at a direct talent, across all characters captured in that inspection.
 This is not the number of first failures or the direct-talent audit count. The
 command reports count mismatches without source writes. `--migration-inspection`
-selects v6 and cannot be combined with the other policy flags or evidence options.
+selects v6 unless the explicit v7 option below is present, and cannot be combined
+with direct-history policy flags or other evidence options.
 No new full audit or migration preflight is required when captured inputs match.
 
 V6 reviews the whole verified talent/rank/dependency group, even when every
@@ -544,6 +545,78 @@ and inspection before planning any further history batch. Source changes require
 a fresh migration into new target/control schemas. This policy changes no
 migrator rejection rule or release approval; native load/save, spec switching,
 relearning and trainer acceptance still need isolated gameplay checks.
+
+## Review orphaned disabled talent children
+
+Some stored spells are children learned by talent effects or requirements, while
+their own rank chain does not start at a direct talent. V6 does not select those
+rows. Use the explicit `tc-disabled-unselected-talent-child-history-v7` policy
+only after reviewing their effective TC relationships. It does not change any
+migrator rejection rule or infer talent ownership.
+
+Capture current source state from a saved blocker report; another preflight or
+full audit is unnecessary for this step. Set `BLOCKER_REPORT` to that report:
+
+```bash
+python3 console inspect-migration-blockers --report "$BLOCKER_REPORT"
+python3 console plan disabled-talent-history \
+  --migration-inspection latest --orphaned-talent-children --preview
+```
+
+`latest` selects the newest migration-blocker inspection in the current session
+and prints its exact ID. Explicit IDs remain supported. An incomplete newest
+capture fails; the tool does not silently fall back to older evidence.
+
+Preview writes `talent-child-review.json` in its operation directory, with
+`reviewed_candidate_rows`, `selected_rows`, `selected_characters`, exact selected
+keys and deferred reasons. It creates no SQL package, archive or active-batch
+pointer and performs no source writes. It reviews the captured state against
+current effective metadata; it is not full live-row verification or cleanup
+approval. If the source changed, capture another inspection before planning.
+
+After reviewing the preview, replace `COUNT` with **reviewed_candidate_rows**:
+
+```bash
+python3 console plan disabled-talent-history \
+  --migration-inspection latest --orphaned-talent-children \
+  --expect-review-rows COUNT
+```
+
+Use the preview's printed inspection ID instead of `latest` if another capture
+was made in between. The count is the disabled child-candidate population,
+including exclusions. It is not selected rows, affected characters or the
+first-failure count from preflight. Counts depend on the captured scope; never
+reuse a number from a different report or database import.
+
+V7 derives candidate families only from the effective TC rank/learn/requirement
+catalog, including absent direct roots and verified child-rank siblings. It then
+applies the same whole-family guards as v6. Every present family row must be
+disabled; no family talent may be selected in either spec. Ambiguous/shared
+derivations, independent/default/skill routes, profession/riding/skill effects,
+unsupported scripts/corrections, malformed chains/cycles, online characters,
+pending resets, invalid ownership and foreign classes defer or block.
+Traversal is iterative, bounded and deterministic; no evidence is truncated.
+V4's exact reviewed teaching contracts retain their original conditions.
+
+Only present, exact `(guid,spell,active,disabled)` rows in qualifying families
+are selected. The full closure can include disabled direct or trained siblings;
+absent nodes are `ABSENT_NO_GRANT`. No enabled spell, selected talent, point,
+spec, skill value/cap, profession slot or login flag is changed. Deleting this
+unavailable history discards its stored future reactivation/training state, as
+described above; it does not prove those records were corrupt.
+
+Planning rechecks the entire sealed semantic scope, including deferred
+characters, against live data, then fingerprints full affected originals and
+effective metadata. Review the candidate README, manifest, selected/excluded
+rows and relationship reports before using its exact batch ID with
+`prepare`, `status`, `apply` and `restore`. The existing archive transaction,
+atomic checkpoint, drift rejection, reruns and guarded exact inverse apply.
+Native gameplay is separate; release approval remains UNREVIEWED.
+
+Retain earlier toolkits/archives for their original guarded restore. After a
+fresh source import, initialize a new session, capture new evidence and regenerate
+needed plans; do not replay an old APPLIED package. After an actual preparation
+apply, use new evidence and fresh migration target/control schemas and run ID.
 
 ## Recover items without replacing them
 

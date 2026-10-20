@@ -511,6 +511,92 @@ backup_reference=disposable-synthetic-fixture
             sql(f'DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 50 AND 56; DELETE FROM `{source}`.character_talent WHERE guid BETWEEN 50 AND 56; DELETE FROM `{source}`.character_skills WHERE guid=50; DELETE FROM `{source}`.characters WHERE guid BETWEEN 50 AND 56;')
             sql(f'DELETE FROM `{world}`.spell_ranks WHERE first_spell_id=17877')
             assert checksum()==baseline
+            # V7 covers ordinary-ID children of absent talent roots. Selected
+            # families, enabled rows and all earlier policy packages stay intact.
+            sql(f'''INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,online,activeTalentGroup,talentGroupsCount,at_login)
+              VALUES(60,1,'ChildOld','',5,6,80,0,0,2,0),(61,1,'ChildOwnA','',5,6,80,0,0,2,0),
+              (62,1,'ChildOwnB','',5,6,80,0,0,2,0),(63,1,'ChildOn','',5,6,80,0,0,2,0),
+              (64,1,'ChildReset','',5,6,80,0,0,2,4),(65,1,'ChildWrong','',1,1,80,0,0,2,0),
+              (66,1,'ChildBad','',5,6,80,0,0,2,0),(67,1,'ChildEnabled','',5,6,80,0,0,2,0);
+              INSERT INTO `{source}`.character_spell VALUES
+              (60,50111,1,1,0x1111),(60,50110,0,1,0x2222),(60,6603,1,0,0x3333),
+              (61,50111,1,1,NULL),(62,50111,1,1,NULL),(63,50111,1,1,NULL),(63,61158,1,0,0x4444),
+              (64,50111,1,1,NULL),(65,50111,1,1,NULL),(66,50111,1,1,NULL),(67,50111,1,0,0x5555);
+              INSERT INTO `{source}`.character_talent VALUES(61,61158,0),(62,61158,1),(66,130,0);
+              INSERT INTO `{source}`.character_skills VALUES(60,171,320,450);''')
+            child_chain=[50096,50108,50109,50110,50111]
+            sql(f'INSERT INTO `{world}`.spell_ranks VALUES '+','.join(f'(50096,{s},{i+1})' for i,s in enumerate(child_chain)))
+            child_baseline=checksum();other_before=sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')
+            child_report=work/'child-blockers.tsv'
+            child_report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(
+                f'{g}\t*\tUNAUTHORIZED_TALENT_SPELL\t50111: stored_flags=(1, {0 if g==67 else 1})\n' for g in range(60,68)))
+            captured=run('inspect-migration-blockers','--report',str(child_report))
+            evidence=Path(captured.stdout.split('Reports: ',1)[1].strip())
+            child_args=('plan','disabled-talent-history','--migration-inspection','latest','--orphaned-talent-children')
+            active_before=(session()/'active-batch.json').read_bytes()
+            batches_before=set((session()/'batches').iterdir())
+            preview=run(*child_args,'--preview')
+            review_path=Path(preview.stdout.split('Details: ',1)[1].splitlines()[0]);review=json.loads(review_path.read_text())
+            assert review['summary']['reviewed_candidate_rows']==8 and review['summary']['selected_rows']==2,review
+            assert review['summary']['deferred_candidate_rows']==6,review
+            assert (session()/'active-batch.json').read_bytes()==active_before
+            assert set((session()/'batches').iterdir())==batches_before and checksum()==child_baseline
+            wrong=run(*child_args,'--expect-review-rows','2',code=2)
+            assert 'HISTORY_CHILD_SELECTION_MISMATCH' in wrong.stderr,wrong.stderr
+            assert (session()/'active-batch.json').read_bytes()==active_before
+            # Even deferred characters are part of the sealed planning scope.
+            sql(f'UPDATE `{source}`.character_talent SET talentGroup=1 WHERE guid=61')
+            drift=checksum();bad=run(*child_args,'--expect-review-rows','8',code=2)
+            assert 'HISTORY_INPUT_DRIFT' in bad.stderr,bad.stderr
+            assert checksum()==drift
+            sql(f'UPDATE `{source}`.character_talent SET talentGroup=0 WHERE guid=61')
+            run(*child_args,'--expect-review-rows','8')
+            child_data=json.loads((package()/'manifest.json').read_text());child_archive=child_data['archive_schema'];owned.append(child_archive)
+            assert child_data['policy']=='tc-disabled-unselected-talent-child-history-v7',child_data
+            assert child_data['migration_inspection_id']==evidence.name,child_data
+            assert child_data['selected_rows']==2 and child_data['excluded_rows']==6 and child_data['affected_characters']==1,child_data
+            assert 'ABSENT_NO_GRANT' in (package()/'relationship-review.tsv').read_text()
+            assert checksum()==child_baseline
+            run('prepare');run('prepare');assert checksum()==child_baseline
+            sql(f'UPDATE `{source}`.character_spell SET custom_blob=0x9999 WHERE guid=60 AND spell=6603')
+            drift=checksum();run('apply',code=2);assert checksum()==drift
+            sql(f'UPDATE `{source}`.character_spell SET custom_blob=0x3333 WHERE guid=60 AND spell=6603')
+            sql(f"INSERT INTO `{world}`.spell_learn_spell VALUES(900010,50111,1)")
+            drift=checksum();bad=run('apply',code=2);assert 'HISTORY_METADATA_DRIFT' in bad.stderr,bad.stderr
+            direct=subprocess.run(['mysql',*base,'--user='+writer],input=
+                f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'; CALL `{child_archive}`.apply_batch();",text=True,capture_output=True)
+            assert direct.returncode!=0 and 'World metadata content changed' in direct.stderr,direct.stderr
+            assert checksum()==drift
+            sql(f'DELETE FROM `{world}`.spell_learn_spell WHERE entry=900010 AND SpellID=50111')
+            sql(f"CREATE TRIGGER `{child_archive}`.fail_commit BEFORE UPDATE ON `{child_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='child-late-error'; END IF; END")
+            assert 'child-late-error' in run('apply',code=2).stderr
+            assert checksum()==child_baseline
+            sql(f'DROP TRIGGER `{child_archive}`.fail_commit')
+            sql(f"CREATE TRIGGER `{child_archive}`.pause_commit BEFORE UPDATE ON `{child_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN DO SLEEP(30); END IF; END")
+            worker=subprocess.Popen(command+['apply'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            deadline=time.monotonic()+25;connection=''
+            while time.monotonic()<deadline:
+                if worker.poll() is not None:raise AssertionError(worker.communicate())
+                connection=sql("SELECT ID FROM information_schema.PROCESSLIST WHERE DB='"+child_archive+"' AND STATE='User sleep' LIMIT 1")
+                if connection:break
+                time.sleep(.1)
+            assert connection,'V7 apply did not reach the transactional checkpoint'
+            sql('KILL CONNECTION '+connection);worker.communicate(timeout=10);assert worker.returncode!=0;worker=None
+            assert checksum()==child_baseline and sql(f'SELECT state FROM `{child_archive}`.batch')=='PREPARED'
+            sql(f'DROP TRIGGER `{child_archive}`.pause_commit')
+            run('status');run('apply');run('apply');run('status')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=60')=='1'
+            assert sql(f'SELECT custom_blob=0x5555 FROM `{source}`.character_spell WHERE guid=67 AND spell=50111')=='1'
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==other_before
+            sql(f'UPDATE `{source}`.character_skills SET value=319 WHERE guid=60 AND skill=171')
+            drift=checksum();run('restore',code=2);assert checksum()==drift
+            sql(f'UPDATE `{source}`.character_skills SET value=320 WHERE guid=60 AND skill=171')
+            run('restore');run('restore');assert checksum()==child_baseline
+            run('apply',code=2)
+            passed('v7 talent-child preview leaves batches/source untouched; absent roots, exact disabled closure, both-spec ownership, enabled/pending/foreign/invalid exclusions; full-scope drift, direct SQL world guards, late/disconnect rollback, rerun and exact binary/skill restoration')
+            sql(f'DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 60 AND 67; DELETE FROM `{source}`.character_talent WHERE guid BETWEEN 60 AND 67; DELETE FROM `{source}`.character_skills WHERE guid=60; DELETE FROM `{source}`.characters WHERE guid BETWEEN 60 AND 67;')
+            sql(f'DELETE FROM `{world}`.spell_ranks WHERE first_spell_id=50096')
+            assert checksum()==baseline
             scale=int(os.environ.get('HISTORY_SCALE_ROWS','0'))
             if scale:
                 assert 1<=scale<=200000

@@ -11,6 +11,12 @@ tc_source = (tc / 'src/server/game/Entities/Player/Player.cpp').read_text()
 start = tc_source.index('// talent: unlearn all other talent ranks (high and low)')
 end = tc_source.index('std::pair<PlayerSpellMap::iterator, bool> inserted', start)
 tc_branch = tc_source[start:end]
+start=tc_source.index('bool Player::HasSpell(uint32 spell) const')
+end=tc_source.index('\nbool Player::HasTalent(',start)
+tc_known=tc_source[start:end]
+start=tc_source.index('// return false if spell disabled',tc_source.index('bool Player::AddSpell('))
+end=tc_source.index('\n    }',start)
+tc_disabled=tc_source[start:end]
 ac_source = (ac / 'src/server/game/Entities/Player/Player.cpp').read_text()
 start = ac_source.index('void Player::_addTalentAurasAndSpells(')
 pos = ac_source.index('{', start)
@@ -24,10 +30,14 @@ mock = r'''
 #include <cassert>
 #include <cstdint>
 #include <iostream>
+#include <map>
 #include <vector>
 using uint8=uint8_t;using uint32=uint32_t;
 constexpr uint8 MAX_SPELL_EFFECTS=3,MAX_TALENT_RANK=5,SPEC_MASK_ALL=3;
 constexpr int SPELL_EFFECT_LEARN_SPELL=36,SPELL_ATTR0_DO_NOT_DISPLAY=128;
+constexpr int PLAYERSPELL_REMOVED=1;
+struct PlayerSpell {int state=0;bool disabled=false;};
+using PlayerSpellMap=std::map<uint32,PlayerSpell>;
 struct TalentSpellPos { uint32 talent_id=1; };
 TalentSpellPos position;
 TalentSpellPos const* GetTalentSpellPos(uint32 id) { return id==37117?&position:nullptr; }
@@ -43,17 +53,24 @@ struct SpellInfo {
 };
 struct SpellMgr {
     SpellInfo info;
-    uint32 GetPrevSpellInChain(uint32 id) const { return id==16961?16958:0; }
+    uint32 GetPrevSpellInChain(uint32 id) const {
+        static std::map<uint32,uint32> previous{{16961,16958},{50111,50110},{50110,50109},{50109,50108},{50108,50096}};
+        auto it=previous.find(id);return it==previous.end()?0:it->second;
+    }
     SpellInfo const* GetSpellInfo(uint32 id) const { assert(id==37117);return &info; }
     bool IsAdditionalTalentSpell(uint32) const { return false; }
 };
 SpellMgr manager;SpellMgr* sSpellMgr=&manager;
 struct Player {
     std::vector<uint32> predecessors,temporary,removed;
+    std::vector<bool> predecessorDisabled;
+    PlayerSpellMap m_spells;
+    bool HasSpell(uint32)const;
     bool IsInWorld() const { return false; }
     void RemoveSpell(uint32 id,bool,bool) { removed.push_back(id); }
     void AddSpell(uint32 id,bool,bool learning,bool dependent,bool disabled,bool loading,uint32) {
-        assert(learning && dependent && !disabled && !loading);predecessors.push_back(id);
+        assert(learning && dependent && !loading);predecessors.push_back(id);predecessorDisabled.push_back(disabled);
+        m_spells[id]={0,disabled};
     }
     void LearnSpell(uint32,bool,uint32) { assert(false); }
     void _addSpell(uint32 id,uint8 mask,bool temp) { assert(mask==3 && temp);temporary.push_back(id); }
@@ -62,7 +79,7 @@ struct Player {
     void _addTalentAurasAndSpells(uint32);
     void TcRankBranch(uint32 spellId,bool active=true,bool disabled=false,uint32 fromSkill=0) {
 '''
-mock += tc_branch + '\n}\n};\n' + ac_function
+mock += tc_branch + '\n}\n bool RunPostLoadEffects(bool disabled){PlayerSpell newspell{0,disabled};'+tc_disabled+'\nreturn true;}\n};\n' + ac_function+'\n'+tc_known
 mock += r'''
 int main() {
     Player tc,ac;
@@ -72,7 +89,18 @@ int main() {
     Player direct;direct.TcRankBranch(37117);
     assert(direct.predecessors.empty());
     assert(direct.removed==std::vector<uint32>{37116});
-    std::cout << "Protected rank/talent consumer difference: TC requests predecessor 16958, AC adds only temporary 16961; direct-talent control passed; sinks mocked\n";
+    Player history;history.m_spells[6603]={0,false};
+    for(uint32 id:{50111,50110,50109,50108}){
+        history.m_spells[id]={0,true};history.TcRankBranch(id,true,true);
+        assert(!history.HasSpell(id)&&!history.RunPostLoadEffects(true));
+    }
+    assert((history.predecessors==std::vector<uint32>{50110,50109,50108,50096}));
+    for(bool disabled:history.predecessorDisabled)assert(disabled);
+    for(uint32 id:{50111,50110,50109,50108,50096}){
+        assert(!history.HasSpell(id));history.m_spells.erase(id);assert(!history.HasSpell(id));
+    }
+    assert(history.HasSpell(6603)&&history.RunPostLoadEffects(false));
+    std::cout << "Protected rank/talent consumers passed: TC predecessor calls retain disabled flags; HasSpell excludes disabled history before/after removal, post-load disabled guard prevents effects, enabled control retained; AC exact temporary child and direct-talent controls passed; sinks mocked, gameplay NOT TESTED\n";
 }
 '''
 with tempfile.TemporaryDirectory() as directory:
