@@ -4,6 +4,11 @@ Profiles approve protected auth/characters SQL and semantic readers/writers.
 Actual Git revisions are recorded for each run; unrelated commits are accepted
 when protected manifests match.
 
+The [selected-talent ownership repair](talent-ownership-repair.md) is a separate
+preparation policy. Its source-world/DBC and selector fingerprints do not approve
+target compatibility or gameplay. It changes no core C++, existing pins,
+protected manifests, migration reconstruction policy or release approval.
+
 Format 2 expands explicit coverage to item, corpse, mail, stored-loot, arena,
 guild-bank, and RBAC definitions. The generator writes format 2 only. The v1
 profile remains unchanged as historical evidence and is rejected by this toolkit;

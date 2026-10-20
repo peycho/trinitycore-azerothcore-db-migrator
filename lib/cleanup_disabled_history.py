@@ -16,10 +16,11 @@ import cleanup_selected_rank_history as selected_history
 import cleanup_trained_history as trained_history
 import cleanup_ordinary_history as ordinary_history
 import cleanup_death_coil as death_coil
+import cleanup_ownership as ownership
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
-POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, death_coil.POLICY)
+POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, death_coil.POLICY, ownership.POLICY)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -125,6 +126,8 @@ def read_world(settings):
 
 
 def check_metadata(settings, manifest):
+    if manifest.get('policy') == ownership.POLICY and sha(ROOT/'lib/cleanup_ownership.py') != manifest.get('ownership_reader_sha256'):
+        fail('OWNERSHIP_POLICY_DRIFT','Ownership selection code differs from this reviewed batch; retain its original toolkit for restore')
     if manifest.get('policy') == ordinary_history.INACTIVE_DEFAULT_POLICY:
         if ordinary_history.configuration_contract(settings) != manifest.get('configuration_contract'):
             fail('ORDINARY_HISTORY_CONFIG_DRIFT','Configuration contract differs from the reviewed ordinary-history batch')
@@ -279,6 +282,8 @@ def check_sets(meta, source, archive, counts, changed_table='character_spell'):
 
 
 def plan_history(settings, work, args, output):
+    ownership_mode = getattr(args,'talent_ownership',False)
+    ownership_reader = sha(ROOT/'lib/cleanup_ownership.py') if ownership_mode else None
     trained_mode = bool(getattr(args,'migration_inspection',None))
     child_mode = getattr(args,'orphaned_talent_children',False)
     ordinary_mode = getattr(args,'ordinary_spell_history',False)
@@ -293,7 +298,7 @@ def plan_history(settings, work, args, output):
         fail('HISTORY_POLICY_CONFLICT','--orphaned-talent-children requires --migration-inspection')
     if ordinary_mode and not trained_mode:
         fail('HISTORY_POLICY_CONFLICT','Ordinary spell history requires --migration-inspection')
-    if preview and not (child_mode or ordinary_mode):
+    if preview and not (child_mode or ordinary_mode or ownership_mode):
         fail('HISTORY_POLICY_CONFLICT','--preview requires the explicit talent-child or ordinary-history policy')
     selected_mode = getattr(args,'selected_rank_history',False)
     if trained_mode and any(getattr(args,field,False) for field in ('include_reviewed_scripts','include_inert_relations','include_reviewed_routes','selected_rank_history')):
@@ -324,13 +329,20 @@ def plan_history(settings, work, args, output):
     if ordinary_mode:
         policy = (death_coil.POLICY if native_death_coil else
                   ordinary_history.INACTIVE_DEFAULT_POLICY if inactive_defaults else ordinary_history.POLICY)
+    if ownership_mode:
+        policy = ownership.POLICY
     relation_rows,relation_proof,relation_summary,relation_edges = [],[],{},[]
     rank_proof = []
     native_base_proofs = []
+    ownership_native_proofs = []
     if trained_mode:
         check_retained_scripts(state,effective)
         relation_rows=context['character_spell']
-        if ordinary_mode:
+        if ownership_mode:
+            selected,excluded,relation_proof,relation_summary,relation_edges=ownership.select(
+                context,effective,args.expect_review_rows,preview=preview,source_dir=settings.paths['tc_source'])
+            ownership_native_proofs = relation_summary.pop('native_owner_proofs')
+        elif ordinary_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ordinary_history.select(
                 context,effective,args.expect_review_rows,preview=preview,inactive_custom_defaults=inactive_defaults,
                 native_death_coil=native_death_coil)
@@ -338,9 +350,9 @@ def plan_history(settings, work, args, output):
         else:
             selected,excluded,relation_proof,relation_summary,relation_edges=trained_history.select(
                 context,effective,args.expect_review_rows,orphan_children=child_mode,preview=preview)
-        if child_mode or ordinary_mode:
-            review_name = 'ordinary-spell-review.json' if ordinary_mode else 'talent-child-review.json'
-            review_label = 'Ordinary-spell' if ordinary_mode else 'Talent-child'
+        if child_mode or ordinary_mode or ownership_mode:
+            review_name = 'talent-ownership-review.json' if ownership_mode else 'ordinary-spell-review.json' if ordinary_mode else 'talent-child-review.json'
+            review_label = 'Talent-ownership' if ownership_mode else 'Ordinary-spell' if ordinary_mode else 'Talent-child'
             review={'policy':policy,'migration_inspection':path.name,'scope_characters':len(context['characters']),
                     'summary':relation_summary,'selected':selected,'excluded':excluded,
                     'deferred':dict(Counter(row[2] for row in excluded)),
@@ -348,6 +360,8 @@ def plan_history(settings, work, args, output):
                                    'Planning rechecks the complete captured semantic scope and full affected originals']}
             if config_contract is not None:
                 review['configuration_contract'] = config_contract
+            if ownership_mode:
+                review['native_owner_proofs'] = ownership_native_proofs
             if native_death_coil:
                 review['native_base_proofs'] = native_base_proofs
             write_json(work.operation/review_name,review)
@@ -355,6 +369,8 @@ def plan_history(settings, work, args, output):
             if preview:
                 print('PREVIEW: captured evidence only; no SQL package, active batch or source changes. Details: '+str(work.operation/review_name),flush=True)
                 return False
+            if not selected:
+                fail('OWNERSHIP_SELECTION_MISMATCH','No eligible ownership repair rows')
     elif selected_mode:
         check_retained_scripts(state,effective)
         selected,excluded,rank_proof = selected_history.select(rows,state,effective,args.expect_review_rows)
@@ -374,7 +390,7 @@ def plan_history(settings, work, args, output):
         bindings = sorted(set(bindings) | {(family,spell,name,'') for _,family,spell,*_ in relation_proof
                                          for name in effective.scripts[spell]})
     selected_families = {effective.talents[row[1]][0] for row in selected if row[1] in effective.talents}
-    if child_mode or ordinary_mode:
+    if child_mode or ordinary_mode or ownership_mode:
         selected_families |= {row[1] for row in relation_proof}
     reviewed = [row[:3] for row in bindings if row[0] in selected_families]
     scripted_families = {entry[0] for entry in reviewed}
@@ -453,15 +469,18 @@ def plan_history(settings, work, args, output):
     counts = {table:sum(row[2] for row in cells if row[0]==table) for table in TABLES}
     if counts['characters'] != len(guids) or sum(counts.values())>5_000_000:
         fail('HISTORY_SNAPSHOT_BOUND','Missing affected characters or more than 5000000 archived rows')
-    template = ROOT/'tools/disabled-talent-history.sql.in'
+    template = ROOT/('tools/talent-ownership-repair.sql.in' if ownership_mode else 'tools/disabled-talent-history.sql.in')
     batch_inputs = {'policy':policy,'inspection':sha(path/'SHA256SUMS'),'snapshot':cells,'after':after,
                     'selection':selected,'world':world,'meta':meta,'template':sha(template),'id':output.name}
+    if ownership_mode:
+        batch_inputs.update(ownership_reader_sha256=ownership_reader,ownership_proofs=relation_proof,
+                            native_owner_proofs=ownership_native_proofs)
     if config_contract is not None:
         batch_inputs['configuration_contract'] = config_contract
     if native_death_coil:
         batch_inputs['native_base_proofs'] = native_base_proofs
     batch = sha_json(batch_inputs)
-    archive = 'tc_disabled_history_'+uuid.uuid4().hex[:20]
+    archive = ('tc_ownership_' if ownership_mode else 'tc_disabled_history_')+uuid.uuid4().hex[:20]
     blocks = check_sets(meta,source,archive,counts)
     values = {'SOURCE':source,'ARCHIVE':archive,'UUID':work.current()['identity']['uuid'],
         'BATCH':batch,'AUDIT':audit['audited_results_sha256'],'COUNT':len(selected),'GUID_COUNT':len(guids),
@@ -485,6 +504,21 @@ def plan_history(settings, work, args, output):
      FROM `{settings.schemas['world']}`.`{table}`)<=>'{checksum}') THEN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='World metadata content changed: {table}'; END IF;''')
     values['WORLD_CHECKS'] = '\n'.join(world_checks)
+    if ownership_mode:
+        schema = settings.schemas['world']
+        names = ','.join("'"+r[0]+"'" for r in world['layout']['tables'])
+        layout_checks = f"""IF (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME IN ({names}))<>{len(world['layout']['columns'])}
+ OR NOT ((SELECT SHA2(COALESCE(GROUP_CONCAT(CONCAT_WS(':',TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,ORDINAL_POSITION,EXTRA)
+ ORDER BY BINARY TABLE_NAME,ORDINAL_POSITION SEPARATOR '|'),''),256) FROM information_schema.COLUMNS
+ WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME IN ({names}))<=>'{planner.key_hash(world['layout']['columns'])}')
+ OR (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME IN ({names}))<>{len(world['layout']['tables'])}
+ OR NOT ((SELECT SHA2(COALESCE(GROUP_CONCAT(CONCAT_WS(':',TABLE_NAME,ENGINE,TABLE_TYPE) ORDER BY BINARY TABLE_NAME SEPARATOR '|'),''),256)
+ FROM information_schema.TABLES WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME IN ({names}))<=>'{planner.key_hash(world['layout']['tables'])}') THEN
+ SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Ownership world layout or engine drift'; END IF;
+"""
+        values['WORLD_CHECKS'] = """IF NOT (BINARY @talent_ownership_ack <=> BINARY 'SELECTED_TALENTS_AUTHORITATIVE') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit selected-talent ownership repair acknowledgement required'; END IF;
+""" + layout_checks + values['WORLD_CHECKS']
     if config_contract is not None:
         values['WORLD_CHECKS'] = """IF NOT (BINARY @ordinary_history_all_spells <=> BINARY '0') THEN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit PlayerStart.AllSpells=0 assertion required for ordinary history v2'; END IF;
@@ -496,6 +530,8 @@ def plan_history(settings, work, args, output):
     final_effective, final_world = read_world(settings)
     if metadata(settings,TABLES)!=meta or final_world!=world or final_effective.hashes!=effective.hashes:
         fail('HISTORY_METADATA_DRIFT','Source schema/world metadata changed while planning')
+    if ownership_mode and sha(ROOT/'lib/cleanup_ownership.py') != ownership_reader:
+        fail('OWNERSHIP_POLICY_DRIFT','Ownership selector changed while planning')
     verify(path)
     if sha(path/'SHA256SUMS') != inspection_sha:
         fail('HISTORY_INSPECTION_INVALID','Retained inspection changed during planning')
@@ -531,6 +567,11 @@ def plan_history(settings, work, args, output):
         manifest['script_contract'] = 'NO_SPELLBOOK_MUTATION on every related member; isolated wholly disabled group; no enabled availability, selected ownership, conflicting incoming routes or skill effects'
         if include_routes:
             manifest['script_contract'] = 'NO_SPELLBOOK_MUTATION; exact reviewed teaching wrappers; wholly disabled removals; shared 674 and skill 118 preserved for inert shaman 30798 root-only exception'
+    if ownership_mode:
+        manifest['script_contract'] = 'Isolated verified TC talent families; selected runtime routes require correct existing anchors and reviewed native contracts; no skill/profession/default/shared routes'
+        manifest['ownership_ack'] = ownership.ACK
+        manifest['ownership_reader_sha256'] = ownership_reader
+        manifest['native_owner_proofs'] = ownership_native_proofs
     if trained_mode:
         manifest.update(migration_inspection_id=path.name,source_context_sha256=capture_report['source_state_sha256'],
                         reviewed_character_scope=len(context['characters']))
@@ -554,6 +595,8 @@ FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.g
         write_json(output/'native-base-review.json',{'policy':policy,'configuration_contract':config_contract,
                    'proofs':native_base_proofs,'sql_spell_rows_inserted':0,'sql_skill_rows_changed':0,
                    'native_availability_change':'Only rank 1 from existing Unholy skill; no higher-rank inference'})
+    if ownership_mode:
+        write_json(output/'ownership-native-proof.json', ownership_native_proofs)
     if include_scripts:
         script_family_column = 'ordinary_first_spell' if ordinary_mode else 'talent_entry'
         (output/'scripted-family-review.tsv').write_text(script_family_column+'\tspell\tscript\tstatus\treason\n'+''.join(
@@ -572,7 +615,9 @@ FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.g
     write_json(output/'metadata.json',world)
     from cleanup_console import seal
     seal(output)
-    if ordinary_mode:
+    if ownership_mode:
+        print(f'Reviewed {relation_summary["reviewed_candidate_rows"]} conflicting spell candidates; selected {len(selected)} exact rows; deferred {len(excluded)}; no source changes')
+    elif ordinary_mode:
         print(f'Reviewed {args.expect_review_rows} disabled ordinary candidates; selected {len(selected)} exact rows; deferred {len(excluded)} candidate rows; no source changes')
     elif child_mode:
         print(f'Reviewed {args.expect_review_rows} disabled talent-child candidates; selected {len(selected)} exact rows; deferred {len(excluded)} candidate rows; no source changes')

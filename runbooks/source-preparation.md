@@ -19,6 +19,11 @@ talent/item/skill policies and scoped pending native resets with one private con
 originals, execution/error reports and guarded apply/restore commands. The raw
 audit command below remains available for standalone inspection.
 
+For spell rows conflicting with existing talent selections, the separate
+[ownership repair policy](talent-ownership-repair.md) explicitly allows reviewed
+enabled-availability changes while preserving both selected builds. Pending
+resets and unsupported native state remain deferred; preview first.
+
 For ordinary disabled spells, use the separate opt-in
 [isolated ordinary-history policy](cleanup-console.md#review-isolated-disabled-ordinary-spells).
 It previews exact candidates from a fresh migration inspection and excludes

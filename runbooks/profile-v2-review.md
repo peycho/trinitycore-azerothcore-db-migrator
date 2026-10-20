@@ -1,5 +1,13 @@
 # Profile v2 review and acceptance record
 
+The separate selected-talent ownership preparation policy explicitly permits
+archiving conflicting enabled spell rows against existing selections in both
+specs. It inserts no spells and changes no talents/skills/flags. Correct stored
+anchors and reviewed native child contracts are required; unsupported state
+defers. See [ownership repair](talent-ownership-repair.md). Existing migration
+policy, v1/v2 profile pins/manifests and UNREVIEWED approval remain unchanged;
+mocked consumers and disposable checks are distinct from native gameplay.
+
 The 2026-10-20 native Death Coil preparation v3 policy explicitly allows only
 the base rank 47541 supplied by existing Unholy skill 772 after archiving exact
 disabled trained higher rows. Base storage remains absent; SQL inserts no spell

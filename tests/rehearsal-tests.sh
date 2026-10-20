@@ -19,6 +19,7 @@ fi
 # shellcheck source=tests/test-support.sh
 source "$ROOT/tests/test-support.sh"
 python3 "$ROOT/tests/talent-runtime-tests.py" "$AZEROTHCORE_DIR"
+python3 "$ROOT/tests/ownership-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/talent-route-runtime-tests.py" "$TRINITYCORE_DIR"
 python3 "$ROOT/tests/selected-rank-runtime-tests.py" "$TRINITYCORE_DIR"
 python3 "$ROOT/tests/ordinary-requirement-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"

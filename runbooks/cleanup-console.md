@@ -854,6 +854,23 @@ target/control schemas. Pins, 100 TC / 103 AC protected files, metadata profile,
 control schema and migration spell-state-v12 stay unchanged. All five gameplay
 gates remain **NOT TESTED** until executed; approval stays **UNREVIEWED**.
 
+## Reconcile conflicting talent spell ownership
+
+The separate `talent-ownership` policy retires verified conflicting **enabled**
+and disabled spell rows while preserving both selected builds. Old history
+policies retain their original restrictions.
+
+```bash
+python3 console plan talent-ownership --migration-inspection latest --preview
+```
+
+Use **selected_rows** as `--expect-rows`. Missing active anchors, pending resets,
+inconsistent owned-child flags and unsafe skill/learning routes defer. SQL
+inserts no spells and changes no flags, talents or skills; supported native
+children restore from correct existing selected anchors. Follow the
+[ownership repair guide](talent-ownership-repair.md) for review, prepare/apply,
+SQL acknowledgement, full originals, exact restore and fresh-import repetition.
+
 ## Recover items without replacing them
 
 For example, after reviewing containers 100 and 200:

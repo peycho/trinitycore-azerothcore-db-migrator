@@ -6,6 +6,13 @@ production-sized rehearsal or native gameplay acceptance.
 
 ## CI coverage
 
+Selected-talent ownership tests cover enabled/disabled conflict retirement,
+both builds, native exact children, preserved TC prefixes and no higher grants.
+MySQL checks complete/custom originals, preview/count/deferred-scope drift,
+world metadata, SQL acknowledgements, late/disconnect rollback, reruns and exact
+restore with talents, skills and unrelated data unchanged. Old policies retain
+their restrictions; native consumers and gameplay acceptance remain separate.
+
 The native Death Coil preparation v3 suite keeps v1/v2 as failing controls and
 checks the exact five-rank chain, skill 772 reward metadata, both specs, absent
 base, active/disabled flags, overlapping anchors, no spell insertion/higher

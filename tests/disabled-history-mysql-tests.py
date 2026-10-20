@@ -842,6 +842,110 @@ backup_reference=disposable-synthetic-fixture
             config.write_text(old_config);assets.stores=before_dc_stores
             for name in ('tc-dbc','ac-dbc'):shutil.rmtree(work/name)
             assets.write_assets(work,profile);assert checksum()==baseline
+            # New policy: selected builds remain authoritative even when old
+            # conflicting rows are enabled. Previous history policies stay inert.
+            sql(f'''INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,online,activeTalentGroup,talentGroupsCount,at_login)
+              VALUES(90,1,'OwnZero','',1,1,80,0,0,2,32),(91,1,'OwnOne','',1,1,80,0,1,2,0),
+                    (92,1,'OwnPending','',1,1,80,0,0,1,4),(93,1,'OwnMissing','',1,1,80,0,0,1,0),
+                    (94,1,'OwnNative','',4,11,80,0,0,2,0),(95,1,'OwnEmpty','',1,1,80,0,0,1,0),
+                    (96,1,'OwnPrefix','',4,11,80,0,1,2,0),(97,1,'OwnNoChild','',4,11,80,0,0,2,0);
+              INSERT INTO `{source}`.character_talent VALUES(90,12282,0),(90,12664,1),(91,12282,1),
+                (93,12282,0),(94,37116,0),(96,37117,1),(97,37116,0);
+              INSERT INTO `{source}`.character_spell VALUES
+                (90,12282,1,0,0x00ff),(90,12664,1,1,NULL),(90,12663,1,0,0xff00),(90,6603,1,0,0x0011),
+                (91,12282,1,0,NULL),(91,12296,1,0,0xa0),(92,12296,1,0,NULL),(93,12664,1,0,NULL),
+                (94,37116,1,0,NULL),(94,16952,1,0,NULL),(94,16958,1,0,NULL),
+                (94,16954,1,0,0xabcd),(94,16961,1,1,0xff),
+                (95,12296,1,0,0x001122),(96,37117,1,0,NULL),(96,16958,0,0,NULL),(96,16961,1,0,NULL),
+                (97,37116,1,0,NULL),(97,16954,1,0,NULL);
+              INSERT INTO `{source}`.character_skills VALUES(90,171,375,450),(94,134,400,400),(96,134,400,400);''')
+            sql(f'INSERT INTO `{world}`.spell_ranks VALUES '+','.join(
+                f'({chain[0]},{s},{i+1})' for chain in assets.NATIVE_PASSIVE_CHAINS for i,s in enumerate(chain)))
+            ownership_before=checksum();others_before=sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')
+            ownership_report=work/'ownership-blockers.tsv'
+            ownership_report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(
+                f'{g}\t*\tUNAUTHORIZED_TALENT_SPELL\t12664\n' for g in range(90,98)))
+            captured=run('inspect-migration-blockers','--report',str(ownership_report))
+            evidence=Path(captured.stdout.split('Reports: ',1)[1].strip())
+            old_preview=run('plan','disabled-talent-history','--migration-inspection',evidence.name,'--orphaned-talent-children','--preview')
+            old_review=json.loads(Path(old_preview.stdout.split('Details: ',1)[1].splitlines()[0]).read_text())
+            assert old_review['summary']['selected_rows']==0
+            own_args=('plan','talent-ownership','--migration-inspection',evidence.name)
+            pointer=(session()/'active-batch.json').read_bytes();batches=set((session()/'batches').iterdir())
+            preview=run(*own_args,'--preview')
+            review=json.loads(Path(preview.stdout.split('Details: ',1)[1].splitlines()[0]).read_text())
+            assert review['summary']['selected_rows']==5,review
+            assert review['summary']['enabled_rows_removed']==4 and review['summary']['disabled_rows_removed']==1
+            assert review['summary']['spell_rows_inserted']==0 and review['summary']['skill_rows_changed']==0
+            assert review['deferred']=={'DEFER_PENDING_NATIVE_RESET':1,'DEFER_SELECTED_ACTIVE_ANCHOR':1,'DEFER_MISSING_NATIVE_CHILD_ANCHOR':1},review
+            assert checksum()==ownership_before and pointer==(session()/'active-batch.json').read_bytes()
+            assert batches==set((session()/'batches').iterdir())
+            run(*own_args,'--expect-rows','4',code=2)
+            sql(f'UPDATE `{source}`.character_spell SET active=0 WHERE guid=92 AND spell=12296')
+            assert 'HISTORY_INPUT_DRIFT' in run(*own_args,'--expect-rows','5',code=2).stderr
+            sql(f'UPDATE `{source}`.character_spell SET active=1 WHERE guid=92 AND spell=12296')
+            run(*own_args,'--expect-rows','5')
+            own_data=json.loads((package()/'manifest.json').read_text());own_archive=own_data['archive_schema'];owned.append(own_archive)
+            assert own_data['policy']=='tc-selected-talent-ownership-repair-v1'
+            assert 'INCLUDING ENABLED' in (package()/'README.md').read_text()
+            assert json.loads((package()/'ownership-native-proof.json').read_text())==own_data['native_owner_proofs']
+            run('prepare');run('prepare');assert checksum()==ownership_before
+            for acknowledgement in ('',"SET @talent_ownership_ack='WRONG';"):
+                direct=subprocess.run(['mysql',*base,'--user='+writer],text=True,capture_output=True,input=
+                    f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';{acknowledgement}CALL `{own_archive}`.apply_batch();")
+                assert direct.returncode!=0 and 'ownership repair acknowledgement required' in direct.stderr,direct.stderr
+                assert checksum()==ownership_before
+            sql(f'UPDATE `{source}`.character_talent SET talentGroup=0 WHERE guid=91')
+            drift=checksum();run('apply',code=2);assert checksum()==drift
+            sql(f'UPDATE `{source}`.character_talent SET talentGroup=1 WHERE guid=91')
+            sql(f'ALTER TABLE `{world}`.spell_ranks MODIFY COLUMN `rank` TINYINT UNSIGNED NOT NULL DEFAULT 0 FIRST')
+            drift=checksum()
+            direct=subprocess.run(['mysql',*base,'--user='+writer],text=True,capture_output=True,input=
+                f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';CALL `{own_archive}`.apply_batch();")
+            assert direct.returncode!=0 and 'Ownership world layout or engine drift' in direct.stderr,direct.stderr
+            assert checksum()==drift
+            sql(f'ALTER TABLE `{world}`.spell_ranks MODIFY COLUMN `rank` TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER spell_id')
+            sql(f'UPDATE `{world}`.spell_ranks SET `rank`=3 WHERE spell_id=16961')
+            run('apply',code=2)
+            drift=checksum()
+            direct=subprocess.run(['mysql',*base,'--user='+writer],text=True,capture_output=True,input=
+                f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';CALL `{own_archive}`.apply_batch();")
+            assert direct.returncode!=0 and 'World metadata content changed' in direct.stderr,direct.stderr
+            assert checksum()==drift
+            sql(f'UPDATE `{world}`.spell_ranks SET `rank`=2 WHERE spell_id=16961')
+            sql(f"CREATE TRIGGER `{own_archive}`.fail_commit BEFORE UPDATE ON `{own_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='ownership-late-error'; END IF; END")
+            run('apply',code=2);assert checksum()==ownership_before
+            assert sql(f'SELECT state FROM `{own_archive}`.batch')=='PREPARED'
+            sql(f'DROP TRIGGER `{own_archive}`.fail_commit')
+            sql(f"CREATE TRIGGER `{own_archive}`.pause_commit BEFORE UPDATE ON `{own_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN DO SLEEP(30); END IF; END")
+            worker=subprocess.Popen(command+['apply'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            deadline=time.monotonic()+10;connection=''
+            while time.monotonic()<deadline:
+                if worker.poll() is not None:raise AssertionError(worker.communicate())
+                connection=sql("SELECT ID FROM information_schema.PROCESSLIST WHERE DB='"+own_archive+"' AND STATE='User sleep' LIMIT 1")
+                if connection:break
+                time.sleep(.1)
+            assert connection,'Ownership apply did not reach checkpoint'
+            sql('KILL CONNECTION '+connection);worker.communicate(timeout=10);assert worker.returncode!=0;worker=None
+            assert checksum()==ownership_before and sql(f'SELECT state FROM `{own_archive}`.batch')=='PREPARED'
+            sql(f'DROP TRIGGER `{own_archive}`.pause_commit')
+            run('status');run('apply');run('apply');run('status')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=95')=='0'
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=94 AND spell IN (16954,16961)')=='0'
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=94 AND spell IN (16952,16958)')=='2'
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=96 AND spell=16958')=='1'
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==others_before
+            sql(f'UPDATE `{source}`.character_spell SET custom_blob=0x12 WHERE guid=90 AND spell=6603')
+            drift=checksum();run('restore',code=2);assert checksum()==drift
+            sql(f'UPDATE `{source}`.character_spell SET custom_blob=0x0011 WHERE guid=90 AND spell=6603')
+            run('restore');run('restore');assert checksum()==ownership_before;run('apply',code=2)
+            passed('ownership v1: enabled retirement with both selected specs preserved; native exact children/no grants, legitimate TC prefixes, full deferred-scope drift, explicit acknowledgement, late/disconnect rollback, reruns and exact binary restore')
+            sql(f'''DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 90 AND 97;
+              DELETE FROM `{source}`.character_talent WHERE guid BETWEEN 90 AND 97;
+              DELETE FROM `{source}`.character_skills WHERE guid BETWEEN 90 AND 97;
+              DELETE FROM `{source}`.characters WHERE guid BETWEEN 90 AND 97;
+              DELETE FROM `{world}`.spell_ranks WHERE first_spell_id IN (16958,16952,52284,51983,51969,50096,61274);''')
+            assert checksum()==baseline
             scale=int(os.environ.get('HISTORY_SCALE_ROWS','0'))
             if scale:
                 assert 1<=scale<=200000
