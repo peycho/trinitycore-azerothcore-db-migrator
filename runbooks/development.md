@@ -6,6 +6,21 @@ production-sized rehearsal or native gameplay acceptance.
 
 ## CI coverage
 
+The isolated ordinary-history preparation policy has fast regressions for
+deterministic whole-rank selection, old-policy refusal, both-spec ownership,
+enabled/inactive versus disabled state, absent-rank no-grant proof, ancestry,
+all edge directions/cycles, skills/defaults/professions/scripts/corrections,
+race/class eligibility, malformed metadata and exact preview counts. The
+protected TC predecessor/HasSpell/disabled-effect harness includes ordinary
+rank removal controls. Runtime state/effect sinks remain mocked.
+
+The real cleanup-console MySQL suite covers preview without active-batch/source
+changes, full-scope and custom-field drift, narrow source grants, direct SQL
+world guards, prepare/rerun, late error and disconnected-transaction rollback,
+apply/checkpoint reruns and exact binary/skill/ownership restoration. The full
+bidirectional rehearsal remains required on the final behavior tree. These
+checks do not satisfy staging gameplay or release approval.
+
 The `CI` workflow runs `tests/static-checks.sh` on every push and pull request.
 It includes the spell semantic regressions and does not start MySQL.
 

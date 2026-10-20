@@ -19,6 +19,14 @@ talent/item/skill policies and scoped pending native resets with one private con
 originals, execution/error reports and guarded apply/restore commands. The raw
 audit command below remains available for standalone inspection.
 
+For ordinary disabled spells, use the separate opt-in
+[isolated ordinary-history policy](cleanup-console.md#review-isolated-disabled-ordinary-spells).
+It previews exact candidates from a fresh migration inspection and excludes
+talent ancestry, enabled siblings, all learning/prerequisite routes, defaults,
+skill/profession/riding routes and unsupported metadata. Full originals and
+guarded exact restoration remain mandatory. Migration rejection rules stay
+unchanged; unavailable history retirement does not establish gameplay approval.
+
 After a full audit, `python3 console inspect-spell-history` produces a read-only
 review of direct talent history against both talent groups, using the existing
 config and retained audit. It separates other selected ranks, disabled history,

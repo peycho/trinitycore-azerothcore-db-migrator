@@ -597,6 +597,85 @@ backup_reference=disposable-synthetic-fixture
             sql(f'DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 60 AND 67; DELETE FROM `{source}`.character_talent WHERE guid BETWEEN 60 AND 67; DELETE FROM `{source}`.character_skills WHERE guid=60; DELETE FROM `{source}`.characters WHERE guid BETWEEN 60 AND 67;')
             sql(f'DELETE FROM `{world}`.spell_ranks WHERE first_spell_id=50096')
             assert checksum()==baseline
+            # Ordinary policy is a separate opt-in; earlier talent commands
+            # never select these ordinary disabled ranks.
+            sql(f'''INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,online,activeTalentGroup,talentGroupsCount,at_login)
+              VALUES(70,1,'OrdinaryOne','',1,2,80,0,0,2,32),(71,1,'OrdinaryMix','',1,2,80,0,1,2,0),
+              (72,1,'OrdinaryOn','',1,2,80,1,0,2,0),(73,1,'OrdinaryRst','',1,2,80,0,0,2,4),
+              (74,1,'OrdinaryBad','',1,2,80,0,0,2,0),(75,1,'OrdinaryCls','',1,1,80,0,0,2,0);
+              INSERT INTO `{source}`.character_spell VALUES
+              (70,10308,1,1,0x1122),(70,5589,0,1,0x2233),(70,6603,1,0,0x3344),
+              (71,10308,1,0,0x4455),(71,5589,0,1,0x5566),(72,10308,1,1,NULL),
+              (73,10308,1,1,NULL),(74,10308,1,1,NULL),(75,10308,1,1,NULL);
+              INSERT INTO `{source}`.character_talent VALUES(70,20911,0),(70,20911,1),(74,130,0);
+              INSERT INTO `{source}`.character_skills VALUES(70,171,320,450);''')
+            ord_chain=[853,5588,5589,10308]
+            sql(f'INSERT INTO `{world}`.spell_ranks VALUES '+','.join(f'(853,{s},{i+1})' for i,s in enumerate(ord_chain)))
+            ordinary_baseline=checksum();other_before=sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')
+            ordinary_report=work/'ordinary-blockers.tsv'
+            ordinary_report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(
+                f'{g}\t*\tUNREPRESENTABLE_DISABLED_SPELL\t10308\n' for g in range(70,76)))
+            captured=run('inspect-migration-blockers','--report',str(ordinary_report))
+            evidence=Path(captured.stdout.split('Reports: ',1)[1].strip())
+            ordinary_args=('plan','disabled-spell-history','--migration-inspection',evidence.name)
+            active_before=(session()/'active-batch.json').read_bytes();batches_before=set((session()/'batches').iterdir())
+            preview=run(*ordinary_args,'--preview')
+            review=json.loads(Path(preview.stdout.split('Details: ',1)[1].splitlines()[0]).read_text())
+            assert review['summary']['reviewed_candidate_rows']==7 and review['summary']['selected_rows']==2,review
+            assert review['summary']['deferred_candidate_rows']==5,review
+            assert (session()/'active-batch.json').read_bytes()==active_before and set((session()/'batches').iterdir())==batches_before
+            assert checksum()==ordinary_baseline
+            assert 'ORDINARY_HISTORY_SELECTION_MISMATCH' in run(*ordinary_args,'--expect-review-rows','2',code=2).stderr
+            assert 'TRAINED_HISTORY_SELECTION_MISMATCH' in run('plan','disabled-talent-history','--migration-inspection',evidence.name,'--expect-review-rows','7',code=2).stderr
+            sql(f'UPDATE `{source}`.characters SET online=0 WHERE guid=72')
+            drift=checksum();assert 'HISTORY_INPUT_DRIFT' in run(*ordinary_args,'--expect-review-rows','7',code=2).stderr;assert checksum()==drift
+            sql(f'UPDATE `{source}`.characters SET online=1 WHERE guid=72')
+            run(*ordinary_args,'--expect-review-rows','7')
+            ordinary_data=json.loads((package()/'manifest.json').read_text());ordinary_archive=ordinary_data['archive_schema'];owned.append(ordinary_archive)
+            assert ordinary_data['policy']=='tc-isolated-disabled-ordinary-spell-history-v1',ordinary_data
+            assert ordinary_data['selected_rows']==2 and ordinary_data['affected_characters']==1,ordinary_data
+            assert 'ordinary_first_spell' in (package()/'relationship-review.tsv').read_text()
+            assert 'ABSENT_NO_GRANT' in (package()/'relationship-review.tsv').read_text()
+            assert checksum()==ordinary_baseline
+            run('prepare');run('prepare');assert checksum()==ordinary_baseline
+            sql(f'UPDATE `{source}`.character_spell SET custom_blob=0x9999 WHERE guid=70 AND spell=6603')
+            drift=checksum();run('apply',code=2);assert checksum()==drift
+            sql(f'UPDATE `{source}`.character_spell SET custom_blob=0x3344 WHERE guid=70 AND spell=6603')
+            sql(f'INSERT INTO `{world}`.spell_required VALUES(10308,6603)')
+            drift=checksum();assert 'HISTORY_METADATA_DRIFT' in run('apply',code=2).stderr
+            direct=subprocess.run(['mysql',*base,'--user='+writer],input=
+                f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'; CALL `{ordinary_archive}`.apply_batch();",text=True,capture_output=True)
+            assert direct.returncode!=0 and 'World metadata content changed' in direct.stderr,direct.stderr
+            assert checksum()==drift
+            sql(f'DELETE FROM `{world}`.spell_required WHERE spell_id=10308 AND req_spell=6603')
+            sql(f"CREATE TRIGGER `{ordinary_archive}`.fail_commit BEFORE UPDATE ON `{ordinary_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='ordinary-late-error'; END IF; END")
+            assert 'ordinary-late-error' in run('apply',code=2).stderr
+            assert checksum()==ordinary_baseline and sql(f'SELECT state FROM `{ordinary_archive}`.batch')=='PREPARED'
+            sql(f'DROP TRIGGER `{ordinary_archive}`.fail_commit')
+            sql(f"CREATE TRIGGER `{ordinary_archive}`.pause_commit BEFORE UPDATE ON `{ordinary_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN DO SLEEP(30); END IF; END")
+            worker=subprocess.Popen(command+['apply'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            deadline=time.monotonic()+25;connection=''
+            while time.monotonic()<deadline:
+                if worker.poll() is not None:raise AssertionError(worker.communicate())
+                connection=sql("SELECT ID FROM information_schema.PROCESSLIST WHERE DB='"+ordinary_archive+"' AND STATE='User sleep' LIMIT 1")
+                if connection:break
+                time.sleep(.1)
+            assert connection,'Ordinary apply did not reach the transactional checkpoint'
+            sql('KILL CONNECTION '+connection);worker.communicate(timeout=10);assert worker.returncode!=0;worker=None
+            assert checksum()==ordinary_baseline and sql(f'SELECT state FROM `{ordinary_archive}`.batch')=='PREPARED'
+            sql(f'DROP TRIGGER `{ordinary_archive}`.pause_commit')
+            run('status');run('apply');run('apply');run('status')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=70')=='1'
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=71')=='2'
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_talent WHERE guid=70')=='2'
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==other_before
+            sql(f'UPDATE `{source}`.character_skills SET max=449 WHERE guid=70 AND skill=171')
+            drift=checksum();run('restore',code=2);assert checksum()==drift
+            sql(f'UPDATE `{source}`.character_skills SET max=450 WHERE guid=70 AND skill=171')
+            run('restore');run('restore');assert checksum()==ordinary_baseline;run('apply',code=2)
+            passed('ordinary policy preview/old-policy controls; whole disabled ranks, enabled/online/reset/invalid/foreign exclusions, both-spec ownership and profession preservation; full-scope/custom/world drift, direct SQL guards, late/disconnect rollback, commit/rerun and exact restoration')
+            sql(f'DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 70 AND 75; DELETE FROM `{source}`.character_talent WHERE guid BETWEEN 70 AND 75; DELETE FROM `{source}`.character_skills WHERE guid=70; DELETE FROM `{source}`.characters WHERE guid BETWEEN 70 AND 75;')
+            sql(f'DELETE FROM `{world}`.spell_ranks WHERE first_spell_id=853');assert checksum()==baseline
             scale=int(os.environ.get('HISTORY_SCALE_ROWS','0'))
             if scale:
                 assert 1<=scale<=200000

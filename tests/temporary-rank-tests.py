@@ -54,7 +54,7 @@ struct SpellInfo {
 struct SpellMgr {
     SpellInfo info;
     uint32 GetPrevSpellInChain(uint32 id) const {
-        static std::map<uint32,uint32> previous{{16961,16958},{50111,50110},{50110,50109},{50109,50108},{50108,50096}};
+        static std::map<uint32,uint32> previous{{16961,16958},{50111,50110},{50110,50109},{50109,50108},{50108,50096},{10308,5589}};
         auto it=previous.find(id);return it==previous.end()?0:it->second;
     }
     SpellInfo const* GetSpellInfo(uint32 id) const { assert(id==37117);return &info; }
@@ -100,6 +100,16 @@ int main() {
         assert(!history.HasSpell(id));history.m_spells.erase(id);assert(!history.HasSpell(id));
     }
     assert(history.HasSpell(6603)&&history.RunPostLoadEffects(false));
+    Player ordinary;ordinary.m_spells[6603]={0,false};
+    ordinary.m_spells[10308]={0,true};ordinary.m_spells[5589]={0,true};
+    ordinary.TcRankBranch(10308,true,true);
+    assert((ordinary.predecessors==std::vector<uint32>{5589}));
+    assert(ordinary.predecessorDisabled.front());
+    assert(!ordinary.HasSpell(10308)&&!ordinary.HasSpell(5589));
+    assert(!ordinary.RunPostLoadEffects(true));
+    ordinary.m_spells.erase(10308);ordinary.m_spells.erase(5589);
+    assert(!ordinary.HasSpell(10308)&&!ordinary.HasSpell(5589)&&ordinary.HasSpell(6603));
+    std::cout << "Protected ordinary disabled rank/HasSpell/early-return controls passed before and after exact removal; state sinks mocked\n";
     std::cout << "Protected rank/talent consumers passed: TC predecessor calls retain disabled flags; HasSpell excludes disabled history before/after removal, post-load disabled guard prevents effects, enabled control retained; AC exact temporary child and direct-talent controls passed; sinks mocked, gameplay NOT TESTED\n";
 }
 '''

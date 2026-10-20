@@ -618,6 +618,69 @@ fresh source import, initialize a new session, capture new evidence and regenera
 needed plans; do not replay an old APPLIED package. After an actual preparation
 apply, use new evidence and fresh migration target/control schemas and run ID.
 
+## Review isolated disabled ordinary spells
+
+`plan disabled-spell-history` is a separate opt-in preparation policy,
+`tc-isolated-disabled-ordinary-spell-history-v1`. The migrator continues to block
+unrepresentable disabled state. This policy retires reviewed unavailable
+ordinary history; it never enables a spell or treats every disabled row as corrupt.
+Deleting it discards stored future reactivation/retraining history. Retain the
+archive and original toolkit for exact restoration before gameplay/further edits.
+
+Use the current session's fresh migration-blocker inspection:
+
+```bash
+python3 console plan disabled-spell-history \
+  --migration-inspection latest --preview
+```
+
+The private `ordinary-spell-review.json` reports the actual
+`reviewed_candidate_rows`, `selected_rows`, `selected_characters`, exact keys and
+deferred reasons. Preview creates no executable package, archive, active-batch
+change or source writes. Its captured-state review is not a live restoration
+snapshot or approval. After reviewing it, use **reviewed_candidate_rows** as
+`COUNT`, including deferred candidates:
+
+```bash
+python3 console plan disabled-spell-history \
+  --migration-inspection INSPECTION_ID --expect-review-rows COUNT
+```
+
+Use the exact inspection ID printed by preview. Counts depend on this source
+and scope; do not reuse them after an import or source edit. Planning rechecks
+the complete captured semantic scope, including deferred characters, and then
+fingerprints full affected character/spell/talent/skill originals.
+
+Every present row in an eligible verified rank family must be disabled. Both
+`active=0,disabled=1` and `active=1,disabled=1` remain unavailable in TC;
+`active=0,disabled=0` is still known and prevents removal of that family.
+Absent ranks are `ABSENT_NO_GRANT`; no predecessor is inserted or activated.
+Talent ancestry is excluded across all classes and both specs, even when a
+talent family fails its own cleanup contract. Aura helpers and additional
+talent spells stay excluded. Any incoming/outgoing learning or prerequisite
+edge, including an internal cycle, defers an ordinary family.
+
+Default spells, skill rewards, profession/riding/Runeforging associations,
+learning/skill effects, unsupported scripts/corrections, malformed chains,
+invalid flags/ownership, ineligible race/class, online characters and pending
+native resets defer or block. The graph is bounded and deterministic, using
+effective TC world/DBC metadata only. Target trainers never supply grants.
+No enabled spell, talent selection, point, spec, skill value/cap, profession
+slot or login flag is changed. Selected builds may coexist with unrelated
+ordinary cleanup; a talent-linked family cannot qualify.
+
+Review README, manifest, selected/excluded rows and `relationship-review.tsv`
+(`ordinary_first_spell` identifies the rank family), then use the exact new batch
+ID with `prepare`, `status`, `apply` and `restore`. The existing full-row archive,
+atomic deletion/checkpoint, live/SQL metadata guards, reruns and exact inverse
+apply. Prior talent policies retain their original behavior. Current code is
+fingerprinted in the package; preserve earlier toolkits for earlier archives.
+
+After a fresh import, initialize a new cleanup session, capture current inputs
+and regenerate plans. After applying preparation edits, use a fresh migration
+run and target/control schemas. Native gameplay and release acceptance remain
+separate; approval remains **UNREVIEWED**.
+
 ## Recover items without replacing them
 
 For example, after reviewing containers 100 and 200:
