@@ -55,7 +55,7 @@ def toolkit_hashes():
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
            'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','lib/cleanup_talent_relations.py','lib/cleanup_selected_rank_history.py','lib/cleanup_migration_evidence.py','lib/cleanup_trained_history.py','tools/disabled-talent-history.sql.in',
-           'lib/cleanup_native_skills.py','lib/cleanup_ordinary_history.py','tools/native-skill-repair.sql.in','tools/native-generic-repair.sql.in')
+           'lib/cleanup_native_skills.py','lib/cleanup_ordinary_history.py','lib/cleanup_death_coil.py','tools/native-skill-repair.sql.in','tools/native-generic-repair.sql.in')
     hashes={}
     for name in names:
         path=ROOT/name
@@ -592,8 +592,11 @@ def command_action(settings, work, args):
         fail('INVALID_POLICY','Unknown cleanup acknowledgement variable')
     configuration_ack = ''
     from cleanup_ordinary_history import INACTIVE_DEFAULT_POLICY
-    if manifest.get('policy') == INACTIVE_DEFAULT_POLICY:
+    from cleanup_death_coil import POLICY as DEATH_COIL_POLICY
+    if manifest.get('policy') in (INACTIVE_DEFAULT_POLICY,DEATH_COIL_POLICY):
         configuration_ack = 'SET @ordinary_history_all_spells=0;\n'
+    if manifest.get('policy') == DEATH_COIL_POLICY:
+        configuration_ack += 'SET @ordinary_history_native_base=47541;\n'
     try:
         result=settings.sql(f"SET @{ack}='STOPPED_PREPARATION_COPY_ONLY';\n"+configuration_ack+scripts[action],'write',headers=True)
     except CleanupError as error:
@@ -619,6 +622,9 @@ def command_action(settings, work, args):
     status=settings.sql(contents['04-status.sql'].decode(),'write',headers=True)
     (work.operation/'status.tsv').write_text(status)
     print(result.strip()+'\nStatus: '+str(work.operation/'status.tsv'))
+    if manifest.get('policy') == DEATH_COIL_POLICY:
+        print('Death Coil rank 1 is native skill-derived state on load; no spell row was inserted. '
+              'Native gameplay and existing skill normalization still require acceptance.')
 
 
 def command_status(settings,work,args):
@@ -694,7 +700,9 @@ def parser():
     ordinary=types.add_parser('disabled-spell-history',help='Opt-in archive of isolated wholly disabled ordinary ranks; preserve enabled and talent-linked families')
     ordinary.set_defaults(ordinary_spell_history=True,inspection=None,audit=None)
     ordinary.add_argument('--migration-inspection',required=True,help='Sealed migration-blocker inspection ID or latest in this session')
-    ordinary.add_argument('--inactive-custom-defaults',action='store_true',help='Explicit v2: allow inactive custom-start routes only with [source] player_start_all_spells=0; other guards remain')
+    ordinary_modes=ordinary.add_mutually_exclusive_group()
+    ordinary_modes.add_argument('--inactive-custom-defaults',action='store_true',help='Explicit v2: allow inactive custom-start routes only with [source] player_start_all_spells=0; other guards remain')
+    ordinary_modes.add_argument('--native-death-coil',action='store_true',help='Separate v3: retire eligible disabled Death Coil training history, allowing native rank 1 from existing Unholy skill; requires player_start_all_spells=0')
     ordinary_review=ordinary.add_mutually_exclusive_group(required=True)
     ordinary_review.add_argument('--preview',action='store_true',help='Read-only review; no SQL package, source change or active-batch change')
     ordinary_review.add_argument('--expect-review-rows',type=int,help='Exact reviewed_candidate_rows from this policy preview, including exclusions')

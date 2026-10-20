@@ -4,6 +4,7 @@ from collections import defaultdict, deque
 from cleanup_console import fail
 from cleanup_talent_relations import Relations, validate_stored, MAX_ROWS
 from spells import Unsupported
+import cleanup_death_coil as death_coil
 
 POLICY = 'tc-isolated-disabled-ordinary-spell-history-v1'
 INACTIVE_DEFAULT_POLICY = 'tc-disabled-ordinary-inactive-custom-defaults-v2'
@@ -20,7 +21,9 @@ def configuration_contract(settings):
             'scope':'TC playercreateinfo_spell_custom only; all other learning routes retain their guards'}
 
 
-def select(state, meta, expected, *, preview=False, inactive_custom_defaults=False):
+def select(state, meta, expected, *, preview=False, inactive_custom_defaults=False, native_death_coil=False):
+    if native_death_coil:
+        inactive_custom_defaults = True  # Its separate config contract requires AllSpells=0.
     stored = state['character_spell']
     validate_stored(stored)
     graph = Relations(meta)
@@ -65,6 +68,16 @@ def select(state, meta, expected, *, preview=False, inactive_custom_defaults=Fal
     for row in candidates:
         groups[row[0], graph.component.get(row[1], row[1])].append(row)
     selected, excluded, proof, bindings = [], [], [], set()
+    native_proofs = []
+    native_skills = defaultdict(list)
+    if native_death_coil:
+        if len(state['character_skills']) > MAX_ROWS:
+            fail('ORDINARY_HISTORY_BOUND','Skill evidence exceeds the verified row bound')
+        for row in state['character_skills']:
+            if len(row)!=4:
+                fail('DEATH_COIL_SKILL_STATE','Malformed captured skill row')
+            if row[1]==death_coil.SKILL:
+                native_skills[row[0]].append(row)
     catalog = {}
     for root in sorted({r for _,r in groups}):
         nodes = graph.members.get(root, set())
@@ -77,7 +90,7 @@ def select(state, meta, expected, *, preview=False, inactive_custom_defaults=Fal
               or nodes & set(getattr(meta,'world_aura_owners',{}))
               or nodes & set(getattr(meta,'additional',set()))):
             reason = 'DEFER_TALENT_OR_AURA_ROUTE'
-        elif nodes & graph.skill_rewards:
+        elif nodes & graph.skill_rewards and not (native_death_coil and root==death_coil.CHAIN[0]):
             reason = 'DEFER_SKILL_REWARD_ROUTE'
         elif nodes & graph.profession_spells or any(a[1] == 776 for s in nodes for a in meta.abilities[s]):
             reason = 'DEFER_PROFESSION_OR_RIDING_RELATION'
@@ -85,6 +98,9 @@ def select(state, meta, expected, *, preview=False, inactive_custom_defaults=Fal
             reason = 'DEFER_UNSUPPORTED_RELATION_METADATA'
         elif nodes & getattr(meta,'history_default_spells',set()) and not inactive_custom_defaults:
             reason = 'DEFER_CUSTOM_DEFAULT_ROUTE'
+        if not reason and native_death_coil:
+            reason = (death_coil.metadata_reason(meta,nodes) if root==death_coil.CHAIN[0]
+                      else 'DEFER_OUTSIDE_NATIVE_DEATH_COIL')
         for spell in sorted(nodes) if not reason else ():
             if set(meta.spells[spell][71:74]) & {36,40,44,47,118}:
                 reason = 'DEFER_LEARN_OR_SKILL_EFFECT'
@@ -116,6 +132,9 @@ def select(state, meta, expected, *, preview=False, inactive_custom_defaults=Fal
             reason = 'DEFER_INVALID_RELATED_FLAGS'
         if not reason and any(d != 1 for a,d in present.values()):
             reason = 'DEFER_ENABLED_RELATED_SPELL'
+        native_proof = None
+        if not reason and native_death_coil:
+            reason,native_proof = death_coil.character_contract(meta,char,books[guid],native_skills[guid])
         if not reason:
             race_mask, class_mask = 1 << (char[1]-1), 1 << (char[2]-1)
             for spell in sorted(nodes):
@@ -130,12 +149,18 @@ def select(state, meta, expected, *, preview=False, inactive_custom_defaults=Fal
         if reason:
             excluded.extend((guid,row[1],reason) for row in anchors)
             continue
+        if native_proof is not None:
+            native_proofs.append(native_proof)
         for spell in sorted(nodes):
             flags = present.get(spell)
             route = ('ORDINARY_RANK_INACTIVE_CUSTOM_DEFAULT' if inactive_custom_defaults
                      and nodes & meta.history_default_spells else 'ORDINARY_RANK')
+            if native_death_coil:
+                route = death_coil.ROLE
+            disposition = ('NATIVE_BASE_FROM_EXISTING_SKILL' if native_death_coil and spell==death_coil.CHAIN[0]
+                           else 'SELECTED_DISABLED' if flags else 'ABSENT_NO_GRANT')
             proof.append((guid,root,spell,route,
-                          'SELECTED_DISABLED' if flags else 'ABSENT_NO_GRANT',*(flags or ('',''))))
+                          disposition,*(flags or ('',''))))
             if flags:
                 selected.append((guid,spell,*flags))
             bindings.update((root,spell,name) for name in meta.scripts[spell])
@@ -155,4 +180,9 @@ def select(state, meta, expected, *, preview=False, inactive_custom_defaults=Fal
             bool(graph.members.get(graph.component[row[1]],set()) & meta.history_default_spells)
             for row in selected)
         summary['native_policy'] += '; custom starting-spell route is inactive under explicitly asserted PlayerStart.AllSpells=0'
+    if native_death_coil:
+        summary.update(native_base_characters=len(native_proofs),native_base_spell=death_coil.CHAIN[0],
+            spell_rows_inserted=0,skill_rows_changed=0,native_base_proofs=native_proofs,
+            existing_native_skill_normalizations=sum(p['existing_native_skill_normalization'] for p in native_proofs),
+            native_policy='Explicitly allow native Death Coil rank 1 from existing Unholy skill after archiving exact disabled higher history; no spell insertion, higher-rank grant, skill/cap, talent/spec or login-flag change; existing native skill normalization is independent')
     return sorted(selected), sorted(excluded), proof, summary, sorted(graph.edges)

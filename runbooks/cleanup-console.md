@@ -756,6 +756,104 @@ files) at the retained pins; v1 and release approval are unchanged. Earlier
 migration runs need fresh target/control schemas because profile hashes changed.
 This preparation extension adds no migration grants or validation exceptions.
 
+### Native Death Coil rank-1 repair (ordinary v3)
+
+`tc-native-death-coil-base-repair-v3` is a separate explicit preparation policy.
+It allows **rank 1 Death Coil (47541)** to become native skill-derived known
+state after removing reviewed disabled higher-rank history. This availability
+change is intentional. Ordinary v1/v2 continue to defer the skill-reward route.
+The policy covers only the exact chain
+`47541 -> 49892 -> 49893 -> 49894 -> 49895`, on death knights with existing
+Unholy skill `772`. The base must be absent from storage. Every present higher
+rank must have exactly `active=1,disabled=1`; inactive or enabled siblings defer.
+Multiple eligible higher rows are archived/removed together deterministically.
+
+TC loads skills and their automatic rewards before stored spells. Skill 772
+initially supplies base 47541. A stored disabled higher rank recursively disables
+its predecessors, including that base. Removing the reviewed suppressing rows
+lets the existing skill supply rank 1 on native load. SQL **inserts no spell**,
+updates no spell flags and grants no higher trained ranks. AC's reviewed native
+skill consumer also supplies only the base under the compatible metadata.
+Target-world overlays and full gameplay remain separate migration checks.
+
+The exact source skill/ability/race/class metadata, non-passive dummy effects,
+reviewed non-mutating script, chain, base absence and existing positive skill
+row must match the contract. The skill value must not exceed its cap, and the
+cap must not exceed the native level-80 bound of 400. Unknown, duplicate,
+zero-value or missing Unholy skills defer; no skill is added or guessed.
+Talent ancestry, any learning/prerequisite edge, aura helpers, selected ownership
+conflicts, unsupported metadata, foreign classes, online state and pending
+resets retain their guards. Other ordinary families stay outside this policy.
+
+The existing private config must assert `[source] player_start_all_spells = 0`.
+This keeps the separate custom-start route from regranting higher ranks.
+Unknown/enabled settings fail with `DEATH_COIL_CONFIG_REQUIRED`. The new flag
+cannot be combined with `--inactive-custom-defaults`:
+
+```bash
+python3 console plan disabled-spell-history \
+  --migration-inspection latest --native-death-coil --preview
+```
+
+Read `ordinary-spell-review.json`: `reviewed_candidate_rows` includes every
+ordinary candidate and exclusion; `selected_rows` counts exact stored rows to
+remove, while `native_base_characters` counts characters whose independent base
+route is permitted. `spell_rows_inserted` and `skill_rows_changed` are zero.
+`native_base_proofs` records the skill value/cap, level, both-spec base mask,
+existing normalization and base absence. `relationship-review.tsv` uses
+`NATIVE_DEATH_COIL_BASE_ROUTE` and distinguishes
+`NATIVE_BASE_FROM_EXISTING_SKILL` from absent higher ranks marked
+`ABSENT_NO_GRANT`.
+
+After reviewing the preview, use its total **reviewed_candidate_rows**:
+
+```bash
+python3 console plan disabled-spell-history \
+  --migration-inspection INSPECTION_ID --native-death-coil \
+  --expect-review-rows COUNT
+```
+
+Review the generated `native-base-review.json`, exact selected/excluded rows,
+manifest and full prepared originals. Use the new printed batch ID with
+`prepare`, `status`, `apply` and `status`. `APPLIED` means the exact higher rows
+were archived/removed; rank 1 is native state on load, not an inserted stored
+row or gameplay acceptance. Skills/values/caps, professions/slots, talents,
+specs, enabled unrelated spells, character state and login flags stay unchanged
+by SQL. No automatic staff exemption or migration-validation bypass is added.
+
+Both native skill loaders already normalize Unholy skill to `level * 5` through
+their existing load-range and level-update paths. This happens before and after
+the repair. The policy preserves the **stored** skill rows exactly and reports
+`existing_native_skill_normalizations` so that legacy values are visible; it
+does not silently turn this spell repair into a skill normalization batch.
+Compare native skill behavior with the source baseline during gameplay checks.
+
+The existing atomic archive/delete/checkpoint and exact inverse are reused.
+Source/world content drift, same-count changes, interruption, reruns and restore
+guards still apply. Console actions require the same configuration contract;
+`DEATH_COIL_CONFIG_DRIFT` rejects a differing recorded contract. Direct SQL calls
+add a separate availability acknowledgement before each action:
+
+```sql
+SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';
+SET @ordinary_history_all_spells=0;
+SET @ordinary_history_native_base=47541;
+CALL `ARCHIVE_SCHEMA`.apply_batch();
+```
+
+Use the exact owned archive, with `prepare_batch()` or `restore_batch()` for
+those actions. Missing/wrong acknowledgements reject. These session values are
+operator assertions, not configuration detection. Restore before native login
+or later source edits, in reverse application order. A login may persist native
+skill/state changes and invalidate exact-restore guards; retain the untouched
+baseline for rollback rather than bypassing them.
+
+For a fresh import, initialize a new session and repeat the reviewed policies
+against fresh captures/counts. After source edits use a fresh migration run and
+target/control schemas. Pins, 100 TC / 103 AC protected files, metadata profile,
+control schema and migration spell-state-v12 stay unchanged. All five gameplay
+gates remain **NOT TESTED** until executed; approval stays **UNREVIEWED**.
+
 ## Recover items without replacing them
 
 For example, after reviewing containers 100 and 200:

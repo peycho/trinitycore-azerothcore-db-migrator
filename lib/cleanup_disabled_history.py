@@ -15,10 +15,11 @@ import cleanup_talent_relations as relations
 import cleanup_selected_rank_history as selected_history
 import cleanup_trained_history as trained_history
 import cleanup_ordinary_history as ordinary_history
+import cleanup_death_coil as death_coil
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
-POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY)
+POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, death_coil.POLICY)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -127,6 +128,9 @@ def check_metadata(settings, manifest):
     if manifest.get('policy') == ordinary_history.INACTIVE_DEFAULT_POLICY:
         if ordinary_history.configuration_contract(settings) != manifest.get('configuration_contract'):
             fail('ORDINARY_HISTORY_CONFIG_DRIFT','Configuration contract differs from the reviewed ordinary-history batch')
+    if manifest.get('policy') == death_coil.POLICY:
+        if death_coil.configuration_contract(settings) != manifest.get('configuration_contract'):
+            fail('DEATH_COIL_CONFIG_DRIFT','Configuration contract differs from the reviewed Death Coil batch')
     settings.check_paths()
     if sha(PROFILE/'spell-metadata.json') != manifest.get('metadata_profile_sha256'):
         fail('HISTORY_METADATA_DRIFT','Spell metadata policy differs from the reviewed batch')
@@ -279,7 +283,11 @@ def plan_history(settings, work, args, output):
     child_mode = getattr(args,'orphaned_talent_children',False)
     ordinary_mode = getattr(args,'ordinary_spell_history',False)
     inactive_defaults = getattr(args,'inactive_custom_defaults',False)
-    config_contract = ordinary_history.configuration_contract(settings) if inactive_defaults else None
+    native_death_coil = getattr(args,'native_death_coil',False)
+    if native_death_coil and (inactive_defaults or not ordinary_mode):
+        fail('HISTORY_POLICY_CONFLICT','--native-death-coil is a separate ordinary-history policy')
+    config_contract = (death_coil.configuration_contract(settings) if native_death_coil else
+                       ordinary_history.configuration_contract(settings) if inactive_defaults else None)
     preview = getattr(args,'preview',False)
     if child_mode and not trained_mode:
         fail('HISTORY_POLICY_CONFLICT','--orphaned-talent-children requires --migration-inspection')
@@ -314,15 +322,19 @@ def plan_history(settings, work, args, output):
     if child_mode:
         policy = trained_history.CHILD_POLICY
     if ordinary_mode:
-        policy = ordinary_history.INACTIVE_DEFAULT_POLICY if inactive_defaults else ordinary_history.POLICY
+        policy = (death_coil.POLICY if native_death_coil else
+                  ordinary_history.INACTIVE_DEFAULT_POLICY if inactive_defaults else ordinary_history.POLICY)
     relation_rows,relation_proof,relation_summary,relation_edges = [],[],{},[]
     rank_proof = []
+    native_base_proofs = []
     if trained_mode:
         check_retained_scripts(state,effective)
         relation_rows=context['character_spell']
         if ordinary_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ordinary_history.select(
-                context,effective,args.expect_review_rows,preview=preview,inactive_custom_defaults=inactive_defaults)
+                context,effective,args.expect_review_rows,preview=preview,inactive_custom_defaults=inactive_defaults,
+                native_death_coil=native_death_coil)
+            native_base_proofs = relation_summary.pop('native_base_proofs',[])
         else:
             selected,excluded,relation_proof,relation_summary,relation_edges=trained_history.select(
                 context,effective,args.expect_review_rows,orphan_children=child_mode,preview=preview)
@@ -336,6 +348,8 @@ def plan_history(settings, work, args, output):
                                    'Planning rechecks the complete captured semantic scope and full affected originals']}
             if config_contract is not None:
                 review['configuration_contract'] = config_contract
+            if native_death_coil:
+                review['native_base_proofs'] = native_base_proofs
             write_json(work.operation/review_name,review)
             print(review_label+' review (read-only): '+json.dumps({**relation_summary,'deferred':review['deferred']},sort_keys=True),flush=True)
             if preview:
@@ -444,6 +458,8 @@ def plan_history(settings, work, args, output):
                     'selection':selected,'world':world,'meta':meta,'template':sha(template),'id':output.name}
     if config_contract is not None:
         batch_inputs['configuration_contract'] = config_contract
+    if native_death_coil:
+        batch_inputs['native_base_proofs'] = native_base_proofs
     batch = sha_json(batch_inputs)
     archive = 'tc_disabled_history_'+uuid.uuid4().hex[:20]
     blocks = check_sets(meta,source,archive,counts)
@@ -473,6 +489,10 @@ def plan_history(settings, work, args, output):
         values['WORLD_CHECKS'] = """IF NOT (BINARY @ordinary_history_all_spells <=> BINARY '0') THEN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit PlayerStart.AllSpells=0 assertion required for ordinary history v2'; END IF;
 """ + values['WORLD_CHECKS']
+    if native_death_coil:
+        values['WORLD_CHECKS'] = """IF NOT (BINARY @ordinary_history_native_base <=> BINARY '47541') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit native Death Coil rank 1 availability assertion required'; END IF;
+""" + values['WORLD_CHECKS']
     final_effective, final_world = read_world(settings)
     if metadata(settings,TABLES)!=meta or final_world!=world or final_effective.hashes!=effective.hashes:
         fail('HISTORY_METADATA_DRIFT','Source schema/world metadata changed while planning')
@@ -493,6 +513,8 @@ def plan_history(settings, work, args, output):
         'native_policy':'Disabled direct talent ranks only; no selected family in either spec; no activation, talent reset or grants'}
     if config_contract is not None:
         manifest['configuration_contract'] = config_contract
+    if native_death_coil:
+        manifest['native_base_proofs'] = native_base_proofs
     if include_scripts:
         manifest.update(reviewed_script_bindings=reviewed,
             scripted_selected_rows=sum(row[1] in effective.talents and effective.talents[row[1]][0] in scripted_families for row in selected),
@@ -528,6 +550,10 @@ FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.g
     finish(settings,work,output,manifest,render_text(template,values),
            'guid\tspell\tactive\tdisabled\n'+''.join('\t'.join(map(str,row))+'\n' for row in selected),status)
     (output/'excluded-rows.tsv').write_text('guid\tspell\treason\n'+''.join('\t'.join(map(str,row))+'\n' for row in excluded))
+    if native_death_coil:
+        write_json(output/'native-base-review.json',{'policy':policy,'configuration_contract':config_contract,
+                   'proofs':native_base_proofs,'sql_spell_rows_inserted':0,'sql_skill_rows_changed':0,
+                   'native_availability_change':'Only rank 1 from existing Unholy skill; no higher-rank inference'})
     if include_scripts:
         script_family_column = 'ordinary_first_spell' if ordinary_mode else 'talent_entry'
         (output/'scripted-family-review.tsv').write_text(script_family_column+'\tspell\tscript\tstatus\treason\n'+''.join(

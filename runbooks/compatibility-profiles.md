@@ -34,6 +34,14 @@ policy change also invalidates earlier run/checkpoint identities.
 
 ## Reviewing a candidate
 
+Native Death Coil preparation v3 uses the already protected TC/AC player,
+storage, skill-level-update, script and DBC consumers. It adds no core revision,
+protected file, metadata or migration-logic exception. The exact source skill
+reward/chain and configuration contract are fingerprinted in its preparation
+batch; skills and talents remain unchanged in SQL. Target overlays and gameplay
+still require their own migration acceptance. See the
+[rank-1 contract](cleanup-console.md#native-death-coil-rank-1-repair-ordinary-v3).
+
 Ordinary-history preparation v2 additionally protects TC `World.cpp` for the
 `PlayerStart.AllSpells` configuration gate. Its content matches retained pin
 `92127cd...`; protected counts become 100 TC / 103 AC. AC pins, v1, spell-state-v12,

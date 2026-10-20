@@ -39,7 +39,7 @@ constexpr int CONFIG_ALWAYS_MAX_SKILL_FOR_LEVEL=0,SKILL_FLAG_ALWAYS_MAX_VALUE=16
 #define MAKE_SKILL_VALUE(a,b) ((a)|((b)<<16))
 struct SkillInfo {uint32 Flags=1170;}generic;
 using SkillRaceClassInfoEntry=SkillInfo;
-SkillInfo const*GetSkillRaceClassInfo(uint32 id,uint32,uint32){return id==183?&generic:nullptr;}
+SkillInfo const*GetSkillRaceClassInfo(uint32 id,uint32,uint32){return id==183||id==772?&generic:nullptr;}
 int GetSkillRangeType(SkillInfo const*){return SKILL_RANGE_LEVEL;}
 struct World{uint16 GetConfigMaxSkillValue()const{return 400;}bool getBoolConfig(int)const{return false;}}world;
 World*sWorld=&world;
@@ -59,13 +59,15 @@ struct Player {
 };
 '''+''.join(methods)+r'''
 int main(){
- for(uint16 level:{1,20,80})for(auto original:std::map<uint16,uint16>{{1,400},{5,350},{400,400},{1,1}}){
+ for(uint32 skill:{183,772})for(uint16 level:{1,20,62,80})for(auto original:std::map<uint16,uint16>{{1,400},{5,350},{310,310},{400,400},{1,1}}){
+  generic.Flags=skill==183?1170:1040;
   Player tc,ac;tc.level=ac.level=level;tc.value=ac.value=original.first;tc.cap=ac.cap=original.second;
+  tc.mSkillStatus={{skill,{0,SKILL_UNCHANGED}}};ac.mSkillStatus=tc.mSkillStatus;
   tc.TcLoad();ac.AcLoad();assert(tc.value==level*5&&tc.cap==level*5);
   assert(tc.value==ac.value&&tc.cap==ac.cap);
  }
  Player zero;zero.value=0;zero.TcLoad();assert(zero.value==0);zero.AcLoad();assert(zero.value==0);
- std::cout<<"Protected TC/AC skill-load range and UpdateSkillsForLevel bodies PASS: Generic normalizes to level*5 for value/cap; levels 1/20/80 and stale 1/400, 5/350, 1/1 states; state/getters mocked\n";
+ std::cout<<"Protected TC/AC skill-load range and UpdateSkillsForLevel bodies PASS: Generic and Unholy already normalize to level*5 for value/cap independently of spell history; levels 1/20/62/80 and stale states; state/getters mocked\n";
 }
 '''
 with tempfile.TemporaryDirectory() as directory:

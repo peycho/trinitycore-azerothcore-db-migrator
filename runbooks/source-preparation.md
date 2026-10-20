@@ -30,6 +30,11 @@ Its separate [inactive-custom-default extension](cleanup-console.md#inactive-cus
 requires an explicit effective TC `PlayerStart.AllSpells=0` assertion and keeps
 all other learning/skill/talent/state guards. No staff characters are exempted
 from cleanup safety checks or migration validation.
+The separate [Death Coil rank-1 repair](cleanup-console.md#native-death-coil-rank-1-repair-ordinary-v3)
+explicitly permits only the verified native base-rank route after archiving
+disabled higher training history. SQL changes no skill or talent state and
+inserts no spells; review its native availability and existing skill-normalization
+proofs separately from inert-history retirement.
 
 After a full audit, `python3 console inspect-spell-history` produces a read-only
 review of direct talent history against both talent groups, using the existing

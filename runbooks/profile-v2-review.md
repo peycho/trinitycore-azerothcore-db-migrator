@@ -1,5 +1,21 @@
 # Profile v2 review and acceptance record
 
+The 2026-10-20 native Death Coil preparation v3 policy explicitly allows only
+the base rank 47541 supplied by existing Unholy skill 772 after archiving exact
+disabled trained higher rows. Base storage remains absent; SQL inserts no spell
+and changes no skill/cap, talent/spec or login flag. All higher stored rows must
+be active/disabled (1,1); independent higher grants remain forbidden. The exact
+five-rank source chain, source skill reward, class/race metadata, skill existence,
+script/effects and no alternate routes are required. PlayerStart.AllSpells=0
+and a separate native-base acknowledgement are fingerprinted and enforced.
+Existing Unholy skill normalization on native login is reported independently
+and is not performed by this repair. Complete originals, atomic deletion and
+guarded restoration use the unchanged history SQL template. Existing protected
+consumers cover all behavior: pins, manifests (100 TC / 103 AC), metadata,
+control schema, spell-state-v12 and v1 remain unchanged. Target overlays still
+need migration validation; no staff exemption is introduced. Release approval
+stays **UNREVIEWED**, and all five gameplay gates remain **NOT TESTED**.
+
 The 2026-10-20 ordinary-history preparation v2 extension permits only an inactive
 `playercreateinfo_spell_custom` route under the explicit operator assertion
 `PlayerStart.AllSpells=0`. All other ordinary cleanup guards remain. The

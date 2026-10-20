@@ -6,6 +6,19 @@ production-sized rehearsal or native gameplay acceptance.
 
 ## CI coverage
 
+The native Death Coil preparation v3 suite keeps v1/v2 as failing controls and
+checks the exact five-rank chain, skill 772 reward metadata, both specs, absent
+base, active/disabled flags, overlapping anchors, no spell insertion/higher
+grant, native skill-normalization reporting and every old state/route guard.
+MySQL uses real class/skill/talent metadata and custom binary fields, with
+read-only previews, complete deferred-scope drift, missing/wrong config and
+direct SQL acknowledgements, source/world changes, late/disconnect rollback,
+commit/reruns and exact restoration while all skills/caps and unrelated data
+stay unchanged. The native consumer harness compiles TC skill learning,
+stored-spell loading, predecessor/disable/HasSpell paths and AC skill learning.
+The skill-load harness covers existing Generic and Unholy normalization.
+State/catalog/DB sinks remain mocked; full gameplay is a separate acceptance gate.
+
 Ordinary-history v2 tests keep v1 as a failing control and require an explicit
 config assertion before allowing an inactive custom-start route. Units retain
 skill/reward/dependency/flag/script/reset guards. MySQL tests cover preview,

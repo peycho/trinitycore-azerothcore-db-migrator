@@ -730,6 +730,118 @@ backup_reference=disposable-synthetic-fixture
             passed('ordinary v2 explicit config assertion; v1 refusal; preview and counts, changed config/direct SQL assertion guards, same-count defaults drift, late rollback, rerun and exact restore with unrelated state preserved')
             sql(f'DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 70 AND 75; DELETE FROM `{source}`.character_talent WHERE guid BETWEEN 70 AND 75; DELETE FROM `{source}`.character_skills WHERE guid=70; DELETE FROM `{source}`.characters WHERE guid BETWEEN 70 AND 75;')
             sql(f'DELETE FROM `{world}`.spell_ranks WHERE first_spell_id=853');assert checksum()==baseline
+            # Separate v3 permits exactly the independent native base route;
+            # SQL still archives/deletes only disabled higher history.
+            before_dc_stores=assets.stores
+            dc_chain=(47541,49892,49893,49894,49895)
+            def dc_stores(profile):
+                data=before_dc_stores(profile)
+                for i,spell in enumerate(dc_chain):
+                    row=[0]*len(profile['stores']['Spell']['columns']);row[0]=spell;row[71]=3
+                    data['Spell'][spell]=row
+                    ability=[spell,772,spell,0,32,0,0,1,dc_chain[i+1] if i<4 else 0,2 if i==0 else 0,0,0,0,0]
+                    data['SkillLineAbility'][spell]=ability
+                row=[0]*len(profile['stores']['SkillLine']['columns']);row[:2]=[772,7];data['SkillLine'][772]=row
+                data['SkillRaceClassInfo'][772]=[772,772,0xffffffff,32,1040,0,0,0]
+                return data
+            assets.stores=dc_stores
+            for name in ('tc-dbc','ac-dbc'):shutil.rmtree(work/name)
+            assets.write_assets(work,profile)
+            sql(f'''INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,online,activeTalentGroup,talentGroupsCount,at_login)
+              VALUES(80,1,'BaseZero','',1,6,80,0,0,2,0),(81,1,'BaseOne','',2,6,62,0,1,2,0),
+                    (82,1,'EnabledCoil','',1,6,80,0,0,1,0),(83,1,'NoUnholy','',1,6,80,0,0,1,0),
+                    (84,1,'PendingCoil','',1,6,80,0,0,1,4),(85,1,'WrongClass','',1,1,80,0,0,1,0),
+                    (86,1,'StoredBase','',1,6,80,0,0,1,0),(87,1,'ZeroUnholy','',1,6,80,0,0,1,0),
+                    (88,1,'BadUnholy','',1,6,80,0,0,1,0),(89,1,'OtherSpell','',1,6,80,0,0,1,0);
+              INSERT INTO `{source}`.character_spell VALUES
+                (80,49895,1,1,0x00abff),(80,6603,1,0,0x00ff),(81,49892,1,1,NULL),(81,49893,1,1,0xff00),
+                (82,49892,1,1,NULL),(82,49895,1,0,NULL),(83,49893,1,1,NULL),(84,49894,1,1,NULL),
+                (85,49892,1,1,NULL),(86,47541,1,1,NULL),(86,49895,1,1,NULL),
+                (87,49892,1,1,NULL),(88,49893,1,1,NULL),(89,10308,1,1,NULL);
+              INSERT INTO `{source}`.character_skills VALUES
+                (80,772,1,1),(80,171,350,450),(81,772,310,310),(82,772,400,400),
+                (84,772,400,400),(85,772,400,400),(86,772,400,400),(87,772,0,400),(88,772,1,401);
+              INSERT INTO `{source}`.character_talent VALUES(80,49189,0),(80,50149,1);
+              INSERT INTO `{world}`.spell_script_names VALUES(-47541,'spell_dk_death_coil');
+              INSERT INTO `{world}`.playercreateinfo_spell_custom(racemask,classmask,Spell) VALUES(0,0,49895);''')
+            sql(f'INSERT INTO `{world}`.spell_ranks VALUES '+','.join(f'(47541,{s},{i+1})' for i,s in enumerate(dc_chain)))
+            dc_baseline=checksum();other_before=sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')
+            dc_report=work/'death-coil-blockers.tsv'
+            dc_report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(f'{g}\t*\tUNREPRESENTABLE_DISABLED_SPELL\t49895\n' for g in range(80,90)))
+            captured=run('inspect-migration-blockers','--report',str(dc_report));evidence=Path(captured.stdout.split('Reports: ',1)[1].strip())
+            dc_args=('plan','disabled-spell-history','--migration-inspection',evidence.name,'--native-death-coil')
+            assert 'DEATH_COIL_CONFIG_REQUIRED' in run(*dc_args,'--preview',code=2).stderr
+            config.write_text(old_config.replace('[source]\n','[source]\nplayer_start_all_spells=0\n'))
+            pointer=(session()/'active-batch.json').read_bytes();old_batches=set((session()/'batches').iterdir())
+            preview=run(*dc_args,'--preview');review=json.loads(Path(preview.stdout.split('Details: ',1)[1].splitlines()[0]).read_text())
+            assert review['summary']['reviewed_candidate_rows']==12 and review['summary']['selected_rows']==3,review
+            assert review['summary']['native_base_characters']==2 and len(review['native_base_proofs'])==2
+            assert review['summary']['existing_native_skill_normalizations']==1
+            assert pointer==(session()/'active-batch.json').read_bytes() and old_batches==set((session()/'batches').iterdir())
+            assert checksum()==dc_baseline
+            assert 'ORDINARY_HISTORY_SELECTION_MISMATCH' in run(*dc_args,'--expect-review-rows','3',code=2).stderr
+            old=run('plan','disabled-spell-history','--migration-inspection',evidence.name,'--inactive-custom-defaults','--preview')
+            old_review=json.loads(Path(old.stdout.split('Details: ',1)[1].splitlines()[0]).read_text())
+            assert not any(row[1] in dc_chain for row in old_review['selected'])
+            sql(f'INSERT INTO `{source}`.character_skills VALUES(83,772,400,400)')
+            drift=checksum();assert 'HISTORY_INPUT_DRIFT' in run(*dc_args,'--expect-review-rows','12',code=2).stderr;assert checksum()==drift
+            sql(f'DELETE FROM `{source}`.character_skills WHERE guid=83 AND skill=772')
+            run(*dc_args,'--expect-review-rows','12');dc_data=json.loads((package()/'manifest.json').read_text())
+            dc_archive=dc_data['archive_schema'];owned.append(dc_archive)
+            assert dc_data['policy']=='tc-native-death-coil-base-repair-v3'
+            assert dc_data['spell_rows_inserted']==0 and dc_data['skill_rows_changed']==0
+            assert 'NATIVE_BASE_FROM_EXISTING_SKILL' in (package()/'relationship-review.tsv').read_text()
+            assert json.loads((package()/'native-base-review.json').read_text())['proofs']==dc_data['native_base_proofs']
+            run('prepare');run('prepare');assert checksum()==dc_baseline
+            for assertion in ('','SET @ordinary_history_native_base=49895;'):
+                direct=subprocess.run(['mysql',*base,'--user='+writer],text=True,capture_output=True,input=
+                    f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';SET @ordinary_history_all_spells=0;{assertion}CALL `{dc_archive}`.apply_batch();")
+                assert direct.returncode!=0 and 'native Death Coil rank 1 availability assertion required' in direct.stderr,direct.stderr
+                assert checksum()==dc_baseline
+            config.write_text(old_config.replace('[source]\n','[source]\nplayer_start_all_spells=1\n'))
+            assert 'DEATH_COIL_CONFIG_REQUIRED' in run('apply',code=2).stderr
+            config.write_text(old_config.replace('[source]\n','[source]\nplayer_start_all_spells=0\n'))
+            sql(f'UPDATE `{source}`.character_skills SET max=2 WHERE guid=80 AND skill=772')
+            drift=checksum();run('apply',code=2);assert checksum()==drift
+            sql(f'UPDATE `{source}`.character_skills SET max=1 WHERE guid=80 AND skill=772')
+            sql(f'UPDATE `{world}`.playercreateinfo_spell_custom SET racemask=1 WHERE Spell=49895')
+            drift=checksum();assert 'HISTORY_METADATA_DRIFT' in run('apply',code=2).stderr
+            direct=subprocess.run(['mysql',*base,'--user='+writer],text=True,capture_output=True,input=
+                f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';SET @ordinary_history_all_spells=0;SET @ordinary_history_native_base=47541;CALL `{dc_archive}`.apply_batch();")
+            assert direct.returncode!=0 and 'World metadata content changed' in direct.stderr,direct.stderr
+            assert checksum()==drift;sql(f'UPDATE `{world}`.playercreateinfo_spell_custom SET racemask=0 WHERE Spell=49895')
+            sql(f"CREATE TRIGGER `{dc_archive}`.fail_commit BEFORE UPDATE ON `{dc_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='death-coil-late-error'; END IF; END")
+            run('apply',code=2);assert checksum()==dc_baseline and sql(f'SELECT state FROM `{dc_archive}`.batch')=='PREPARED'
+            sql(f'DROP TRIGGER `{dc_archive}`.fail_commit')
+            sql(f"CREATE TRIGGER `{dc_archive}`.pause_commit BEFORE UPDATE ON `{dc_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN DO SLEEP(30); END IF; END")
+            worker=subprocess.Popen(command+['apply'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            deadline=time.monotonic()+10;connection=''
+            while time.monotonic()<deadline:
+                if worker.poll() is not None:raise AssertionError(worker.communicate())
+                connection=sql("SELECT ID FROM information_schema.PROCESSLIST WHERE DB='"+dc_archive+"' AND STATE='User sleep' LIMIT 1")
+                if connection:break
+                time.sleep(.1)
+            assert connection,'Death Coil apply did not reach the transactional checkpoint'
+            sql('KILL CONNECTION '+connection);worker.communicate(timeout=10);assert worker.returncode!=0;worker=None
+            assert checksum()==dc_baseline and sql(f'SELECT state FROM `{dc_archive}`.batch')=='PREPARED'
+            sql(f'DROP TRIGGER `{dc_archive}`.pause_commit')
+            run('status');run('apply');run('apply');run('status')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid IN (80,81) AND spell IN (47541,49892,49893,49894,49895)')=='0'
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==other_before
+            sql(f'UPDATE `{source}`.character_skills SET value=400,max=400 WHERE guid=80 AND skill=772')
+            drift=checksum();run('restore',code=2);assert checksum()==drift
+            sql(f'UPDATE `{source}`.character_skills SET value=1,max=1 WHERE guid=80 AND skill=772')
+            run('restore');run('restore');assert checksum()==dc_baseline;run('apply',code=2)
+            passed('native Death Coil v3: explicit base-only authorization, v1/v2 refusal, both specs and overlapping anchors, absence/no grants, old skill state/normalization proof, input/world/direct-SQL guards, late/disconnect rollback, rerun and exact restoration')
+            sql(f'''DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 80 AND 89;
+              DELETE FROM `{source}`.character_talent WHERE guid=80;DELETE FROM `{source}`.character_skills WHERE guid BETWEEN 80 AND 89;
+              DELETE FROM `{source}`.characters WHERE guid BETWEEN 80 AND 89;
+              DELETE FROM `{world}`.spell_ranks WHERE first_spell_id=47541;
+              DELETE FROM `{world}`.spell_script_names WHERE spell_id=-47541;
+              DELETE FROM `{world}`.playercreateinfo_spell_custom WHERE Spell=49895;''')
+            config.write_text(old_config);assets.stores=before_dc_stores
+            for name in ('tc-dbc','ac-dbc'):shutil.rmtree(work/name)
+            assets.write_assets(work,profile);assert checksum()==baseline
             scale=int(os.environ.get('HISTORY_SCALE_ROWS','0'))
             if scale:
                 assert 1<=scale<=200000
