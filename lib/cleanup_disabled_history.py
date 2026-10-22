@@ -170,6 +170,12 @@ def check_metadata(settings, manifest):
                 or sha(ROOT/'lib/cleanup_active_reset.py') != manifest.get('numeric_reader_sha256')
                 or sha(ROOT/'lib/cleanup_eligibility.py') != manifest.get('world_guard_reader_sha256')):
             fail('OWNERSHIP_FOREIGN_POLICY_DRIFT','Foreign-family policy or exact numeric/world guards differ; retain original toolkit')
+    if manifest.get('policy') == ownership.PREFIX_POLICY:
+        if (manifest.get('native_prefix_ack') != ownership.PREFIX_ACK
+                or manifest.get('numeric_fingerprint') != 'EXACT_FRACTIONAL_V1'
+                or sha(ROOT/'lib/cleanup_active_reset.py') != manifest.get('numeric_reader_sha256')
+                or sha(ROOT/'lib/cleanup_eligibility.py') != manifest.get('world_guard_reader_sha256')):
+            fail('OWNERSHIP_PREFIX_POLICY_DRIFT','Native-prefix policy or exact numeric/world guards differ; retain original toolkit')
     if manifest.get('policy') == ordinary_history.INACTIVE_DEFAULT_POLICY:
         if ordinary_history.configuration_contract(settings) != manifest.get('configuration_contract'):
             fail('ORDINARY_HISTORY_CONFIG_DRIFT','Configuration contract differs from the reviewed ordinary-history batch')
@@ -182,7 +188,7 @@ def check_metadata(settings, manifest):
     for key,entry in manifest.get('core_compatibility',{}).items():
         if settings.compatibility.get(key,{}).get('manifest_sha256') != entry.get('manifest_sha256'):
             fail('CORE_PROFILE_MISMATCH','Core compatibility manifests differ from the reviewed history batch')
-    effective, world = read_world(settings,exact_numeric=manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, ordinary_history.TRAINING_POLICY, ownership.FOREIGN_POLICY, SWITCH_POLICY))
+    effective, world = read_world(settings,exact_numeric=manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, ordinary_history.TRAINING_POLICY, ownership.FOREIGN_POLICY, ownership.PREFIX_POLICY, SWITCH_POLICY))
     if sha_json(world) != manifest.get('world_sha256') or effective.hashes != manifest.get('semantic_dbc_sha256'):
         fail('HISTORY_METADATA_DRIFT','Effective TC world/DBC metadata differs from this reviewed history batch')
     if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES):
@@ -339,13 +345,16 @@ def plan_history(settings, work, args, output):
     ownership_mode = getattr(args,'talent_ownership',False)
     ownership_reader = sha(ROOT/'lib/cleanup_ownership.py') if ownership_mode else None
     foreign_mode = ownership_mode and getattr(args,'foreign_class_families',False)
+    prefix_mode = ownership_mode and getattr(args,'native_passive_prefixes',False)
+    if prefix_mode and foreign_mode:
+        fail('HISTORY_POLICY_CONFLICT','Native passive prefixes and foreign families are separate policies')
     trained_mode = bool(getattr(args,'migration_inspection',None))
     child_mode = getattr(args,'orphaned_talent_children',False)
     ordinary_mode = getattr(args,'ordinary_spell_history',False)
     inactive_defaults = getattr(args,'inactive_custom_defaults',False)
     native_death_coil = getattr(args,'native_death_coil',False)
     training_prerequisites = getattr(args,'training_prerequisites',False)
-    strong_history_mode = training_prerequisites or foreign_mode
+    strong_history_mode = training_prerequisites or foreign_mode or prefix_mode
     exact_mode = two_world_mode or strong_history_mode
     ordinary_reader = sha(ROOT/'lib/cleanup_ordinary_history.py') if training_prerequisites else None
     world_guard_reader = sha(ROOT/'lib/cleanup_eligibility.py') if strong_history_mode else None
@@ -400,7 +409,7 @@ def plan_history(settings, work, args, output):
         policy = (ordinary_history.TRAINING_POLICY if training_prerequisites else death_coil.POLICY if native_death_coil else
                   ordinary_history.INACTIVE_DEFAULT_POLICY if inactive_defaults else ordinary_history.POLICY)
     if ownership_mode:
-        policy = ownership.FOREIGN_POLICY if foreign_mode else ownership.POLICY
+        policy = ownership.PREFIX_POLICY if prefix_mode else ownership.FOREIGN_POLICY if foreign_mode else ownership.POLICY
     if two_world_mode:
         policy = (pet_teaching.COWER_POLICY if reviewed_cower else
                   eligibility.ABSENT_TEACHER_POLICY if absent_teachers else native_selector.POLICY)
@@ -421,7 +430,8 @@ def plan_history(settings, work, args, output):
             eligibility_proofs = relation_summary.pop('eligibility_proofs')
         elif ownership_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ownership.select(
-                context,effective,args.expect_review_rows,preview=preview,source_dir=settings.paths['tc_source'],foreign_class_families=foreign_mode)
+                context,effective,args.expect_review_rows,preview=preview,source_dir=settings.paths['tc_source'],
+                foreign_class_families=foreign_mode,native_passive_prefixes=prefix_mode)
             ownership_native_proofs = relation_summary.pop('native_owner_proofs')
         elif ordinary_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ordinary_history.select(
@@ -567,7 +577,7 @@ def plan_history(settings, work, args, output):
         batch_inputs.update(training_prerequisite_proofs=training_proofs,ordinary_reader_sha256=ordinary_reader,
                             numeric_reader_sha256=numeric_reader,
                             world_guard_reader_sha256=world_guard_reader)
-    if foreign_mode:
+    if foreign_mode or prefix_mode:
         batch_inputs.update(numeric_reader_sha256=numeric_reader,world_guard_reader_sha256=world_guard_reader)
     if ownership_mode:
         batch_inputs.update(ownership_reader_sha256=ownership_reader,ownership_proofs=relation_proof,
@@ -628,6 +638,10 @@ def plan_history(settings, work, args, output):
         values['WORLD_CHECKS'] = """IF NOT (BINARY @talent_foreign_family_ack <=> BINARY 'UNSELECTED_FOREIGN_FAMILIES_ONLY') THEN
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit unselected foreign-family acknowledgement required'; END IF;
 """ + values['WORLD_CHECKS']
+    if prefix_mode:
+        values['WORLD_CHECKS'] = """IF NOT (BINARY @talent_native_prefix_ack <=> BINARY 'RETAIN_AUTHORIZED_HIGHER_ANCHORS') THEN
+ SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit retained native passive prefix acknowledgement required'; END IF;
+""" + values['WORLD_CHECKS']
     if config_contract is not None and not two_world_mode:
         values['WORLD_CHECKS'] = """IF NOT (BINARY @ordinary_history_all_spells <=> BINARY '0') THEN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit PlayerStart.AllSpells=0 assertion required for ordinary history v2'; END IF;
@@ -662,9 +676,10 @@ def plan_history(settings, work, args, output):
             or sha(ROOT/'lib/cleanup_eligibility.py') != world_guard_reader
             or sha(ROOT/'lib/cleanup_active_reset.py') != numeric_reader):
         fail('ORDINARY_TRAINING_POLICY_DRIFT','Training policy or numeric/world guards changed during planning')
-    if foreign_mode and (sha(ROOT/'lib/cleanup_eligibility.py') != world_guard_reader
+    if (foreign_mode or prefix_mode) and (sha(ROOT/'lib/cleanup_eligibility.py') != world_guard_reader
             or sha(ROOT/'lib/cleanup_active_reset.py') != numeric_reader):
-        fail('OWNERSHIP_FOREIGN_POLICY_DRIFT','Exact numeric/world guards changed during planning')
+        fail('OWNERSHIP_PREFIX_POLICY_DRIFT' if prefix_mode else 'OWNERSHIP_FOREIGN_POLICY_DRIFT',
+             'Exact numeric/world guards changed during planning')
     final_effective, final_world = read_world(settings,exact_numeric=exact_mode)
     if metadata(settings,TABLES)!=meta or final_world!=world or final_effective.hashes!=effective.hashes:
         fail('HISTORY_METADATA_DRIFT','Source schema/world metadata changed while planning')
@@ -720,6 +735,9 @@ def plan_history(settings, work, args, output):
             manifest['script_contract'] = 'NO_SPELLBOOK_MUTATION; exact reviewed teaching wrappers; wholly disabled removals; shared 674 and skill 118 preserved for inert shaman 30798 root-only exception'
     if foreign_mode:
         manifest.update(foreign_family_ack=ownership.FOREIGN_ACK,numeric_fingerprint='EXACT_FRACTIONAL_V1',
+                        numeric_reader_sha256=numeric_reader,world_guard_reader_sha256=world_guard_reader)
+    if prefix_mode:
+        manifest.update(native_prefix_ack=ownership.PREFIX_ACK,numeric_fingerprint='EXACT_FRACTIONAL_V1',
                         numeric_reader_sha256=numeric_reader,world_guard_reader_sha256=world_guard_reader)
     if ownership_mode:
         manifest['script_contract'] = 'Isolated verified TC talent families; selected runtime routes require correct existing anchors and reviewed native contracts; no skill/profession/default/shared routes'

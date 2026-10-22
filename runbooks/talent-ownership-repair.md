@@ -6,6 +6,60 @@ in **both** specs as authoritative. It can archive/remove conflicting spell rows
 history policies retain their original restrictions. Use only on a stopped,
 backed-up preparation copy; no staff exemption or migration bypass is introduced.
 
+## Opt-in retained native passive prefixes (v3)
+
+`tc-selected-native-passive-prefix-repair-v3` addresses disabled lower passive
+rows that conflict with an already enabled, authorized higher rank. It uses only
+the existing reviewed contracts for Primal Fury, Will of the Necropolis, On a
+Pale Horse and Blood Gorged. Neither earlier ownership mode gains this exception.
+
+```bash
+python3 console plan talent-ownership --migration-inspection latest --native-passive-prefixes --preview
+python3 console plan talent-ownership --migration-inspection INSPECTION_ID --native-passive-prefixes --expect-rows SELECTED_ROWS
+```
+
+The exact selected roots and both builds remain authoritative. Every retired
+authorized prefix must be a disabled **non-talent** predecessor of a retained
+enabled higher anchor in that same verified family. The anchor itself must
+already be authorized in the active spec and cannot be another retirement
+candidate. TC `AddSpell` reconstructs its predecessors; this policy does not
+assume that `_LoadTalents` or `_LoadSpells` casts a learn-effect talent to restore
+a missing child. Missing/disabled anchors, wrong selected-root flags, unsupported
+families, independent/default/skill/shared/script routes, malformed metadata,
+pending resets and online characters still defer the entire family.
+
+After that proof, the policy also retires other conflicting history in the same
+family, including **enabled higher children outside both selected builds**.
+Review that availability change separately from the disabled prefixes; it never
+raises the selected talent rank or grants a higher rank. No direct talent rank
+is expanded or removed. SQL inserts no spell, rewrites no flags and changes no
+talent selection, skill/cap, profession slot, spec count or login flag.
+
+Use the prepare/status/review/apply/status sequence below. `--expect-rows` is
+the preview's total `selected_rows`, including any enabled history retirement.
+`ownership-native-proof.json` records `prefix_restore_anchors`,
+`retired_prefix_flags`, selected spell/groups, authorization masks and retained
+flags. A `PREPARED` batch has archived complete originals and changed no source
+rows. Apply removes only the sealed exact selection; it does not execute login.
+
+The console supplies the three acknowledgements. Direct SQL additionally needs:
+
+```sql
+SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';
+SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';
+SET @talent_native_prefix_ack='RETAIN_AUTHORIZED_HIGHER_ANCHORS';
+```
+
+Complete custom originals, exact fractional source/world fingerprints, layouts,
+DBC assets and selector/numeric/world-reader fingerprints protect preparation,
+apply and restore. Apply/checkpoint are atomic; failed or disconnected operations
+roll back, reruns verify committed state, and exact restore refuses later drift.
+Retain the original toolkits for previous archives. On a fresh import, start a
+new session and capture new evidence; never replay an old package. Core pins,
+protected manifests, migration reconstruction and **UNREVIEWED** approval stay
+unchanged. Protected consumer tests use mocked state; full gameplay is still
+**NOT TESTED**, including effects after spec switches, save, relog and restart.
+
 ## Opt-in unselected foreign-class families (v2)
 
 `tc-unselected-foreign-talent-retirement-v2` is a separate, narrower mode:

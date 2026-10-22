@@ -203,6 +203,15 @@ not detected as a replay of the earlier audit. No profile approval changes.
 
 ## Review a saved migration blocker report
 
+The opt-in
+[`talent-ownership --native-passive-prefixes` v3 policy](talent-ownership-repair.md#opt-in-retained-native-passive-prefixes-v3)
+retires disabled passive predecessors only when retained enabled higher anchors
+already justify their native restoration. It also retires stale unowned higher
+child history within those exact families, including enabled rows; no talent
+selection, skill, rank grant or flag rewrite is inferred. Preview first, use
+`selected_rows` as the expectation, and review `prefix_restore_anchors` before
+prepare/apply. Missing anchors, direct talent conflicts and pending resets defer.
+
 The separate insertion-only
 [`native-skills --skills generic --known-generic-switch` v3 policy](native-skill-repair.md#v3-known-switch-spells-and-missing-generic)
 accepts verified known switch anchors without inferring a second spec. It

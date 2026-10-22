@@ -166,6 +166,91 @@ class OwnershipTests(unittest.TestCase):
         self.assertEqual(self.review()[0], [])
         self.assertEqual(self.review()[1], [(1,16954,'DEFER_MISSING_NATIVE_CHILD_ANCHOR')])
 
+    def prefix_review(self, **kwargs):
+        return select(self.state, self.meta, preview=True, native_passive_prefixes=True, **kwargs)
+
+    def native_prefix_book(self, active=0):
+        self.state['characters'][0][2] = 11
+        self.state['characters'][0][4] = active
+        self.state['character_talent'] = [[1,37117,active]]
+        self.state['character_spell'] = [[1,37117,1,0],[1,16952,1,1],[1,16958,0,1],
+                                         [1,16954,1,0],[1,16961,1,0],[1,6603,1,0]]
+
+    def test_prefix_opt_in_requires_existing_enabled_anchors_and_preserves_native_result(self):
+        for active in (0,1):
+            self.native_prefix_book(active)
+            before = copy.deepcopy(self.state)
+            self.assertEqual(self.review()[0], [])  # v1 has no prefix exception.
+            rows, excluded, _, summary, _ = self.prefix_review()
+            self.assertEqual(rows, [(1,16952,1,1),(1,16958,0,1)])
+            self.assertEqual(excluded, [])
+            self.assertEqual(summary['restorable_disabled_prefix_rows'], 2)
+            self.assertEqual(summary['enabled_rows_removed'], 0)
+            native = summary['native_owner_proofs'][0]
+            self.assertEqual(native['prefix_restore_anchors'], [[16952,[16954]],[16958,[16961]]])
+            self.assertEqual(self.state, before)
+            retained = {s:(a,d) for g,s,a,d in self.state['character_spell'] if (g,s) not in {(g,s) for g,s,_,_ in rows}}
+            result = reconstruct((1,11,active,2),retained,{37117:1<<active},{134:(400,400)},
+                                 self.meta,fixture.SpellTests.ac,'tc-to-ac')
+            self.assertEqual(result[16954]['mask'],1<<active)
+            self.assertEqual(result[16961]['mask'],1<<active)
+            self.assertEqual(self.prefix_review()[0], rows)
+
+    def test_prefix_supports_four_native_families_and_same_or_different_both_spec_ranks(self):
+        for family, cls, owners, children in fixture.fixtures.NATIVE_PASSIVE_TALENTS:
+            for active in (0,1):
+                for other in (owners[-1], owners[0]):
+                    self.state['characters'][0][2:6] = [cls,80,active,2]
+                    self.state['character_talent'] = [[1,owners[-1],active],[1,other,1-active]]
+                    self.state['character_spell'] = [[1,owners[-1],1,0]]
+                    if other != owners[-1]:
+                        self.state['character_spell'].append([1,other,1,1])
+                    prefixes = set()
+                    for child in children[-1]:
+                        prefixes.update(self.meta.predecessors(child))
+                        self.state['character_spell'].append([1,child,1,0])
+                    self.state['character_spell'].extend([1,s,1,1] for s in sorted(prefixes))
+                    result = self.prefix_review()
+                    self.assertEqual({r[1] for r in result[0]},prefixes,(family,active,other,result[1]))
+                    self.assertTrue(all(r[3] for r in result[0]))
+
+    def test_prefix_never_uses_missing_disabled_unowned_or_retiring_high_anchors(self):
+        for mutation in ('missing','disabled','unowned','wrong_parent','no_owner','reset','online','requirement','script','skill','default'):
+            self.native_prefix_book()
+            meta = copy.deepcopy(self.meta)
+            if mutation == 'missing': self.state['character_spell'] = [r for r in self.state['character_spell'] if r[1] not in (16954,16961)]
+            elif mutation == 'disabled':
+                for r in self.state['character_spell']:
+                    if r[1] in (16954,16961): r[3] = 1
+            elif mutation == 'unowned': self.state['character_talent'] = [[1,37116,0]]; self.state['character_spell'][0][1] = 37116
+            elif mutation == 'wrong_parent': self.state['character_spell'][0][3] = 1
+            elif mutation == 'no_owner': self.state['character_talent'] = []
+            elif mutation == 'reset': self.state['characters'][0][7] = 4
+            elif mutation == 'online': self.state['characters'][0][6] = 1
+            elif mutation == 'requirement': meta.requires[16958].add(6603)
+            elif mutation == 'script': meta.scripts[16958].add('unknown')
+            elif mutation == 'skill': meta.spells[16958][71] = 44
+            else: meta.history_default_spells.add(16958)
+            self.assertEqual(select(self.state,meta,preview=True,native_passive_prefixes=True)[0],[],mutation)
+
+    def test_prefix_is_separate_mode_and_does_not_expand_other_ownership_repairs(self):
+        self.assertEqual(self.prefix_review()[0], [])
+        self.native_prefix_book()
+        for r in self.state['character_spell']:
+            if r[1] in (16952,16958): r[3] = 0
+        self.assertEqual(self.prefix_review()[0], [])
+        with self.assertRaises(CleanupError):
+            self.prefix_review(foreign_class_families=True)
+        args=parser().parse_args(['plan','talent-ownership','--migration-inspection','latest','--native-passive-prefixes','--preview'])
+        self.assertTrue(args.native_passive_prefixes)
+        self.native_prefix_book()
+        self.state['character_spell'].append([1,37116,1,0])
+        self.assertEqual(self.prefix_review()[0], [])  # Direct rank conflicts need their own review.
+        with mock.patch('sys.stderr'):
+            with self.assertRaises(SystemExit):
+                parser().parse_args(['plan','talent-ownership','--migration-inspection','latest',
+                                     '--native-passive-prefixes','--foreign-class-families','--preview'])
+
     def test_pending_online_foreign_level_and_invalid_selections_defer(self):
         for field, value in ((7,4),(6,1),(3,200),(2,9),(1,32),(4,0xffffffff),(5,0xffffffff)):
             state = copy.deepcopy(self.state)
@@ -218,6 +303,27 @@ class OwnershipTests(unittest.TestCase):
         args=parser().parse_args(['plan','talent-ownership','--migration-inspection','latest','--expect-rows','2'])
         self.assertEqual(args.expect_review_rows,2)
         self.assertTrue(args.talent_ownership)
+
+    def test_prefix_retires_stale_enabled_higher_children_without_raising_selected_rank(self):
+        self.state['characters'][0][2] = 6
+        self.state['character_talent'] = [[1,61156,0]]
+        disabled = (50096,50108,61274,61275)
+        unauthorized = (50110,50111,61277,61278)
+        self.state['character_spell'] = [[1,61156,1,0],[1,50109,1,0],[1,61276,1,0]]
+        self.state['character_spell'] += [[1,s,1,1] for s in disabled]
+        self.state['character_spell'] += [[1,s,1,0] for s in unauthorized]
+        before = copy.deepcopy(self.state)
+        rows, excluded, _, summary, _ = self.prefix_review()
+        self.assertEqual({r[1] for r in rows},set(disabled+unauthorized))
+        self.assertEqual(excluded,[])
+        self.assertEqual(summary['enabled_rows_removed'],4)
+        self.assertEqual(summary['restorable_disabled_prefix_rows'],4)
+        self.assertEqual(self.state,before)
+        result = reconstruct((1,6,0,2),{61156:(1,0),50109:(1,0),61276:(1,0)},
+                             {61156:1},{770:(400,400)},self.meta,fixture.SpellTests.ac,'tc-to-ac')
+        self.assertEqual(result[50109]['mask'],1)
+        self.assertEqual(result[61276]['mask'],1)
+        self.assertFalse(set(unauthorized) & set(result))
 
     def test_spellbook_safe_label_does_not_authorize_skill_or_ownership_writes(self):
         for call in ('SetSkill(1,0,1,1);','SetFreePrimaryProfessions(2);','ResetTalents(true);',

@@ -16,7 +16,9 @@ POLICY = 'tc-selected-talent-ownership-repair-v1'
 ACK = 'SELECTED_TALENTS_AUTHORITATIVE'
 FOREIGN_POLICY = 'tc-unselected-foreign-talent-retirement-v2'
 FOREIGN_ACK = 'UNSELECTED_FOREIGN_FAMILIES_ONLY'
-POLICIES = (POLICY, FOREIGN_POLICY)
+PREFIX_POLICY = 'tc-selected-native-passive-prefix-repair-v3'
+PREFIX_ACK = 'RETAIN_AUTHORIZED_HIGHER_ANCHORS'
+POLICIES = (POLICY, FOREIGN_POLICY, PREFIX_POLICY)
 
 
 def foreign_class_mask(meta, roots, cls):
@@ -106,9 +108,12 @@ def native_masks(meta, choices, nodes):
     return masks
 
 
-def select(state, meta, expected=None, *, preview=False, source_dir=None, foreign_class_families=False):
+def select(state, meta, expected=None, *, preview=False, source_dir=None, foreign_class_families=False,
+           native_passive_prefixes=False):
     """Return deterministic deletions and proofs, never mutate source inputs."""
     stored = state['character_spell']
+    if foreign_class_families and native_passive_prefixes:
+        fail('OWNERSHIP_POLICY_CONFLICT', 'Native passive prefixes and foreign families are separate policies')
     validate_stored(stored)
     if len(stored) > MAX_ROWS or not 1 <= len(state['characters']) <= 40000:
         fail('OWNERSHIP_BOUND', 'Captured source scope exceeds reviewed bounds')
@@ -146,7 +151,7 @@ def select(state, meta, expected=None, *, preview=False, source_dir=None, foreig
             choices[g, identity[0]].append((s, group))
         seen.add(key)
     grouped, native_cache = defaultdict(list), {}
-    relation_work = native_work = 0
+    relation_work = native_work = prefix_work = 0
     for g, s, a, d in stored:
         for family in sorted(related[s]):
             relation_work += 1
@@ -173,6 +178,7 @@ def select(state, meta, expected=None, *, preview=False, source_dir=None, foreig
         c = chars[g]
         nodes, reason = catalog[family]
         owned = sorted(choices[g, family])
+        candidate_spells = {row[1] for row in candidates}
         foreign_mask = foreign_class_mask(meta,graph.families[family],c[2]) if c[2] in (1,2,3,4,5,6,7,8,9,11) else 0
         if c[2] not in (1,2,3,4,5,6,7,8,9,11) or c[1] not in (1,2,3,4,5,6,7,8,10,11) or not 1 <= c[3] <= 80 or c[5] not in (1,2) or not 0 <= c[4] < c[5]:
             reason = 'DEFER_OWNERSHIP_CHARACTER_STATE'
@@ -195,6 +201,15 @@ def select(state, meta, expected=None, *, preview=False, source_dir=None, foreig
         elif any(not meta.scripts[s] <= safe_scripts for s in nodes):
             reason = 'DEFER_OWNERSHIP_SCRIPT_CONTRACT'
         masks = native_masks(meta, owned, nodes)
+        prefix_anchors = {}
+        if not reason and native_passive_prefixes:
+            try:
+                if not owned or not all(native_passive_rule(s, meta, meta, c[2]) for s, _ in owned):
+                    reason = 'DEFER_OUTSIDE_NATIVE_PREFIX_POLICY'
+                elif candidate_spells & set(meta.talents):
+                    reason = 'DEFER_DIRECT_TALENT_CONFLICT'
+            except Unsupported:
+                reason = 'DEFER_OUTSIDE_NATIVE_PREFIX_POLICY'
         if not reason and owned:
             if any(meta.requires[s] for s in nodes):
                 reason = 'DEFER_SELECTED_PREREQUISITE_CONTRACT'
@@ -211,9 +226,27 @@ def select(state, meta, expected=None, *, preview=False, source_dir=None, foreig
                     elif flags and flags[1] != int(not masks[s] & (1 << c[4])):
                         reason = 'DEFER_SELECTED_OWNER_FLAGS'
             if not reason:
+                if native_passive_prefixes:
+                    prefix_work += len(masks) * len(books[g])
+                    if prefix_work > MAX_ROWS:
+                        fail('OWNERSHIP_BOUND', 'Native prefix anchor review exceeds the bounded work budget')
                 for s, mask in masks.items():
                     if s in books[g] and books[g][s][1] != int(not mask & (1 << c[4])):
-                        reason = 'DEFER_OWNED_CHILD_FLAGS'
+                        # Remove only disabled non-talent predecessors which
+                        # an authorized, retained ENABLED higher rank restores.
+                        # Never use a retiring/unowned/inactive anchor or infer
+                        # a missing exact child from its learn-effect parent.
+                        anchors = sorted(anchor for anchor, (_, disabled) in books[g].items()
+                            if native_passive_prefixes and s not in meta.talents
+                            and books[g][s][1] == 1 and mask & (1 << c[4])
+                            and anchor in nodes and anchor != s and not disabled
+                            and anchor not in meta.talents and masks.get(anchor, 0) & (1 << c[4])
+                            and anchor not in candidate_spells
+                            and s in meta.predecessors(anchor))
+                        if anchors:
+                            prefix_anchors[s] = anchors
+                        else:
+                            reason = 'DEFER_OWNED_CHILD_FLAGS'
             if not reason:
                 retiring = {r[1] for r in candidates}
                 retained_known = set()
@@ -228,6 +261,8 @@ def select(state, meta, expected=None, *, preview=False, source_dir=None, foreig
                 if any(mask & (1 << c[4]) and s not in meta.talents and s not in retained_known
                        for s, mask in masks.items()):
                     reason = 'DEFER_MISSING_NATIVE_CHILD_ANCHOR'
+        if not reason and native_passive_prefixes and not prefix_anchors:
+            reason = 'DEFER_NO_NATIVE_PREFIX_CONFLICT'
         if reason:
             for row in candidates:
                 excluded[row[0], row[1]] = (*row[:2], reason)
@@ -243,6 +278,11 @@ def select(state, meta, expected=None, *, preview=False, source_dir=None, foreig
             **({'contract':'UNSELECTED_FOREIGN_CLASS_FAMILY','character_class':c[2],
                 'foreign_class_mask':foreign_mask,'family_talent_spells':sorted(graph.families[family])}
                if foreign_class_families else {}),
+            **({'contract':'RETAINED_NATIVE_PASSIVE_PREFIX_V1',
+                'prefix_restore_anchors': [[s, anchors] for s, anchors in sorted(prefix_anchors.items())],
+                'retired_prefix_flags': [[s, *books[g][s]] for s in sorted(prefix_anchors)],
+                'native_source_rule':'Non-talent AddSpell recursively restores predecessors from retained enabled anchors; no talent load recast assumed'}
+               if native_passive_prefixes else {}),
             'selected_spell_groups': [list(row) for row in owned],
             'native_authorization_masks': [[s, mask] for s, mask in sorted(masks.items()) if mask],
             'retained_source_flags': [[s, *flags] for s, flags in sorted(retained.items())],
@@ -276,4 +316,9 @@ def select(state, meta, expected=None, *, preview=False, source_dir=None, foreig
         summary['foreign_family_rows'] = len(result)
         summary['native_policy'] = ('Retire only wholly unselected isolated families belonging exclusively to another class, including enabled rows; '
                                    'all skill/reward/default/shared/script guards remain; preserve both selected builds, skills/caps, profession slots and login flags; no grants')
+    if native_passive_prefixes:
+        summary['restorable_disabled_prefix_rows'] = sum(len(p['prefix_restore_anchors']) for p in native_proofs)
+        summary['native_policy'] = ('Retire conflicting rows only in reviewed native passive families with disabled lower prefixes '
+            'restored by retained enabled authorized higher anchors; stale unowned higher history may also be retired, including enabled rows; '
+            'no new anchor, SQL insertion, flag rewrite, talent/spec, skill/cap, profession or login change')
     return result, sorted(excluded.values()), proof, summary, sorted(graph.edges)

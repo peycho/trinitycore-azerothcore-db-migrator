@@ -1,5 +1,19 @@
 # Profile v2 review and acceptance record
 
+The opt-in `tc-selected-native-passive-prefix-repair-v3` preparation policy
+retires disabled lower passive rows only when retained enabled authorized higher
+anchors prove TC predecessor reconstruction. Stale unowned higher children in
+the same reviewed families may also be retired, including enabled rows. Direct
+talent conflicts, missing anchors and unsupported routes remain deferred. Both
+talent builds, skills/caps, professions, spec/login state and unrelated data stay
+unchanged. Complete originals, exact fractional fingerprints, native proofs,
+extra acknowledgement, atomic rollback/rerun and exact restore are required.
+Existing protected TC loading/rank and AC exact-child consumers cover this
+source-only policy; no pins, 100 TC / 105 AC manifests, v1 metadata or
+spell-state-v13 migration changes are introduced. Approval stays UNREVIEWED and
+full gameplay NOT TESTED. See the
+[v3 workflow](talent-ownership-repair.md#opt-in-retained-native-passive-prefixes-v3).
+
 The opt-in `tc-known-generic-switch-skill-v3` preparation repair inserts only
 absent Generic `183` rows from verified enabled known anchors. Both protected
 cores' native skill-acquisition branch is independent of spec count; one-spec

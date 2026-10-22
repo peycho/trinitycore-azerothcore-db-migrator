@@ -20,6 +20,7 @@ fi
 source "$ROOT/tests/test-support.sh"
 python3 "$ROOT/tests/talent-runtime-tests.py" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/ownership-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
+python3 "$ROOT/tests/passive-prefix-runtime-tests.py" "$TRINITYCORE_DIR"
 python3 "$ROOT/tests/spell-eligibility-runtime-tests.py" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/absent-teacher-runtime-tests.py" "$TRINITYCORE_DIR"
 python3 "$ROOT/tests/eligibility-custom-runtime-tests.py" "$AZEROTHCORE_DIR"
@@ -49,6 +50,7 @@ python3 "$ROOT/tests/native-talent-reset-tests.py" "$TRINITYCORE_DIR"
 python3 "$ROOT/tests/character-talent-reset-mysql-tests.py"
 python3 "$ROOT/tests/active-talent-reset-mysql-tests.py"
 python3 "$ROOT/tests/disabled-history-mysql-tests.py"
+python3 "$ROOT/tests/passive-prefix-mysql-tests.py"
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py"
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --absent-teachers
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --training-prerequisites

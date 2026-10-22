@@ -6,6 +6,27 @@ production-sized rehearsal or native gameplay acceptance.
 
 ## CI coverage
 
+Native passive-prefix ownership v3 retains v1 as a rejecting regression control.
+Unit tests cover all four reviewed families, both active specs, differing/same
+selected ranks, overlapping prefixes, disabled/missing/unauthorized anchors,
+enabled higher-child retirement without a higher grant, and preserved inputs.
+`tests/passive-prefix-runtime-tests.py` executes the protected TC stored-row
+loader and predecessor recursion with mocked catalogs/state; the separate
+ownership harness executes AC's exact temporary-child consumer. These are not
+full spell effects or gameplay tests. The isolated MySQL 8.4 fixture covers the
+real preview/plan/prepare/apply/status/restore workflow, complete custom rows,
+full deferred-scope and fractional source/world drift, acknowledgements, late
+and disconnected transaction rollback, reruns and guarded exact restoration.
+
+```bash
+python3 tests/passive-prefix-runtime-tests.py "$TRINITYCORE_DIR"
+REHEARSAL_MYSQL_PORT=33317 MIGRATOR_DISPOSABLE_MYSQL=1 python3 tests/passive-prefix-mysql-tests.py
+```
+
+The MySQL command requires the dedicated disposable endpoint described below;
+it creates/removes only its randomized fixture schemas and users. The tests are
+included in the full rehearsal suite, separate from the fast static CI checks.
+
 Native Generic switch-skill v3 tests retain old policies as rejecting controls
 and cover one/two specs, both active groups, exact level-derived values,
 existing-skill preservation, unsupported anchors/routes, reset/online states and
