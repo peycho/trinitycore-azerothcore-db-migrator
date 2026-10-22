@@ -10,7 +10,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'lib'))
 from cleanup_console import CleanupError, parser
-from cleanup_ownership import select, safe_script_classes
+from cleanup_ownership import select, safe_script_classes, foreign_class_mask
 from spells import Unsupported, reconstruct
 
 spec = importlib.util.spec_from_file_location('semantic_fixture', ROOT/'tests/spell-state-tests.py')
@@ -60,6 +60,70 @@ class OwnershipTests(unittest.TestCase):
         rows = self.review()[0]
         self.assertEqual(rows, [(1,12282,1,0),(1,12664,1,0)])
         self.assertNotIn(6603, [r[1] for r in rows])
+
+    def test_foreign_opt_in_retires_only_exclusive_unselected_family_and_preserves_state(self):
+        self.state['characters'][0][2]=5
+        self.state['character_talent']=[]
+        before=copy.deepcopy(self.state)
+        self.assertEqual(self.review()[0],[])  # Default v1 stays unchanged.
+        with self.assertRaises(Unsupported):
+            reconstruct((1,5,0,2),{s:(a,d)for _,s,a,d in self.state['character_spell']},
+                        {},{},self.meta,fixture.SpellTests.ac,'tc-to-ac')
+        result=select(self.state,self.meta,preview=True,foreign_class_families=True)
+        self.assertEqual(result[0],[(1,12282,1,0),(1,12664,1,0)])
+        self.assertEqual(result[3]['foreign_family_rows'],2)
+        self.assertTrue(all(p['foreign_class_mask']==1 and not p['selected_spell_groups']
+                            for p in result[3]['native_owner_proofs']))
+        self.assertEqual(self.state,before)
+        retained={s:(a,d)for g,s,a,d in self.state['character_spell'] if (g,s)not in {(g,s)for g,s,_,_ in result[0]}}
+        self.assertEqual(set(reconstruct((1,5,0,2),retained,{}, {},self.meta,fixture.SpellTests.ac,'tc-to-ac')),{6603})
+        self.assertEqual(result,select(self.state,self.meta,preview=True,foreign_class_families=True))
+
+    def test_foreign_mode_preserves_same_class_owned_and_unowned_families_both_specs(self):
+        for active in (0,1):
+            self.state['characters'][0][4]=active
+            self.state['character_talent']=[[1,12282,0],[1,12664,1]]
+            self.assertEqual(select(self.state,self.meta,preview=True,foreign_class_families=True)[0],[])
+        self.state['character_talent']=[]
+        self.assertEqual(select(self.state,self.meta,preview=True,foreign_class_families=True)[0],[])
+
+    def test_foreign_mode_never_removes_shared_dual_wield_or_skills(self):
+        self.state['character_talent']=[]
+        self.state['character_spell']=[[1,674,1,0],[1,6603,1,0]]
+        self.state['character_skills'].append([1,118,1,1])
+        before=copy.deepcopy(self.state)
+        result=select(self.state,self.meta,preview=True,foreign_class_families=True)
+        self.assertEqual(result[0],[])
+        self.assertEqual(self.state,before)
+
+    def test_foreign_mode_keeps_independent_skill_script_default_and_reset_guards(self):
+        self.state['characters'][0][2]=5
+        self.state['character_talent']=[]
+        for kind in ('learn','skill','script','default','reset','online','foreign_selection'):
+            with self.subTest(kind=kind):
+                meta,state=copy.deepcopy(self.meta),copy.deepcopy(self.state)
+                if kind=='learn':meta.learns[6603].append((12282,1,False))
+                elif kind=='skill':meta.spells[12282][71]=44
+                elif kind=='script':meta.scripts[12282].add('spell_unknown')
+                elif kind=='default':meta.history_default_spells.add(12282)
+                elif kind=='reset':state['characters'][0][7]=4
+                elif kind=='online':state['characters'][0][6]=1
+                else:state['character_talent']=[[1,12282,0]]
+                self.assertEqual(select(state,meta,preview=True,foreign_class_families=True)[0],[])
+
+    def test_foreign_class_contract_rejects_shared_invalid_and_truncated_tabs(self):
+        root=12282;key=self.meta.talent_rows[root][1]
+        self.assertEqual(foreign_class_mask(self.meta,{root},5),1)
+        for mask in (0,3,1<<9,1<<4):
+            self.meta.stores['TalentTab'][key][20]=mask
+            self.assertEqual(foreign_class_mask(self.meta,{root},5),0)
+        self.meta.stores['TalentTab'][key]=[]
+        self.assertEqual(foreign_class_mask(self.meta,{root},5),0)
+
+    def test_foreign_console_flag_is_explicit(self):
+        args=parser().parse_args(['plan','talent-ownership','--migration-inspection','latest',
+                                 '--foreign-class-families','--preview'])
+        self.assertTrue(args.foreign_class_families)
 
     def test_both_specs_and_same_owner_union_preserve_authorized_rows(self):
         for active in (0,1):

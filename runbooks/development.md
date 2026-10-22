@@ -33,6 +33,16 @@ world metadata, SQL acknowledgements, late/disconnect rollback, reruns and exact
 restore with talents, skills and unrelated data unchanged. Old policies retain
 their restrictions; native consumers and gameplay acceptance remain separate.
 
+Foreign-family ownership v2 adds explicit class-exclusive/unselected proofs and
+keeps v1 as a rejecting control. Fast tests preserve same-class selections in
+both specs and ordinary Dual Wield/skill 118, and reject independent learning,
+skill effects, scripts, custom defaults, invalid ownership, malformed class
+tabs, online state and pending resets. The disposable disabled-history suite
+executes v2 through the real console: exact fractional source/world drift,
+layout changes, full deferred-scope drift, both SQL acknowledgements, late and
+disconnected rollback, committed reruns, unrelated-data preservation and exact
+custom-field restoration. These remain preparation checks, not gameplay gates.
+
 The native Death Coil preparation v3 suite keeps v1/v2 as failing controls and
 checks the exact five-rank chain, skill 772 reward metadata, both specs, absent
 base, active/disabled flags, overlapping anchors, no spell insertion/higher

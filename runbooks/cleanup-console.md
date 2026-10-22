@@ -203,6 +203,12 @@ not detected as a replay of the earlier audit. No profile approval changes.
 
 ## Review a saved migration blocker report
 
+For isolated foreign-class talent families, use the explicit
+[`talent-ownership --foreign-class-families` v2 policy](talent-ownership-repair.md#opt-in-unselected-foreign-class-families-v2).
+It preserves shared skill spells such as Dual Wield and both selected builds.
+Its expectation is selected rows; ordinary-history expectations use reviewed
+candidate rows as documented in their own sections.
+
 When several migration spell categories remain, capture their complete source
 context together instead of deleting every audit finding or repeatedly rerunning
 preflight. With the existing preparation config and session:

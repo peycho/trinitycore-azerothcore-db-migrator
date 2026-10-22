@@ -1,5 +1,17 @@
 # Profile v2 review and acceptance record
 
+The opt-in `tc-unselected-foreign-talent-retirement-v2` preparation policy
+retires only isolated unselected families belonging exclusively to another
+player class, including enabled history. All skill/reward/shared-route guards
+remain, protecting ordinary Dual Wield; same-class families remain outside v2.
+Both selected builds, skills/caps, profession slots, login flags and unrelated
+data are preserved. Full originals, exact fractional source/world hashes,
+class/family proofs, extra acknowledgement, atomic rollback/rerun and exact
+restoration apply. Default v1 retains its foreign exclusions. Core pins,
+100 TC / 105 AC protected manifests and spell-state-v13 are unchanged; release
+approval is UNREVIEWED and full native gameplay remains NOT TESTED. See the
+[v2 workflow](talent-ownership-repair.md#opt-in-unselected-foreign-class-families-v2).
+
 The opt-in `tc-disabled-ordinary-training-prerequisites-v4` source preparation
 contract permits only exact ordinary Divine Spirit/Prayer and Nature's Grasp
 training prerequisites around wholly disabled removals. Enabled counterparts,

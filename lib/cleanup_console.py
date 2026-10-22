@@ -602,11 +602,15 @@ def command_action(settings, work, args):
         configuration_ack += "SET @ordinary_training_ack='REVIEWED_TRAINING_PREREQUISITES_ONLY';\n"
     if manifest.get('policy') == DEATH_COIL_POLICY:
         configuration_ack += 'SET @ordinary_history_native_base=47541;\n'
-    from cleanup_ownership import POLICY as OWNERSHIP_POLICY, ACK as OWNERSHIP_ACK
-    if manifest.get('policy') == OWNERSHIP_POLICY:
+    from cleanup_ownership import POLICIES as OWNERSHIP_POLICIES, ACK as OWNERSHIP_ACK, FOREIGN_POLICY, FOREIGN_ACK
+    if manifest.get('policy') in OWNERSHIP_POLICIES:
         if manifest.get('ownership_ack') != OWNERSHIP_ACK:
             fail('OWNERSHIP_ACK_INVALID','Ownership policy acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';\n"
+    if manifest.get('policy') == FOREIGN_POLICY:
+        if manifest.get('foreign_family_ack') != FOREIGN_ACK:
+            fail('OWNERSHIP_FOREIGN_ACK_INVALID','Foreign-family acknowledgement differs from the reviewed candidate')
+        configuration_ack += "SET @talent_foreign_family_ack='UNSELECTED_FOREIGN_FAMILIES_ONLY';\n"
     from cleanup_eligibility import POLICIES as ELIGIBILITY_POLICIES, ACK as ELIGIBILITY_ACK, ABSENT_TEACHER_POLICY, ABSENT_TEACHER_ACK
     if manifest.get('policy') in ELIGIBILITY_POLICIES:
         if manifest.get('eligibility_ack') != ELIGIBILITY_ACK:
@@ -740,6 +744,7 @@ def parser():
     ownership=types.add_parser('talent-ownership',help='Explicit archived repair of conflicting enabled/disabled spell rows; preserve selected builds and native authorized state')
     ownership.set_defaults(talent_ownership=True,inspection=None,audit=None)
     ownership.add_argument('--migration-inspection',required=True,help='Sealed migration-blocker inspection ID or latest')
+    ownership.add_argument('--foreign-class-families',action='store_true',help='Separate v2: retire only isolated unselected foreign-class talent families; retain shared skill spells and selected ownership')
     ownership_review=ownership.add_mutually_exclusive_group(required=True)
     ownership_review.add_argument('--preview',action='store_true',help='Read-only complete captured-scope review; no active batch or SQL package')
     ownership_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows printed by this policy preview')

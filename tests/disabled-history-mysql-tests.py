@@ -940,6 +940,90 @@ backup_reference=disposable-synthetic-fixture
             sql(f'UPDATE `{source}`.character_spell SET custom_blob=0x0011 WHERE guid=90 AND spell=6603')
             run('restore');run('restore');assert checksum()==ownership_before;run('apply',code=2)
             passed('ownership v1: enabled retirement with both selected specs preserved; native exact children/no grants, legitimate TC prefixes, full deferred-scope drift, explicit acknowledgement, late/disconnect rollback, reruns and exact binary restore')
+            # Foreign v2 is a separate opt-in. Same-class conflicts and shared
+            # Dual Wield must remain outside it; full custom originals survive.
+            sql(f"UPDATE `{source}`.characters SET class=5,position_x=0.1 WHERE guid=95")
+            sql(f"ALTER TABLE `{source}`.character_spell ADD custom_decimal DECIMAL(12,6) NOT NULL DEFAULT 0.100001")
+            sql(f"INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,online,activeTalentGroup,talentGroupsCount,at_login) VALUES(98,1,'ForeignTwo','',1,5,80,0,1,2,0),(99,1,'SharedSkill','',1,1,80,0,0,1,0)")
+            sql(f"INSERT INTO `{source}`.character_spell(guid,spell,active,disabled,custom_blob) VALUES(95,6603,1,0,0x1234),(98,12282,1,1,0x00ff),(98,12664,1,0,0xff00),(99,674,1,0,0x0102)")
+            sql(f"INSERT INTO `{source}`.character_skills VALUES(98,171,375,450),(99,118,1,1)")
+            sql(f"INSERT INTO `{world}`.spell_dbc(Id,EffectRealPointsPerLevel1) VALUES(900099,0.1)")
+            foreign_before=checksum();foreign_others=sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')
+            # The old report's scope ends at 97; add 98/99 to the saved scope only.
+            foreign_report=work/'foreign-blockers.tsv'
+            foreign_report.write_text(ownership_report.read_text()+''.join(f'{g}\t*\tUNAUTHORIZED_TALENT_SPELL\t12282: foreign fixture scope\n' for g in (98,99)))
+            result=run('inspect-migration-blockers','--report',str(foreign_report))
+            evidence=Path(result.stdout.split('Reports: ',1)[1].splitlines()[0])
+            foreign_args=('plan','talent-ownership','--migration-inspection',evidence.name,'--foreign-class-families')
+            old_control=run('plan','talent-ownership','--migration-inspection',evidence.name,'--preview')
+            old_review=json.loads(Path(old_control.stdout.split('Details: ',1)[1].splitlines()[0]).read_text())
+            assert not any(r[0]in(95,98,99)for r in old_review['selected'])
+            pointer=(session()/'active-batch.json').read_bytes();batches=set((session()/'batches').iterdir())
+            preview=run(*foreign_args,'--preview')
+            review=json.loads(Path(preview.stdout.split('Details: ',1)[1].splitlines()[0]).read_text())
+            assert review['selected']==[[95,12296,1,0],[98,12282,1,1],[98,12664,1,0]],review
+            assert review['summary']['foreign_family_rows']==3 and review['summary']['selected_characters']==2
+            assert not any(r[0]==99 for r in review['selected'])
+            assert pointer==(session()/'active-batch.json').read_bytes() and batches==set((session()/'batches').iterdir())
+            assert checksum()==foreign_before
+            run(*foreign_args,'--expect-rows','2',code=2)
+            sql(f'UPDATE `{source}`.characters SET level=79 WHERE guid=91')
+            changed=checksum();assert 'HISTORY_INPUT_DRIFT' in run(*foreign_args,'--expect-rows','3',code=2).stderr
+            assert checksum()==changed;sql(f'UPDATE `{source}`.characters SET level=80 WHERE guid=91')
+            run(*foreign_args,'--expect-rows','3')
+            foreign_data=json.loads((package()/'manifest.json').read_text());foreign_archive=foreign_data['archive_schema'];owned.append(foreign_archive)
+            assert foreign_data['policy']=='tc-unselected-foreign-talent-retirement-v2'
+            assert foreign_data['numeric_fingerprint']=='EXACT_FRACTIONAL_V1'
+            assert all(p['foreign_class_mask']==1 and not p['selected_spell_groups'] for p in foreign_data['native_owner_proofs'])
+            run('prepare');run('prepare');assert checksum()==foreign_before
+            foreign_ack="SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';"
+            def direct_foreign(extra):
+                return subprocess.run(['mysql',*base,'--user='+writer],input=foreign_ack+extra+f'CALL `{foreign_archive}`.apply_batch();',text=True,capture_output=True)
+            for extra in ('',"SET @talent_foreign_family_ack='WRONG';"):
+                failed=direct_foreign(extra);assert failed.returncode!=0 and 'Explicit unselected foreign-family' in failed.stderr,failed.stderr
+                assert checksum()==foreign_before
+            foreign_extra="SET @talent_foreign_family_ack='UNSELECTED_FOREIGN_FAMILIES_ONLY';"
+            for update,undo,expected in (
+                (f'UPDATE `{source}`.characters SET position_x=0.2 WHERE guid=95',f'UPDATE `{source}`.characters SET position_x=0.1 WHERE guid=95','full-row fingerprint differs'),
+                (f'UPDATE `{source}`.character_spell SET custom_decimal=0.100002 WHERE guid=95 AND spell=6603',f'UPDATE `{source}`.character_spell SET custom_decimal=0.100001 WHERE guid=95 AND spell=6603','full-row fingerprint differs'),
+                (f'UPDATE `{world}`.spell_dbc SET EffectRealPointsPerLevel1=0.2 WHERE Id=900099',f'UPDATE `{world}`.spell_dbc SET EffectRealPointsPerLevel1=0.1 WHERE Id=900099','world content drift')):
+                sql(update);changed=checksum();failed=direct_foreign(foreign_extra)
+                assert failed.returncode!=0 and expected in failed.stderr,failed.stderr
+                assert checksum()==changed;sql(undo)
+            sql(f'ALTER TABLE `{world}`.spell_required ADD unexpected INT DEFAULT 0')
+            failed=direct_foreign(foreign_extra);assert failed.returncode!=0 and 'world layout' in failed.stderr,failed.stderr
+            sql(f'ALTER TABLE `{world}`.spell_required DROP unexpected')
+            sql(f"CREATE TRIGGER `{foreign_archive}`.fail_commit BEFORE UPDATE ON `{foreign_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='foreign-late-error';END IF;END")
+            run('apply',code=2);assert checksum()==foreign_before and sql(f'SELECT state FROM `{foreign_archive}`.batch')=='PREPARED'
+            sql(f'DROP TRIGGER `{foreign_archive}`.fail_commit')
+            sql(f"CREATE TRIGGER `{foreign_archive}`.pause_commit BEFORE UPDATE ON `{foreign_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN DO SLEEP(30);END IF;END")
+            worker=subprocess.Popen(command+['apply'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            deadline=time.monotonic()+10;connection=''
+            while time.monotonic()<deadline:
+                if worker.poll() is not None:raise AssertionError(worker.communicate())
+                connection=sql(f"SELECT ID FROM information_schema.PROCESSLIST WHERE DB='{foreign_archive}' AND STATE='User sleep' LIMIT 1")
+                if connection:break
+                time.sleep(.1)
+            assert connection,'Foreign apply did not reach checkpoint'
+            sql('KILL CONNECTION '+connection);worker.communicate(timeout=10);assert worker.returncode!=0;worker=None
+            assert checksum()==foreign_before and sql(f'SELECT state FROM `{foreign_archive}`.batch')=='PREPARED'
+            sql(f'DROP TRIGGER `{foreign_archive}`.pause_commit')
+            run('status');run('apply');run('apply');run('status')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE (guid=95 AND spell=12296) OR (guid=98 AND spell IN(12282,12664))')=='0'
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=99 AND spell=674')=='1'
+            assert sql(f'SELECT value FROM `{source}`.character_skills WHERE guid=99 AND skill=118')=='1'
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==foreign_others
+            sql(f'UPDATE `{source}`.character_spell SET custom_decimal=0.100002 WHERE guid=95 AND spell=6603')
+            changed=checksum();run('restore',code=2);assert checksum()==changed
+            sql(f'UPDATE `{source}`.character_spell SET custom_decimal=0.100001 WHERE guid=95 AND spell=6603')
+            run('restore');run('restore');assert checksum()==foreign_before;run('apply',code=2)
+            passed('foreign ownership v2: explicit opt-in, isolated cross-class rows only; shared Dual Wield/skills, both selected builds and same-class conflicts preserved; exact fractional source/world drift, direct SQL acknowledgements, rollback/disconnect, reruns and full custom restore')
+            sql(f'DELETE FROM `{source}`.character_spell WHERE guid IN(98,99) OR (guid=95 AND spell=6603)')
+            sql(f'DELETE FROM `{source}`.character_skills WHERE guid IN(98,99)')
+            sql(f'DELETE FROM `{source}`.characters WHERE guid IN(98,99)')
+            sql(f'UPDATE `{source}`.characters SET class=1,position_x=0 WHERE guid=95')
+            sql(f'ALTER TABLE `{source}`.character_spell DROP custom_decimal')
+            sql(f'DELETE FROM `{world}`.spell_dbc WHERE Id=900099')
             sql(f'''DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 90 AND 97;
               DELETE FROM `{source}`.character_talent WHERE guid BETWEEN 90 AND 97;
               DELETE FROM `{source}`.character_skills WHERE guid BETWEEN 90 AND 97;

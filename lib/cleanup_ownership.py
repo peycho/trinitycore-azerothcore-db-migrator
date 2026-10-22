@@ -14,6 +14,17 @@ from spells import Unsupported, native_passive_rule
 
 POLICY = 'tc-selected-talent-ownership-repair-v1'
 ACK = 'SELECTED_TALENTS_AUTHORITATIVE'
+FOREIGN_POLICY = 'tc-unselected-foreign-talent-retirement-v2'
+FOREIGN_ACK = 'UNSELECTED_FOREIGN_FAMILIES_ONLY'
+POLICIES = (POLICY, FOREIGN_POLICY)
+
+
+def foreign_class_mask(meta, roots, cls):
+    """A whole talent family must belong exclusively to one other player class."""
+    tabs = [meta.stores['TalentTab'].get(meta.talent_rows[s][1], []) for s in roots]
+    masks = {tab[20] if len(tab)>20 else 0 for tab in tabs}
+    supported = {1 << (c-1) for c in (1,2,3,4,5,6,7,8,9,11)}
+    return next(iter(masks)) if len(masks)==1 and masks <= supported and masks != {1 << (cls-1)} else 0
 
 
 def safe_script_classes(text):
@@ -95,7 +106,7 @@ def native_masks(meta, choices, nodes):
     return masks
 
 
-def select(state, meta, expected=None, *, preview=False, source_dir=None):
+def select(state, meta, expected=None, *, preview=False, source_dir=None, foreign_class_families=False):
     """Return deterministic deletions and proofs, never mutate source inputs."""
     stored = state['character_spell']
     validate_stored(stored)
@@ -162,6 +173,7 @@ def select(state, meta, expected=None, *, preview=False, source_dir=None):
         c = chars[g]
         nodes, reason = catalog[family]
         owned = sorted(choices[g, family])
+        foreign_mask = foreign_class_mask(meta,graph.families[family],c[2]) if c[2] in (1,2,3,4,5,6,7,8,9,11) else 0
         if c[2] not in (1,2,3,4,5,6,7,8,9,11) or c[1] not in (1,2,3,4,5,6,7,8,10,11) or not 1 <= c[3] <= 80 or c[5] not in (1,2) or not 0 <= c[4] < c[5]:
             reason = 'DEFER_OWNERSHIP_CHARACTER_STATE'
         elif c[6]:
@@ -172,7 +184,9 @@ def select(state, meta, expected=None, *, preview=False, source_dir=None):
             reason = 'DEFER_INVALID_TALENT_SELECTION'
         elif any(len(related[s]) != 1 for s in nodes):
             reason = 'DEFER_AMBIGUOUS_TALENT_DERIVATION'
-        elif any(meta.stores['TalentTab'].get(meta.talent_rows[s][1], [0]*21)[20] != 1 << (c[2]-1) for s in graph.families[family]):
+        elif foreign_class_families and (not foreign_mask or owned):
+            reason = 'DEFER_OUTSIDE_FOREIGN_TALENT_POLICY'
+        elif not foreign_class_families and any(meta.stores['TalentTab'].get(meta.talent_rows[s][1], [0]*21)[20] != 1 << (c[2]-1) for s in graph.families[family]):
             reason = 'DEFER_FOREIGN_CLASS_TALENT'
         elif any(a not in (0,1) or d not in (0,1) for s, (a,d) in books[g].items() if s in nodes):
             reason = 'DEFER_INVALID_RELATED_FLAGS'
@@ -226,6 +240,9 @@ def select(state, meta, expected=None, *, preview=False, source_dir=None):
         retiring = {r[1] for r in candidates}
         retained = {s: flags for s, flags in books[g].items() if s in nodes and s not in retiring}
         native_proofs.append({'guid': g, 'talent_family': family, 'active_spec': c[4],
+            **({'contract':'UNSELECTED_FOREIGN_CLASS_FAMILY','character_class':c[2],
+                'foreign_class_mask':foreign_mask,'family_talent_spells':sorted(graph.families[family])}
+               if foreign_class_families else {}),
             'selected_spell_groups': [list(row) for row in owned],
             'native_authorization_masks': [[s, mask] for s, mask in sorted(masks.items()) if mask],
             'retained_source_flags': [[s, *flags] for s, flags in sorted(retained.items())],
@@ -255,4 +272,8 @@ def select(state, meta, expected=None, *, preview=False, source_dir=None):
                'native_owner_proofs': native_proofs,
                'native_policy': 'Existing selected talents in both specs are authoritative; retire conflicting rows including enabled history; active native children require correct parents and retained known child/prefix anchors; no insertion, flag rewrite, ownership, skill or login change',
                'deferred': dict(Counter(r[2] for r in excluded.values()))}
+    if foreign_class_families:
+        summary['foreign_family_rows'] = len(result)
+        summary['native_policy'] = ('Retire only wholly unselected isolated families belonging exclusively to another class, including enabled rows; '
+                                   'all skill/reward/default/shared/script guards remain; preserve both selected builds, skills/caps, profession slots and login flags; no grants')
     return result, sorted(excluded.values()), proof, summary, sorted(graph.edges)

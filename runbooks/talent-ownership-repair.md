@@ -6,6 +6,57 @@ in **both** specs as authoritative. It can archive/remove conflicting spell rows
 history policies retain their original restrictions. Use only on a stopped,
 backed-up preparation copy; no staff exemption or migration bypass is introduced.
 
+## Opt-in unselected foreign-class families (v2)
+
+`tc-unselected-foreign-talent-retirement-v2` is a separate, narrower mode:
+
+```bash
+python3 console plan talent-ownership --migration-inspection latest --foreign-class-families --preview
+python3 console plan talent-ownership --migration-inspection INSPECTION_ID --foreign-class-families --expect-rows SELECTED_ROWS
+```
+
+Use the normal prepare/status/review/apply/status sequence below with the new
+candidate ID. Preview creates no SQL package or active batch. `--expect-rows`
+means **selected_rows**, including enabled and disabled removals. This explicitly
+retires foreign spell availability; it does not reset or infer a talent build.
+
+Every direct talent rank in a qualifying family must belong exclusively to the
+same other playable class. Neither specialization may select that family.
+Full rank/learning/requirement closures must pass all existing independent-route,
+skill/reward, profession/riding, custom-start, shared-owner, script and metadata
+guards. Invalid selections, pending resets, online characters and unsupported
+character state still defer. Same-class families stay outside this v2 mode;
+default v1 retains its foreign-class exclusion.
+
+**A foreign talent relationship does not make a shared spell invalid.** For
+example, Dual Wield (`674`) is independently available to warriors and rogues
+and is also taught by a shaman talent. V2 retains the skill/reward exclusions
+and cannot remove that shared spell through its foreign shaman relationship.
+
+`ownership-native-proof.json` records the character class, exclusive foreign
+class mask, complete family talent ranks, empty selected ownership and exact
+retained source state. Both selected builds, skills/caps, profession slots,
+login flags and unrelated data remain unchanged; no spell is inserted and no
+flag is rewritten. Complete originals, exact fractional source/world hashes,
+metadata layouts, DBC assets and guard/selector fingerprints protect the batch.
+Apply and checkpoint commit together; interruption and late failures roll back.
+Exact restoration is available before gameplay or later conflicting edits.
+
+The console supplies acknowledgements. Direct SQL also requires:
+
+```sql
+SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';
+SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';
+SET @talent_foreign_family_ack='UNSELECTED_FOREIGN_FAMILIES_ONLY';
+```
+
+No new server setting is required. Custom-start routes remain excluded even
+when their configuration is disabled. Retain earlier toolkits for earlier
+archives. This preparation policy changes neither core pins/manifests nor
+migration validation; native gameplay remains **NOT TESTED**, release approval
+**UNREVIEWED**. A fresh final migration preflight must cover all characters;
+saved context only covers the GUIDs named by its earlier blocker report.
+
 ## Preview and apply
 
 Install the complete toolkit, retaining prior toolkits and archives. Continue
