@@ -170,3 +170,61 @@ individually. Include retired abilities/action buttons, retained legitimate
 weapon/class spells, both specs, unchanged skills/caps/professions and
 save/relog/restart logs. Gameplay remains **NOT TESTED** until performed; release
 approval remains **UNREVIEWED**.
+
+## Opt-in absent single-child teachers (v2)
+
+`--absent-teachers` selects the separate
+`tc-ineligible-ordinary-absent-teacher-repair-v2` preparation policy. The v1
+default still defers every learning/prerequisite relationship. V2 permits only
+the exact stock Conjure Water and Summon Doomguard incoming teachers, when
+**every teacher is absent from the complete character spellbook**, including
+disabled history. A missing teacher is not a reason to grant its child.
+
+```bash
+python3 console plan spell-eligibility --migration-inspection latest --absent-teachers --preview
+python3 console plan spell-eligibility --migration-inspection INSPECTION_ID --absent-teachers --expect-rows SELECTED_ROWS
+```
+
+The selector verifies the explicit parent/child pairs, singleton teacher ranks,
+flags, pure single-child learn effects, targets and gates in both catalogs.
+Teachers must have no script, skill association, talent/aura ownership or incoming
+learning/prerequisite route. Their only outgoing edge must teach the reviewed
+child. Additional or changed routes, cycles, multi-child stance teachers and
+skill teachers defer. Both custom-start settings must still be explicitly off.
+The child family retains every v1 eligibility, skill, ownership, metadata,
+character-state and pending-reset check. No teacher is removed, executed or
+inserted. No pet spell, skill, talent, profession or login flag changes.
+
+Native TC `_LoadSpells` adds only stored spells; its dependent-learn loop is
+entered when adding that parent. An absent isolated teacher therefore cannot
+recreate the retired child during spell loading. This is a load-time proof,
+not a claim that an item, quest or future command can never teach a spell.
+The policy deliberately retires the existing wrong-class child availability.
+
+Review `absent_teacher_contract` in `eligibility-native-proof.json`, exact
+selected rows and complete originals. Prepare/status/apply/restore are unchanged.
+The console supplies an additional acknowledgement; direct SQL also requires:
+
+```sql
+SET @eligibility_absent_teachers_ack='VERIFIED_TEACHERS_ABSENT';
+```
+
+Complete source spellbooks, both world contents/layouts, DBC assets, selector,
+configuration and numeric fingerprints are sealed and rechecked. Adding even a
+disabled teacher after planning invalidates the batch. Transaction, rerun and
+exact restoration guarantees are unchanged. Keep original toolkits for restoring
+earlier policies. On a fresh baseline import, create a new session, capture
+fresh inputs and regenerate the plan; never reuse old approvals or SQL. After
+preparation, migrate with fresh target/control schemas and a new run.
+
+Fast tests retain v1 as a rejecting control and cover known teachers, modified
+effects, skills, extra/cyclic routes, scripts and eligible class controls.
+`tests/absent-teacher-runtime-tests.py` compiles the protected TC stored loader
+and dependent-learn loop with recording sinks. It tests all ten absent/present
+teacher pairs and disabled/auto-learn controls. AC's existing compiled
+eligibility/load/delete harness separately verifies child rejection. The real
+console MySQL 8.4 v2 suite adds teacher-presence/route drift and extra SQL
+acknowledgement controls to the existing interruption/rerun/exact-restore suite.
+These are isolated consumer tests, not gameplay. Core pins, global manifests,
+spell reconstruction and UNREVIEWED approval remain unchanged. All five staging
+gameplay gates still require individual results.

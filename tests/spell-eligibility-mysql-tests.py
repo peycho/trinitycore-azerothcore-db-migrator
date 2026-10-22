@@ -14,7 +14,8 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main(pet_teaching=False,reviewed_cower=False):
+def main(pet_teaching=False,reviewed_cower=False,absent_teachers=False):
+    assert not absent_teachers or not pet_teaching
     assert not reviewed_cower or pet_teaching
     port = os.environ.get('REHEARSAL_MYSQL_PORT', '33317')
     if (os.environ.get('MIGRATOR_DISPOSABLE_MYSQL') != '1' or not port.isascii() or not port.isdigit()
@@ -36,7 +37,7 @@ def main(pet_teaching=False,reviewed_cower=False):
     version = sql('SELECT @@version;')
     assert version.startswith('8.4.'), version
     kind = 'pet-teaching' if pet_teaching else 'spell-eligibility'
-    label = 'reviewed-cower' if reviewed_cower else 'pet-teaching' if pet_teaching else 'eligibility'
+    label = 'absent-teachers' if absent_teachers else 'reviewed-cower' if reviewed_cower else 'pet-teaching' if pet_teaching else 'eligibility'
     prefix = 'eligibility_'+uuid.uuid4().hex[:10]
     source, auth, tcworld, acworld = [prefix+s for s in ('_chars','_auth','_tc','_ac')]
     writer, reader = prefix+'_w', prefix+'_r'
@@ -82,6 +83,9 @@ def main(pet_teaching=False,reviewed_cower=False):
             UPDATE `{source}`.character_spell SET custom_decimal=0.100001 WHERE guid=1 AND spell=6603;
             INSERT INTO `{tcworld}`.spell_dbc(Id,EffectRealPointsPerLevel1) VALUES(900099,0.1);
             INSERT INTO `{acworld}`.spell_dbc(ID,Speed) VALUES(900099,0.1);''')
+        if absent_teachers:
+            sql(f"UPDATE `{source}`.character_spell SET spell=18540 WHERE guid=5 AND spell=48942")
+            sql(f"INSERT INTO `{tcworld}`.spell_learn_spell VALUES(20700,18540,1)")
         if pet_teaching:
             sql(f"UPDATE `{source}`.characters SET class=3 WHERE guid IN (1,3,4,5);")
             sql(f"UPDATE `{source}`.character_spell SET spell=1747 WHERE spell=465;")
@@ -94,6 +98,12 @@ def main(pet_teaching=False,reviewed_cower=False):
         spec = importlib.util.spec_from_file_location('assets', ROOT/'tests/spell-fixtures.py')
         assets = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(assets)
+        if absent_teachers:
+            sys.path.insert(0,str(ROOT/'lib'))
+            teacher_spec=importlib.util.spec_from_file_location('teacher_assets',ROOT/'tests/eligibility-teacher-fixtures.py')
+            teacher_assets=importlib.util.module_from_spec(teacher_spec);teacher_spec.loader.exec_module(teacher_assets)
+            original_teachers=assets.stores
+            assets.stores=lambda p:teacher_assets.extend(original_teachers(p),p)
         if pet_teaching:
             sys.path.insert(0,str(ROOT/'lib'))
             pet_spec=importlib.util.spec_from_file_location('pet_assets',ROOT/'tests/pet-teaching-fixtures.py')
@@ -170,13 +180,16 @@ backup_reference=disposable-synthetic-fixture
             report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(
                 f'{g}\t*\tAC_WOULD_DELETE_SPELL\t48942: captured fixture scope\n' for g in range(1,6)))
             run('inspect-migration-blockers', '--report', str(report))
-            plan = ('plan',kind,'--migration-inspection','latest') + (('--reviewed-cower',) if reviewed_cower else ())
+            plan = ('plan',kind,'--migration-inspection','latest') + (('--reviewed-cower',) if reviewed_cower else ('--absent-teachers',) if absent_teachers else ())
             config.write_text(text.replace('[target]\nworld='+acworld, '[target]\nworld='+source))
             assert 'ELIGIBILITY_TARGET_OVERLAP' in run(*plan,'--preview',code=2).stderr
             config.write_text(text.replace('[target]\nworld='+acworld+'\nplayer_start_custom_spells=0',
                                            '[target]\nworld='+acworld+'\nplayer_start_custom_spells='))
             assert 'ELIGIBILITY_CONFIG_REQUIRED' in run(*plan,'--preview',code=2).stderr
             config.write_text(text)
+            if absent_teachers:
+                control=run('plan','spell-eligibility','--migration-inspection','latest','--preview')
+                assert '"selected_rows": 2' in control.stdout
             if reviewed_cower:
                 control=run('plan','pet-teaching','--migration-inspection','latest','--preview')
                 assert '"selected_rows": 0' in control.stdout
@@ -193,6 +206,9 @@ backup_reference=disposable-synthetic-fixture
             package=session/'batches'/json.loads((session/'active-batch.json').read_text())['batch']
             manifest=json.loads((package/'manifest.json').read_text())
             archive=manifest['archive_schema'];owned.append(archive)
+            if absent_teachers:
+                assert manifest['policy']=='tc-ineligible-ordinary-absent-teacher-repair-v2'
+                assert manifest['absent_teacher_ack']=='VERIFIED_TEACHERS_ABSENT'
             if reviewed_cower:
                 assert manifest['policy']=='tc-pet-teaching-reviewed-cower-retirement-v2'
                 assert json.loads((package/'cower-native-contract.json').read_text())==manifest['cower_native_contract']
@@ -205,6 +221,13 @@ backup_reference=disposable-synthetic-fixture
             assert 'DELETE on character_spell' in run('apply',code=2).stderr
             sql(f"GRANT DELETE,INSERT ON `{source}`.character_spell TO '{writer}'@'%';")
             ack="SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'; SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS'; SET @eligibility_tc_all_spells=0;SET @eligibility_ac_custom_spells=0;"
+            if absent_teachers:
+                without_teacher_ack=ack
+                ack+="SET @eligibility_absent_teachers_ack='VERIFIED_TEACHERS_ABSENT';"
+                for wrong in ('',"SET @eligibility_absent_teachers_ack='UNKNOWN';"):
+                    error=sql(without_teacher_ack+wrong+f'CALL `{archive}`.apply_batch();',writer,False)
+                    assert 'Explicit absent-teacher eligibility' in error
+                    assert checksum()==baseline
             if pet_teaching:
                 ack="SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'; SET @pet_teaching_ack='RETIRE_VERIFIED_PET_TEACHERS'; SET @pet_teaching_tc_all_spells=0; SET @pet_teaching_ac_custom_spells=0;"
             if reviewed_cower:
@@ -217,7 +240,7 @@ backup_reference=disposable-synthetic-fixture
                 assert 'Explicit reviewed Cower child' in error
             ack_label='Explicit pet-teaching repair' if pet_teaching else 'Explicit eligibility repair'
             error=sql(f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';CALL `{archive}`.apply_batch();",writer,False)
-            assert ('Explicit reviewed Cower child' if reviewed_cower else ack_label) in error
+            assert ('Explicit reviewed Cower child' if reviewed_cower else 'Explicit absent-teacher eligibility' if absent_teachers else ack_label) in error
             for variable in (('pet_teaching_tc_all_spells','pet_teaching_ac_custom_spells') if pet_teaching else ('eligibility_tc_all_spells','eligibility_ac_custom_spells')):
                 error=sql(ack+f"SET @{variable}='UNKNOWN'; CALL `{archive}`.apply_batch();",writer,False)
                 assert ack_label in error
@@ -228,6 +251,20 @@ backup_reference=disposable-synthetic-fixture
                 assert 'world content drift' in sql(ack+f'CALL `{archive}`.apply_batch();',writer,False)
                 assert checksum()==changed
                 sql(f"UPDATE `{acworld}`.spell_script_names SET ScriptName='spell_hun_cower' WHERE spell_id=1742")
+            if absent_teachers:
+                # A newly stored disabled teacher invalidates the complete source proof.
+                sql(f'INSERT INTO `{source}`.character_spell(guid,spell,active,disabled) VALUES(5,20700,1,1)')
+                changed=checksum();run('apply',code=2)
+                assert 'full-row fingerprint differs' in sql(ack+f'CALL `{archive}`.apply_batch();',writer,False)
+                assert checksum()==changed
+                sql(f'DELETE FROM `{source}`.character_spell WHERE guid=5 AND spell=20700')
+                for schema,effect_field,child_field in ((tcworld,'Effect1','EffectTriggerSpell1'),
+                                                        (acworld,'Effect_1','EffectTriggerSpell_1')):
+                    sql(f'INSERT INTO `{schema}`.spell_dbc(Id,`{effect_field}`,`{child_field}`) VALUES(900098,36,20700)')
+                    changed=checksum();run('apply',code=2)
+                    assert 'world content drift' in sql(ack+f'CALL `{archive}`.apply_batch();',writer,False)
+                    assert checksum()==changed
+                    sql(f'DELETE FROM `{schema}`.spell_dbc WHERE Id=900098')
             # Failing control: historical HEX(number) collapses these changes.
             assert sql('SELECT HEX(0.1)=HEX(0.2),HEX(0.100001)=HEX(0.100002)')=='1\t1'
             for update, restore in (
@@ -296,4 +333,5 @@ backup_reference=disposable-synthetic-fixture
 
 
 if __name__ == '__main__':
-    main()
+    assert sys.argv[1:] in ([],['--absent-teachers'])
+    main(absent_teachers=bool(sys.argv[1:]))

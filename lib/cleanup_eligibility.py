@@ -12,7 +12,57 @@ from cleanup_talent_relations import Relations, MAX_ROWS, validate_stored
 from spells import Metadata, Unsupported
 
 POLICY = 'tc-ineligible-ordinary-spell-repair-v1'
+ABSENT_TEACHER_POLICY = 'tc-ineligible-ordinary-absent-teacher-repair-v2'
+POLICIES = (POLICY, ABSENT_TEACHER_POLICY)
 ACK = 'RETIRE_VERIFIED_INELIGIBLE_SPELLS'
+ABSENT_TEACHER_ACK = 'VERIFIED_TEACHERS_ABSENT'
+
+# Only pure, single-child stock teaching actions. Multi-child stance teachers,
+# skill teachers and arbitrary world learn links are deliberately not included.
+ABSENT_TEACHERS = {5504: ((5507,5504), (5565,5505), (5566,5506), (6128,6127),
+                         (10141,10138), (10142,10139), (10143,10140),
+                         (42978,27090), (37421,37420)),
+                   18540: ((20700,18540),)}
+
+
+def absent_teacher_contract(tc, ac, graphs, root, book):
+    """Prove inert incoming routes; never remove a known teacher or its child here."""
+    pairs = ABSENT_TEACHERS.get(root)
+    if not pairs:
+        return None
+    nodes = set(tc.chain(root))
+    expected = {(p,c,kind) for p,c in pairs for kind in ('WORLD_LEARN','EFFECT_LEARN')}
+    for meta, graph in zip((tc,ac), graphs):
+        edges = {r for r in graph.edges if r[0] in nodes or r[1] in nodes}
+        if edges != expected:
+            return None
+        for parent, child in pairs:
+            row = meta.spells.get(parent, [])
+            gates = [0]*16
+            if parent != 10143:
+                gates[4] = 256
+            if (parent in book or parent not in meta.spells or meta.chain(parent) != (parent,)
+                    or len(row) < 212 or row[4:12] != [262400,0,0,0,0,0,0,0]
+                    or row[12:28] != gates or row[71:74] != [36,0,0]
+                    or row[86:92] != ([25,0,0,0,0,0] if parent == 10143 else [0]*6)
+                    or row[95:98] != [0,0,0] or row[116:119] != [child,0,0]
+                    or row[208:212] != [0,0,0,0] or meta.abilities[parent]
+                    or meta.scripts[parent] or meta.requires[parent]
+                    or meta.learns[parent] != [(child,1,False)]
+                    or meta.effect_learns[parent] != [(child,1,False)]
+                    or graph.incoming[parent] or graph.next[parent] != {root}
+                    or parent in meta.talents or parent in meta.talent_learn_owners
+                    or parent in meta.aura_owners or parent in meta.world_aura_owners
+                    or parent in meta.additional or parent in graph.unsupported):
+                return None
+            try:
+                meta.check_spell(parent)
+            except Unsupported:
+                return None
+    return {'contract':'ABSENT_SINGLE_CHILD_TEACHERS_V1',
+            'pairs':[list(pair) for pair in pairs], 'all_teachers_absent':True,
+            'native_route':'Only adding a known parent traverses its learn map; no incoming parent route',
+            'custom_start_settings':[0,0], 'teacher_rows_removed':0, 'spell_rows_inserted':0}
 
 
 def configuration_contract(settings):
@@ -131,7 +181,7 @@ def eligibility(meta, spell, race, cls, *, infos_by_skill=None):
     return {'passes': not skills or bool(matches), 'skills': skills, 'skill_info': infos}
 
 
-def select(state, tc, ac, expected=None, *, preview=False):
+def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False):
     stored = state['character_spell']
     validate_stored(stored)
     if not 1 <= len(state['characters']) <= 40000 or sum(map(len, state.values())) > MAX_ROWS:
@@ -160,7 +210,7 @@ def select(state, tc, ac, expected=None, *, preview=False):
             invalid.add(g)
         seen.add(key)
     graphs = (Relations(tc), Relations(ac))
-    indexes, cache = {}, {}
+    indexes, cache, teacher_catalog = {}, {}, {}
     for m in (tc, ac):
         index = defaultdict(list)
         for r in m.stores['SkillRaceClassInfo'].values():
@@ -188,6 +238,15 @@ def select(state, tc, ac, expected=None, *, preview=False):
             present = sorted(set(nodes) & book.keys())
             reviewed += len(present)
             reason = ''
+            teacher_proof = None
+            if absent_teachers and any(graph.incoming[root] or graph.next[root] for graph in graphs):
+                # Review catalog edges once per root, then prove absence in each
+                # complete character book. Never rescan the catalog per row.
+                if root not in teacher_catalog:
+                    teacher_catalog[root] = absent_teacher_contract(tc,ac,graphs,root,{})
+                candidate = teacher_catalog[root]
+                if candidate and not any(parent in book for parent,_ in candidate['pairs']):
+                    teacher_proof = candidate
             if not valid:
                 reason = 'DEFER_ELIGIBILITY_CHARACTER_STATE'
             elif c[6]:
@@ -208,7 +267,7 @@ def select(state, tc, ac, expected=None, *, preview=False):
             elif any(s in m.talents or s in m.talent_learn_owners or s in m.aura_owners
                      or s in m.world_aura_owners or s in m.additional for m in (tc, ac) for s in nodes):
                 reason = 'DEFER_TALENT_OR_AURA_ROUTE'
-            elif any(graph.incoming[root] or graph.next[root] for graph in graphs):
+            elif any(graph.incoming[root] or graph.next[root] for graph in graphs) and teacher_proof is None:
                 reason = 'DEFER_LEARNING_OR_REQUIREMENT_ROUTE'
             elif any(s in graph.unsupported or s in graph.unknown_skill_spells for graph in graphs for s in nodes):
                 reason = 'DEFER_UNSUPPORTED_RELATION_METADATA'
@@ -242,6 +301,7 @@ def select(state, tc, ac, expected=None, *, preview=False):
             selected.extend((g, s, *book[s]) for s in present)
             native.append({'guid': g, 'rank_root': root, 'race': c[1], 'class': c[2],
                            'stored_spells': present, 'native_skill_grants': False,
+                           **({'absent_teacher_contract':teacher_proof} if teacher_proof else {}),
                            'ranks': [{'spell': s, **check(ac, s, c)} for s in nodes]})
             proof.extend((g, root, s, 'INELIGIBLE_ORDINARY_RANK',
                           'REMOVE_INELIGIBLE_ENABLED' if s in book and not book[s][1]
@@ -266,4 +326,7 @@ def select(state, tc, ac, expected=None, *, preview=False):
                'native_policy': 'Retire exact ordinary rank families ineligible in both catalogs, including enabled rows; '
                'no associated stored skill, talent/aura/dependency/script/riding/profession route or pending reset; '
                'preserve all talents, skills/caps, profession slots, flags and unrelated data; no grants'}
+    if absent_teachers:
+        summary['reviewed_absent_teacher_rows'] = sum(len(p['stored_spells']) for p in native if 'absent_teacher_contract' in p)
+        summary['native_policy'] += '; only exact reviewed absent single-child teachers may supply inert incoming routes'
     return selected, excluded, proof, summary, sorted(graphs[0].edges | graphs[1].edges)

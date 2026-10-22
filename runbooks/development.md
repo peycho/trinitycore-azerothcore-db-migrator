@@ -653,3 +653,13 @@ callbacks and aura getters) and `tests/pet-teaching-mysql-tests.py --reviewed-co
 drift, transaction interruption and exact restoration). These run in the
 disposable rehearsal harness. Unknown scripts and native source changes remain
 blocked; gameplay and release approval remain separate.
+
+Eligibility v2 adds the opt-in `tests/spell-eligibility-mysql-tests.py --absent-teachers`
+case to the real console MySQL 8.4 harness. It checks default-v1 rejection,
+known/disabled teacher drift, both-world incoming-route drift, the extra SQL
+acknowledgement, rollback/interruption, reruns and exact custom-row restoration.
+Fast eligibility tests cover malformed/unknown/multi-child/skill/script/cyclic
+teacher routes. `tests/absent-teacher-runtime-tests.py` compiles the protected
+TC stored loader and dependent-learn loop with mocked recording sinks for all
+ten reviewed absent/present pairs; AC's eligibility harness remains separate.
+These do not establish full native gameplay or change release approval.

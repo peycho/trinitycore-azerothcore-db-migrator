@@ -10,7 +10,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'lib'))
 from cleanup_console import CleanupError, parser
-from cleanup_eligibility import select, configuration_contract
+from cleanup_eligibility import select, configuration_contract, ABSENT_TEACHERS
 from cleanup_ordinary_history import select as old_select
 from spells import Unsupported, reconstruct
 from cleanup_active_reset import exact_hex, row_hash
@@ -171,6 +171,82 @@ class EligibilityTests(unittest.TestCase):
         exact=row_hash(meta,'t',exact_numeric=True)
         self.assertIn('CAST(CAST(s.`fraction` AS DOUBLE) AS CHAR)',exact)
         self.assertIn('HEX(s.`bytes`)',exact)
+
+    def teachers(self):
+        spec = importlib.util.spec_from_file_location('teachers',ROOT/'tests/eligibility-teacher-fixtures.py')
+        helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(helper)
+        for meta in (self.tc,self.ac):
+            helper.extend(meta.stores,fixture.SpellTests.profile)
+            # Metadata's real constructor produces these effective relationships.
+            for pairs in ABSENT_TEACHERS.values():
+                for parent,child in pairs:
+                    meta.learns[parent] = [(child,1,False)]
+                    meta.effect_learns[parent] = [(child,1,False)]
+                    meta.abilities[child] = [meta.stores['SkillLineAbility'][child]]
+            meta.add_chain(tuple(c for _,c in ABSENT_TEACHERS[5504]))
+        self.state['character_spell'] = [[1,10140,1,0],[1,27090,1,0],[1,18540,1,0],[1,6603,1,0]]
+
+    def test_absent_teachers_opt_in_regression_and_no_grants(self):
+        self.teachers()
+        before = copy.deepcopy(self.state)
+        self.assertFalse(self.review()[0])
+        self.assertEqual({r[2] for r in self.review()[1]},{'DEFER_LEARNING_OR_REQUIREMENT_ROUTE'})
+        result = select(self.state,self.tc,self.ac,preview=True,absent_teachers=True)
+        self.assertEqual(result[0],[(1,10140,1,0),(1,18540,1,0),(1,27090,1,0)])
+        self.assertEqual(result[3]['reviewed_absent_teacher_rows'],3)
+        self.assertFalse(result[1])
+        self.assertEqual(result[3]['spell_rows_inserted'],0)
+        for proof in result[3]['eligibility_proofs']:
+            self.assertTrue(proof['absent_teacher_contract']['all_teachers_absent'])
+        self.assertEqual(self.state,before)
+        self.assertEqual(select(self.state,self.tc,self.ac,3,absent_teachers=True),result)
+        self.assertTrue(parser().parse_args(['plan','spell-eligibility','--migration-inspection','latest',
+                                            '--absent-teachers','--preview']).absent_teachers)
+
+    def test_stored_teacher_even_disabled_defers_whole_family(self):
+        self.teachers()
+        for flags in ((1,0),(1,1),(0,1)):
+            state = copy.deepcopy(self.state)
+            state['character_spell'].append([1,5507,*flags])
+            rows,excluded,*_ = select(state,self.tc,self.ac,preview=True,absent_teachers=True)
+            self.assertEqual(rows,[(1,18540,1,0)])
+            self.assertTrue({(g,s) for g,s,_ in excluded}>={(1,10140),(1,27090)})
+
+    def test_unknown_changed_scripted_skill_multi_child_or_independently_learned_teacher_defers(self):
+        self.teachers()
+        for mutation in (
+                lambda m:m.scripts[5507].add('spell_unknown'),
+                lambda m:m.spells[5507].__setitem__(72,44),
+                lambda m:m.spells[5507].__setitem__(87,1),
+                lambda m:m.spells[5507].__setitem__(4,64),
+                lambda m:m.spells[5507].__setitem__(117,6603),
+                lambda m:m.requires[5507].add(6603),
+                lambda m:m.learns[6603].append((5507,1,False)),
+                lambda m:m.learns[5507].append((6603,1,False)),
+                lambda m:m.requires[6603].add(5504),
+                lambda m:m.requires[5504].add(6603),
+                lambda m:m.effect_learns[5507].__setitem__(0,(5504,1,True)),
+                lambda m:m.abilities[5507].append(m.abilities[5504][0]),
+                lambda m:m.talent_learn_owners[5507].add(12282)):
+            for core in ('tc','ac'):
+                tc,ac = copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+                mutation(tc if core=='tc' else ac)
+                rows,*_=select(self.state,tc,ac,preview=True,absent_teachers=True)
+                self.assertEqual(rows,[(1,18540,1,0)],(core,mutation))
+
+    def test_absent_teachers_does_not_relax_eligibility_skill_reset_or_ownership_checks(self):
+        self.teachers()
+        for index,value in ((2,8),(6,1),(7,4),(3,81)):
+            state=copy.deepcopy(self.state);state['characters'][0][index]=value
+            if index==2:state['character_talent']=[]
+            rows,*_=select(state,self.tc,self.ac,preview=True,absent_teachers=True)
+            if index==2:
+                self.assertEqual(rows,[(1,18540,1,0)])  # Mage owns water, never Doomguard.
+            else:
+                self.assertFalse(rows)
+        state=copy.deepcopy(self.state);state['character_skills'].extend([[1,237,1,400],[1,354,1,400]])
+        self.assertFalse(select(state,self.tc,self.ac,preview=True,absent_teachers=True)[0])
 
 
 if __name__ == '__main__':

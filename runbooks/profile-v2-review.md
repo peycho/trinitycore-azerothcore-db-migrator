@@ -1,5 +1,17 @@
 # Profile v2 review and acceptance record
 
+The opt-in `tc-ineligible-ordinary-absent-teacher-repair-v2` preparation contract
+adds only exact absent Conjure Water/Doomguard teachers to the separate
+eligibility repair. Both effective catalogs must match the reviewed pure
+single-child mechanics/edges; all teachers must be absent and have no incoming
+route, script, skill or talent/aura authority. Existing child eligibility and
+skill/talent/reset guards remain. Default v1 still defers every relationship.
+Protected TC loader/dependent-loop and AC eligibility/load consumers are tested
+with mocked state. Full originals, both-world/asset guards, an extra SQL
+acknowledgement, atomic reruns/rollback and exact restoration apply. Core pins,
+100 TC / 105 AC manifests, metadata, spell-state-v13 and UNREVIEWED approval
+are unchanged. See the [v2 policy](spell-eligibility-repair.md#opt-in-absent-single-child-teachers-v2).
+
 The separate opt-in `tc-pet-teaching-reviewed-cower-retirement-v2` preparation
 contract permits only Cower child 1742's exact TC/AC amount-calculation scripts.
 V1 default exclusions are unchanged. The Hunter script and Unit header match

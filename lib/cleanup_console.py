@@ -603,12 +603,16 @@ def command_action(settings, work, args):
         if manifest.get('ownership_ack') != OWNERSHIP_ACK:
             fail('OWNERSHIP_ACK_INVALID','Ownership policy acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';\n"
-    from cleanup_eligibility import POLICY as ELIGIBILITY_POLICY, ACK as ELIGIBILITY_ACK
-    if manifest.get('policy') == ELIGIBILITY_POLICY:
+    from cleanup_eligibility import POLICIES as ELIGIBILITY_POLICIES, ACK as ELIGIBILITY_ACK, ABSENT_TEACHER_POLICY, ABSENT_TEACHER_ACK
+    if manifest.get('policy') in ELIGIBILITY_POLICIES:
         if manifest.get('eligibility_ack') != ELIGIBILITY_ACK:
             fail('ELIGIBILITY_ACK_INVALID','Eligibility acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS';\n"
         configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
+    if manifest.get('policy') == ABSENT_TEACHER_POLICY:
+        if manifest.get('absent_teacher_ack') != ABSENT_TEACHER_ACK:
+            fail('ABSENT_TEACHER_ACK_INVALID','Absent-teacher acknowledgement differs from the reviewed candidate')
+        configuration_ack += "SET @eligibility_absent_teachers_ack='VERIFIED_TEACHERS_ABSENT';\n"
     from cleanup_pet_teaching import POLICIES as PET_TEACHING_POLICIES, ACK as PET_TEACHING_ACK, COWER_POLICY, COWER_ACK
     if manifest.get('policy') in PET_TEACHING_POLICIES:
         if manifest.get('pet_teaching_ack') != PET_TEACHING_ACK:
@@ -744,6 +748,7 @@ def parser():
     eligibility=types.add_parser('spell-eligibility',help='Separate archived repair of ordinary rank families rejected by AC race/class validation')
     eligibility.set_defaults(spell_eligibility=True,inspection=None,audit=None)
     eligibility.add_argument('--migration-inspection',required=True,help='Sealed migration-blocker inspection ID or latest')
+    eligibility.add_argument('--absent-teachers',action='store_true',help='Separate v2 contract for exact reviewed absent single-child teachers; other dependencies still defer')
     eligibility_review=eligibility.add_mutually_exclusive_group(required=True)
     eligibility_review.add_argument('--preview',action='store_true',help='Read-only review; no SQL package or active batch')
     eligibility_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows from this policy preview')

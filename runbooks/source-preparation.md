@@ -7,6 +7,13 @@ restores it from a known higher rank; an unreviewed spell script is not evidence
 that its character row is corrupt. Do not clean the database by deleting every
 row named in a migration blocker report.
 
+The opt-in [absent-teacher eligibility repair](spell-eligibility-repair.md#opt-in-absent-single-child-teachers-v2)
+can retire wrong-class Conjure Water/Doomguard rows despite exact inert incoming
+teacher links, only when every teacher is absent. It does not grant a missing
+spell, remove a known teacher or relax skill/talent protections. Fresh imports
+need new sessions and newly captured plans; previous batches retain their
+original toolkits for exact restoration.
+
 Keep the original backup and an untouched restored baseline. Restore a separate
 preparation copy for any reviewed changes, with matching auth, characters,
 world metadata and the DBC assets used by the source core. Keep game servers

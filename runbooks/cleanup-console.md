@@ -13,6 +13,12 @@ It deliberately permits reviewed enabled-row retirement when both catalogs
 reject the complete ordinary rank family, while protecting skills and talents.
 It does not change existing history policies or migration rejection rules.
 
+The separate opt-in `--absent-teachers` eligibility v2 mode reviews exact stock
+Conjure Water/Doomguard incoming teachers only when all are absent. Known,
+skill, multi-child, scripted and modified teachers still defer. Use the
+[v2 preview and archive procedure](spell-eligibility-repair.md#opt-in-absent-single-child-teachers-v2);
+normal prepare/status/apply/restore commands remain unchanged.
+
 New eligibility batches also use an exact fractional numeric fingerprint.
 Historical archives keep their original guards, which can miss fractional-only
 FLOAT/DECIMAL changes. Do not rely on old guards after gameplay or edits; retain
