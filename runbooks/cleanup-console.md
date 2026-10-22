@@ -1225,3 +1225,14 @@ the preview's total `selected_rows` with the same options and `--expect-rows`;
 review insertion/update counts and exact old/new values before prepare/apply.
 The [native skill guide](native-skill-repair.md#v2-reviewed-generic-normalization)
 covers extra column grants, exact inverse restoration and fresh-import repetition.
+
+## Reviewed pet-teaching retirement
+
+Use `python3 console plan pet-teaching --migration-inspection latest --preview`
+for the separately authorized old player-side pet-teaching policy. It preserves
+actual pets/pet spells, both talent selections and all skills. Use the preview's
+`selected_rows` with `--expect-rows`, then explicit batch IDs for prepare, status,
+apply and exact restore. Scripted, profession, player-teaching and ambiguous
+cases defer. See the [complete repeatable procedure](pet-teaching-repair.md).
+Reuse the existing read-only target metadata and verified custom-start-off
+configuration; no new source session is needed for an unchanged baseline.

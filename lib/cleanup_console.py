@@ -55,7 +55,7 @@ def toolkit_hashes():
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
            'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','lib/cleanup_talent_relations.py','lib/cleanup_selected_rank_history.py','lib/cleanup_migration_evidence.py','lib/cleanup_trained_history.py','tools/disabled-talent-history.sql.in',
-           'lib/cleanup_native_skills.py','lib/cleanup_ordinary_history.py','lib/cleanup_death_coil.py','lib/cleanup_ownership.py','lib/cleanup_eligibility.py','tools/spell-eligibility-repair.sql.in','tools/talent-ownership-repair.sql.in','tools/native-skill-repair.sql.in','tools/native-generic-repair.sql.in')
+           'lib/cleanup_native_skills.py','lib/cleanup_ordinary_history.py','lib/cleanup_death_coil.py','lib/cleanup_ownership.py','lib/cleanup_eligibility.py','lib/cleanup_pet_teaching.py','tools/pet-teaching-repair.sql.in','tools/spell-eligibility-repair.sql.in','tools/talent-ownership-repair.sql.in','tools/native-skill-repair.sql.in','tools/native-generic-repair.sql.in')
     hashes={}
     for name in names:
         path=ROOT/name
@@ -609,6 +609,12 @@ def command_action(settings, work, args):
             fail('ELIGIBILITY_ACK_INVALID','Eligibility acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS';\n"
         configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
+    from cleanup_pet_teaching import POLICY as PET_TEACHING_POLICY, ACK as PET_TEACHING_ACK
+    if manifest.get('policy') == PET_TEACHING_POLICY:
+        if manifest.get('pet_teaching_ack') != PET_TEACHING_ACK:
+            fail('PET_TEACHING_ACK_INVALID','Pet-teaching acknowledgement differs from the reviewed candidate')
+        configuration_ack += "SET @pet_teaching_ack='RETIRE_VERIFIED_PET_TEACHERS';\n"
+        configuration_ack += 'SET @pet_teaching_tc_all_spells=0; SET @pet_teaching_ac_custom_spells=0;\n'
     try:
         result=settings.sql(f"SET @{ack}='STOPPED_PREPARATION_COPY_ONLY';\n"+configuration_ack+scripts[action],'write',headers=True)
     except CleanupError as error:
@@ -724,6 +730,12 @@ def parser():
     ownership_review=ownership.add_mutually_exclusive_group(required=True)
     ownership_review.add_argument('--preview',action='store_true',help='Read-only complete captured-scope review; no active batch or SQL package')
     ownership_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows printed by this policy preview')
+    pet=types.add_parser('pet-teaching',help='Archived retirement of verified player-side pet-teaching wrappers; preserve actual pets, talents and skills')
+    pet.set_defaults(pet_teaching=True,inspection=None,audit=None)
+    pet.add_argument('--migration-inspection',required=True,help='Sealed migration-blocker inspection ID or latest')
+    pet_review=pet.add_mutually_exclusive_group(required=True)
+    pet_review.add_argument('--preview',action='store_true',help='Read-only review; no SQL package or active batch')
+    pet_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows from this policy preview')
     eligibility=types.add_parser('spell-eligibility',help='Separate archived repair of ordinary rank families rejected by AC race/class validation')
     eligibility.set_defaults(spell_eligibility=True,inspection=None,audit=None)
     eligibility.add_argument('--migration-inspection',required=True,help='Sealed migration-blocker inspection ID or latest')

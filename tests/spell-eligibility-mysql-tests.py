@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -13,7 +14,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main():
+def main(pet_teaching=False):
     port = os.environ.get('REHEARSAL_MYSQL_PORT', '33317')
     if (os.environ.get('MIGRATOR_DISPOSABLE_MYSQL') != '1' or not port.isascii() or not port.isdigit()
             or not 1 <= int(port) <= 65535 or int(port) == 3306):
@@ -33,6 +34,8 @@ def main():
         return result.stdout.strip() if ok else result.stderr
     version = sql('SELECT @@version;')
     assert version.startswith('8.4.'), version
+    kind = 'pet-teaching' if pet_teaching else 'spell-eligibility'
+    label = 'pet-teaching' if pet_teaching else 'eligibility'
     prefix = 'eligibility_'+uuid.uuid4().hex[:10]
     source, auth, tcworld, acworld = [prefix+s for s in ('_chars','_auth','_tc','_ac')]
     writer, reader = prefix+'_w', prefix+'_r'
@@ -78,10 +81,29 @@ def main():
             UPDATE `{source}`.character_spell SET custom_decimal=0.100001 WHERE guid=1 AND spell=6603;
             INSERT INTO `{tcworld}`.spell_dbc(Id,EffectRealPointsPerLevel1) VALUES(900099,0.1);
             INSERT INTO `{acworld}`.spell_dbc(ID,Speed) VALUES(900099,0.1);''')
+        if pet_teaching:
+            sql(f"UPDATE `{source}`.characters SET class=3 WHERE guid IN (1,3,4,5);")
+            sql(f"UPDATE `{source}`.character_spell SET spell=1747 WHERE spell=465;")
+            sql(f"UPDATE `{source}`.character_spell SET spell=1749 WHERE spell=48942;")
+            sql(f"UPDATE `{source}`.character_talent SET spell=900050 WHERE spell=12282;")
+            sql(f"UPDATE `{source}`.character_talent SET spell=900051 WHERE spell=12664;")
+            sql(f"INSERT INTO `{source}`.character_spell(guid,spell,active,disabled) VALUES(4,1754,1,0);")
+            sql(f"INSERT INTO `{source}`.character_pet(id,entry,owner,PetType,level,abdata) VALUES(77,2850,1,1,80,'1754'),(78,2850,5,1,80,'27053');")
+            sql(f"INSERT INTO `{source}`.pet_spell VALUES(77,1754,1),(78,27053,1);")
         spec = importlib.util.spec_from_file_location('assets', ROOT/'tests/spell-fixtures.py')
         assets = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(assets)
-        values = ','.join(f'(465,{s},{n})' for n,s in enumerate(assets.CHAINS[0],1))
+        if pet_teaching:
+            sys.path.insert(0,str(ROOT/'lib'))
+            pet_spec=importlib.util.spec_from_file_location('pet_assets',ROOT/'tests/pet-teaching-fixtures.py')
+            pet_assets=importlib.util.module_from_spec(pet_spec);pet_spec.loader.exec_module(pet_assets)
+            original=assets.stores
+            assets.stores=lambda p:pet_assets.extend(original(p),p)
+            from cleanup_pet_teaching import CONTRACTS
+            values=','.join(f'({root},{spell},{rank})' for root,pairs in CONTRACTS.items()
+                            for rank,(spell,_) in enumerate(pairs,1))
+        else:
+            values = ','.join(f'(465,{s},{n})' for n,s in enumerate(assets.CHAINS[0],1))
         for schema in (tcworld, acworld):
             sql(f'INSERT INTO `{schema}`.spell_ranks VALUES '+values)
         for user in (writer, reader):
@@ -138,13 +160,13 @@ backup_reference=disposable-synthetic-fixture
                 result = subprocess.run(command+list(args), text=True, capture_output=True)
                 assert result.returncode == code, result.stdout+result.stderr
                 return result
-            run('init', '--label', 'eligibility')
+            run('init', '--label', label)
             session = work/'workspace/sessions'/json.loads((work/'workspace/current.json').read_text())['session']
             report = work/'blockers.tsv'
             report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(
                 f'{g}\t*\tAC_WOULD_DELETE_SPELL\t48942: captured fixture scope\n' for g in range(1,6)))
             run('inspect-migration-blockers', '--report', str(report))
-            plan = ('plan','spell-eligibility','--migration-inspection','latest')
+            plan = ('plan',kind,'--migration-inspection','latest')
             config.write_text(text.replace('[target]\nworld='+acworld, '[target]\nworld='+source))
             assert 'ELIGIBILITY_TARGET_OVERLAP' in run(*plan,'--preview',code=2).stderr
             config.write_text(text.replace('[target]\nworld='+acworld+'\nplayer_start_custom_spells=0',
@@ -165,17 +187,22 @@ backup_reference=disposable-synthetic-fixture
             manifest=json.loads((package/'manifest.json').read_text())
             archive=manifest['archive_schema'];owned.append(archive)
             assert manifest['selected_rows']==3 and manifest['enabled_rows_removed']==3
-            assert manifest['excluded_reason_counts']=={'DEFER_PENDING_NATIVE_RESET':1,'DEFER_EXISTING_ASSOCIATED_SKILL':1}
-            assert json.loads((package/'eligibility-native-proof.json').read_text())
+            assert manifest['excluded_reason_counts']==(
+                {'DEFER_PENDING_NATIVE_RESET':1,'DEFER_PET_ABILITY_IN_PLAYER_BOOK':1,'DEFER_PET_TEACHER_CHARACTER_STATE':1}
+                if pet_teaching else {'DEFER_PENDING_NATIVE_RESET':1,'DEFER_EXISTING_ASSOCIATED_SKILL':1})
+            assert json.loads((package/('pet-teaching-native-proof.json' if pet_teaching else 'eligibility-native-proof.json')).read_text())
             run('prepare');run('prepare');assert checksum()==baseline
             assert 'DELETE on character_spell' in run('apply',code=2).stderr
             sql(f"GRANT DELETE,INSERT ON `{source}`.character_spell TO '{writer}'@'%';")
             ack="SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'; SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS'; SET @eligibility_tc_all_spells=0;SET @eligibility_ac_custom_spells=0;"
+            if pet_teaching:
+                ack="SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'; SET @pet_teaching_ack='RETIRE_VERIFIED_PET_TEACHERS'; SET @pet_teaching_tc_all_spells=0; SET @pet_teaching_ac_custom_spells=0;"
+            ack_label='Explicit pet-teaching repair' if pet_teaching else 'Explicit eligibility repair'
             error=sql(f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';CALL `{archive}`.apply_batch();",writer,False)
-            assert 'Explicit eligibility repair' in error
-            for variable in ('eligibility_tc_all_spells','eligibility_ac_custom_spells'):
+            assert ack_label in error
+            for variable in (('pet_teaching_tc_all_spells','pet_teaching_ac_custom_spells') if pet_teaching else ('eligibility_tc_all_spells','eligibility_ac_custom_spells')):
                 error=sql(ack+f"SET @{variable}='UNKNOWN'; CALL `{archive}`.apply_batch();",writer,False)
-                assert 'Explicit eligibility repair' in error
+                assert ack_label in error
             # Failing control: historical HEX(number) collapses these changes.
             assert sql('SELECT HEX(0.1)=HEX(0.2),HEX(0.100001)=HEX(0.100002)')=='1\t1'
             for update, restore in (
@@ -195,12 +222,14 @@ backup_reference=disposable-synthetic-fixture
                 assert 'world content drift' in error,error
                 assert checksum()==changed
                 sql(f'UPDATE `{schema}`.spell_dbc SET `{field}`=0.1 WHERE Id=900099')
+            changed_spell=1749 if pet_teaching else 48942
+            original_rank=3 if pet_teaching else 10
             for schema in (tcworld, acworld):
-                sql(f'UPDATE `{schema}`.spell_ranks SET `rank`=11 WHERE spell_id=48942')
+                sql(f'UPDATE `{schema}`.spell_ranks SET `rank`=11 WHERE spell_id={changed_spell}')
                 changed=checksum();run('apply',code=2)
                 assert 'world content drift' in sql(ack+f'CALL `{archive}`.apply_batch();',writer,False)
                 assert checksum()==changed
-                sql(f'UPDATE `{schema}`.spell_ranks SET `rank`=10 WHERE spell_id=48942')
+                sql(f'UPDATE `{schema}`.spell_ranks SET `rank`={original_rank} WHERE spell_id={changed_spell}')
             sql(f'UPDATE `{acworld}`.trainer_spell SET ReqLevel=1 WHERE TrainerId=1')
             assert 'ELIGIBILITY_TARGET_DRIFT' in run('apply',code=2).stderr
             assert 'world content drift' in sql(ack+f'CALL `{archive}`.apply_batch();',writer,False)
@@ -233,7 +262,7 @@ backup_reference=disposable-synthetic-fixture
             changed=checksum();run('restore',code=2);assert checksum()==changed
             sql(f'UPDATE `{source}`.character_spell SET custom_blob=0x1234 WHERE guid=1 AND spell=6603')
             run('restore');run('restore');assert checksum()==baseline;run('apply',code=2)
-        print(f'MySQL {version}: eligibility preview/config/count/full-scope drift, native catalogs, direct SQL guards, rollback/disconnect/reruns/exact custom restore PASS; gameplay NOT TESTED',flush=True)
+        print(f'MySQL {version}: {label} preview/config/count/full-scope drift, native catalogs, direct SQL guards, rollback/disconnect/reruns/exact custom restore PASS; gameplay NOT TESTED',flush=True)
     finally:
         if worker is not None and worker.poll() is None:
             worker.terminate();worker.wait()

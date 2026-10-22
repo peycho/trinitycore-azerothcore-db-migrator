@@ -638,3 +638,11 @@ read-only context/preview/planning, exact row counts, source/schema/world drift,
 narrow writer grants, full custom/binary/timestamp preservation, late rollback,
 interruption/resume, reruns, changed-state restoration refusal and exact inverse.
 It creates only uniquely named disposable fixtures, never an operator repair.
+
+Pet-teaching retirement adds `tests/pet-teaching-tests.py` to static checks and
+`tests/pet-teaching-mysql-tests.py` to the disposable MySQL 8.4 harness. The latter
+reuses the two-world transaction suite with explicit stock pet wrappers and
+retained `character_pet`/`pet_spell` controls. The protected AC insertion/save
+checks in `tests/native-passive-rank-tests.py` include persistent-wrapper refusal
+and the unsafe temporary-player-child control. These checks do not replace the
+five staging gameplay gates or change UNREVIEWED approval.

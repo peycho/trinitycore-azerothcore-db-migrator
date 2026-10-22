@@ -1,5 +1,15 @@
 # Profile v2 review and acceptance record
 
+The separate `tc-pet-teaching-wrapper-retirement-v1` preparation policy removes
+only exact reviewed old player-side pet-teaching rows with full originals and
+strong numeric/world guards. Actual pets/pet spells, selected talents, skills,
+professions and login flags are preserved. Scripts and unsupported player or
+profession teaching routes defer. Core pins, 100 TC / 105 AC semantic files,
+spell-state-v13, v1, metadata and UNREVIEWED approval are unchanged. Protected
+AC insertion/save consumers verify persistent refusal and reject a temporary
+player-child fallback as a workaround. See [policy and tests](pet-teaching-repair.md).
+
+
 The separate `tc-ineligible-ordinary-spell-repair-v1` preparation policy adds
 reviewed retirement of ordinary spell rows rejected by AC race/class validation,
 including enabled rows. Both effective world/DBC catalogs and complete rank

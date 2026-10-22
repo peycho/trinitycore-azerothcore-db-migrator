@@ -237,6 +237,24 @@ for spell in(63680,63644,63645,30798,674,20154,21084):
     main.append(f'manager.spells[{spell}].Id={spell};manager.spells[{spell}].root={spell};manager.spells[{spell}].flags={row[4]};')
     for i in range(3):main.append(f'manager.spells[{spell}].Effects[{i}]={{{row[71+i]},{row[116+i]},{row[95+i]}}};')
 main.append(r"""
+// Ordinary pet-teaching wrappers must not be persisted or converted into
+// temporary player spells. The actual AC _addSpell body ignores the pet
+// target when its temporary LEARN fallback adds the child to the player.
+manager.spells[27351].Id=27351;manager.spells[27351].flags=262400;
+manager.spells[27351].Effects[0]={36,27053,0};
+manager.spells[27053].Id=27053;manager.spells[27053].flags=0;
+for(uint8 spec:{0,1}){
+ Player rejected;rejected.m_activeSpec=spec;
+ assert(!rejected._addSpell(27351,3,false));
+ assert(rejected.m_spells.empty()&&rejected.auras.empty()&&rejected.skills.empty());
+ auto save=std::make_shared<Transaction>();rejected._SaveSpells(save);assert(save->saved.empty());
+ Player unsafe;unsafe.m_activeSpec=spec;assert(!unsafe._addSpell(27351,3,true));
+ assert(!unsafe.m_spells.count(27351)&&unsafe.m_spells.count(27053));
+ assert(unsafe.m_spells.at(27053)->State==PLAYERSPELL_TEMPORARY);
+}
+std::cout<<"Protected AC pet-teaching refusal/save and unsafe temporary-player-child control PASS; mocked sinks, gameplay NOT TESTED\n";
+""")
+main.append(r"""
 // AC's actual insertion/saving bodies do not reconstruct a singleton prefix.
 // Persist the verified lower seal explicitly; preserve it after save/relog and
 // active-spec changes, with no aura cast, skill or profession mutation.

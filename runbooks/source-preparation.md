@@ -297,3 +297,10 @@ values/caps to the verified native level × 5 result and accept a verified
 two-spec teaching-wrapper anchor. It uses
 sealed migration-blocker context, explicit review and full restoration evidence;
 it does not infer primary professions, riding, recipes or talent ownership.
+
+The separate [pet-teaching retirement](pet-teaching-repair.md) policy can archive
+verified old player-side pet trainers including enabled rows. It never removes
+actual pet abilities or changes talents/skills. Capture current context, preview,
+review an exact-count batch and use normal prepare/apply/status/restore. Retain
+prior toolkits/archives and regenerate every plan in a new session after a fresh
+baseline import. Scripted and unsupported mappings stay blocked.

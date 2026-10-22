@@ -49,6 +49,7 @@ python3 "$ROOT/tests/character-talent-reset-mysql-tests.py"
 python3 "$ROOT/tests/active-talent-reset-mysql-tests.py"
 python3 "$ROOT/tests/disabled-history-mysql-tests.py"
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py"
+python3 "$ROOT/tests/pet-teaching-mysql-tests.py"
 python3 "$ROOT/tests/cleanup-console-mysql-tests.py"
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT
