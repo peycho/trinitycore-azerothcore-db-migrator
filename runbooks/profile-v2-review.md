@@ -1,5 +1,16 @@
 # Profile v2 review and acceptance record
 
+The opt-in `tc-disabled-ordinary-training-prerequisites-v4` source preparation
+contract permits only exact ordinary Divine Spirit/Prayer and Nature's Grasp
+training prerequisites around wholly disabled removals. Enabled counterparts,
+skills/caps, talents, professions and login flags stay unchanged; no ranks are
+granted. Strong fractional full-row/TC-world guards, selector/proof fingerprints,
+an extra acknowledgement and atomic archive/apply/checkpoint/exact restore apply.
+Historical policies retain their exclusions. Protected load/disabled/dependent,
+ordinary-mask and trainer consumers are tested separately from gameplay. Core
+pins, 100 TC / 105 AC semantic manifests, metadata, spell-state-v13 and UNREVIEWED
+approval remain unchanged. See the [repeatable workflow](cleanup-console.md#reviewed-training-prerequisites-ordinary-v4).
+
 The opt-in `tc-ineligible-ordinary-absent-teacher-repair-v2` preparation contract
 adds only exact absent Conjure Water/Doomguard teachers to the separate
 eligibility repair. Both effective catalogs must match the reviewed pure

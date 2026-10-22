@@ -22,7 +22,7 @@ import cleanup_pet_teaching as pet_teaching
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
-POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, death_coil.POLICY, ownership.POLICY, *eligibility.POLICIES, *pet_teaching.POLICIES)
+POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, ordinary_history.TRAINING_POLICY, death_coil.POLICY, ownership.POLICY, *eligibility.POLICIES, *pet_teaching.POLICIES)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -133,6 +133,14 @@ def read_world(settings, *, exact_numeric=False):
 
 
 def check_metadata(settings, manifest):
+    if manifest.get('policy') == ordinary_history.TRAINING_POLICY:
+        if (manifest.get('training_prerequisite_ack') != ordinary_history.TRAINING_ACK
+                or sha(ROOT/'lib/cleanup_ordinary_history.py') != manifest.get('ordinary_reader_sha256')
+                or sha(ROOT/'lib/cleanup_eligibility.py') != manifest.get('world_guard_reader_sha256')
+                or manifest.get('numeric_fingerprint') != 'EXACT_FRACTIONAL_V1'
+                or sha(ROOT/'lib/cleanup_active_reset.py') != manifest.get('numeric_reader_sha256')
+                or ordinary_history.configuration_contract(settings,training_prerequisites=True) != manifest.get('configuration_contract')):
+            fail('ORDINARY_TRAINING_POLICY_DRIFT','Ordinary training policy, guards, metadata reader or configuration differs; retain original toolkit')
     if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES):
         if (manifest.get('numeric_fingerprint') != 'EXACT_FRACTIONAL_V1'
                 or sha(ROOT/'lib/cleanup_active_reset.py') != manifest.get('numeric_reader_sha256')):
@@ -163,7 +171,7 @@ def check_metadata(settings, manifest):
     for key,entry in manifest.get('core_compatibility',{}).items():
         if settings.compatibility.get(key,{}).get('manifest_sha256') != entry.get('manifest_sha256'):
             fail('CORE_PROFILE_MISMATCH','Core compatibility manifests differ from the reviewed history batch')
-    effective, world = read_world(settings,exact_numeric=manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES))
+    effective, world = read_world(settings,exact_numeric=manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, ordinary_history.TRAINING_POLICY))
     if sha_json(world) != manifest.get('world_sha256') or effective.hashes != manifest.get('semantic_dbc_sha256'):
         fail('HISTORY_METADATA_DRIFT','Effective TC world/DBC metadata differs from this reviewed history batch')
     if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES):
@@ -324,9 +332,17 @@ def plan_history(settings, work, args, output):
     ordinary_mode = getattr(args,'ordinary_spell_history',False)
     inactive_defaults = getattr(args,'inactive_custom_defaults',False)
     native_death_coil = getattr(args,'native_death_coil',False)
+    training_prerequisites = getattr(args,'training_prerequisites',False)
+    exact_mode = two_world_mode or training_prerequisites
+    ordinary_reader = sha(ROOT/'lib/cleanup_ordinary_history.py') if training_prerequisites else None
+    world_guard_reader = sha(ROOT/'lib/cleanup_eligibility.py') if training_prerequisites else None
+    numeric_reader = sha(ROOT/'lib/cleanup_active_reset.py') if training_prerequisites else None
+    if training_prerequisites and (inactive_defaults or native_death_coil or not ordinary_mode):
+        fail('HISTORY_POLICY_CONFLICT','--training-prerequisites is a separate ordinary-history policy')
     if native_death_coil and (inactive_defaults or not ordinary_mode):
         fail('HISTORY_POLICY_CONFLICT','--native-death-coil is a separate ordinary-history policy')
-    config_contract = (eligibility.configuration_contract(settings) if two_world_mode else
+    config_contract = (ordinary_history.configuration_contract(settings,training_prerequisites=True) if training_prerequisites else
+                       eligibility.configuration_contract(settings) if two_world_mode else
                        death_coil.configuration_contract(settings) if native_death_coil else
                        ordinary_history.configuration_contract(settings) if inactive_defaults else None)
     preview = getattr(args,'preview',False)
@@ -352,11 +368,11 @@ def plan_history(settings, work, args, output):
         path, report, state, rows, audit = inspection(settings,work,inspection_id)
     inspection_sha = sha(path/'SHA256SUMS')
     print('Reviewing effective TC world/DBC learning routes (read-only)',flush=True)
-    effective, world = read_world(settings,exact_numeric=two_world_mode)
+    effective, world = read_world(settings,exact_numeric=exact_mode)
     # Older sealed inspections retain their historical numeric digest. The
     # full typed rows/layout and asset hashes still have to match exactly;
     # new eligibility packets then use the stronger digest at every phase.
-    same_world = (all(world[k]==captured_world[k] for k in ('layout','rows')) if two_world_mode
+    same_world = (all(world[k]==captured_world[k] for k in ('layout','rows')) if exact_mode
                   else world==captured_world) if trained_mode else True
     if trained_mode and (not same_world or effective.hashes!=capture_report['dbc_sha256']):
         fail('HISTORY_METADATA_DRIFT','Effective TC metadata differs from the captured migration context')
@@ -368,7 +384,7 @@ def plan_history(settings, work, args, output):
     if child_mode:
         policy = trained_history.CHILD_POLICY
     if ordinary_mode:
-        policy = (death_coil.POLICY if native_death_coil else
+        policy = (ordinary_history.TRAINING_POLICY if training_prerequisites else death_coil.POLICY if native_death_coil else
                   ordinary_history.INACTIVE_DEFAULT_POLICY if inactive_defaults else ordinary_history.POLICY)
     if ownership_mode:
         policy = ownership.POLICY
@@ -380,6 +396,7 @@ def plan_history(settings, work, args, output):
     relation_rows,relation_proof,relation_summary,relation_edges = [],[],{},[]
     rank_proof = []
     native_base_proofs = []
+    training_proofs = []
     ownership_native_proofs = []
     if trained_mode:
         check_retained_scripts(state,effective)
@@ -396,8 +413,9 @@ def plan_history(settings, work, args, output):
         elif ordinary_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ordinary_history.select(
                 context,effective,args.expect_review_rows,preview=preview,inactive_custom_defaults=inactive_defaults,
-                native_death_coil=native_death_coil)
+                native_death_coil=native_death_coil,training_prerequisites=training_prerequisites)
             native_base_proofs = relation_summary.pop('native_base_proofs',[])
+            training_proofs = relation_summary.pop('training_prerequisite_proofs',[])
         else:
             selected,excluded,relation_proof,relation_summary,relation_edges=trained_history.select(
                 context,effective,args.expect_review_rows,orphan_children=child_mode,preview=preview)
@@ -419,6 +437,8 @@ def plan_history(settings, work, args, output):
                 review['target_dbc_sha256'] = target_effective.hashes
             if reviewed_cower:
                 review['cower_native_contract'] = cower_proof
+            if training_prerequisites:
+                review['training_prerequisite_proofs'] = training_proofs
             if native_death_coil:
                 review['native_base_proofs'] = native_base_proofs
             write_json(work.operation/review_name,review)
@@ -471,7 +491,7 @@ def plan_history(settings, work, args, output):
         fail('UNSUPPORTED_COLUMN','History policy requires at most 512 columns without automatic updates')
     queries = []
     for table in TABLES:
-        query = aggregate(meta,table,source,f's.guid IN ({selector})',exact_numeric=two_world_mode)
+        query = aggregate(meta,table,source,f's.guid IN ({selector})',exact_numeric=exact_mode)
         queries.append(('sets',f"SELECT JSON_ARRAY('{table}',guid,n,h) row_value FROM ({query}) a ORDER BY guid"))
     # Exact live inspection inputs reject same-count ownership/flags changes.
     scope = ' WHERE guid IN ('+','.join(str(r[0]) for r in context['characters'])+')' if trained_mode else ''
@@ -498,7 +518,7 @@ def plan_history(settings, work, args, output):
         by_guid[guid].append(spell)
     exclusion = ' OR '.join('(s.guid='+str(guid)+' AND s.spell IN ('+','.join(map(str,spells))+'))'
                             for guid,spells in sorted(by_guid.items()))
-    query = aggregate(meta,'character_spell',source,f's.guid IN ({selector}) AND NOT ({exclusion})',exact_numeric=two_world_mode)
+    query = aggregate(meta,'character_spell',source,f's.guid IN ({selector}) AND NOT ({exclusion})',exact_numeric=exact_mode)
     queries.append(('after',f"SELECT JSON_ARRAY('character_spell',guid,n,h) row_value FROM ({query}) a ORDER BY guid"))
     # Each digest is bounded per character, not one concatenation of millions
     # of source rows. Counts are checked before any executable package exists.
@@ -530,6 +550,10 @@ def plan_history(settings, work, args, output):
                     'tools/talent-ownership-repair.sql.in' if ownership_mode else 'tools/disabled-talent-history.sql.in')
     batch_inputs = {'policy':policy,'inspection':sha(path/'SHA256SUMS'),'snapshot':cells,'after':after,
                     'selection':selected,'world':world,'meta':meta,'template':sha(template),'id':output.name}
+    if training_prerequisites:
+        batch_inputs.update(training_prerequisite_proofs=training_proofs,ordinary_reader_sha256=ordinary_reader,
+                            numeric_reader_sha256=numeric_reader,
+                            world_guard_reader_sha256=world_guard_reader)
     if ownership_mode:
         batch_inputs.update(ownership_reader_sha256=ownership_reader,ownership_proofs=relation_proof,
                             native_owner_proofs=ownership_native_proofs)
@@ -547,7 +571,7 @@ def plan_history(settings, work, args, output):
         batch_inputs['cower_native_contract'] = cower_proof
     batch = sha_json(batch_inputs)
     archive = ('tc_pet_teaching_' if pet_mode else 'tc_eligibility_' if two_world_mode else 'tc_ownership_' if ownership_mode else 'tc_disabled_history_')+uuid.uuid4().hex[:20]
-    blocks = check_sets(meta,source,archive,counts,exact_numeric=two_world_mode)
+    blocks = check_sets(meta,source,archive,counts,exact_numeric=exact_mode)
     values = {'SOURCE':source,'ARCHIVE':archive,'UUID':work.current()['identity']['uuid'],
         'BATCH':batch,'AUDIT':audit['audited_results_sha256'],'COUNT':len(selected),'GUID_COUNT':len(guids),
         'EXPECTED_HASH':planner.key_hash(selected),'SNAPSHOT_COUNT':len(cells),'SNAPSHOT_HASH':planner.key_hash(cells),
@@ -569,7 +593,7 @@ def plan_history(settings, work, args, output):
  OR NOT ((SELECT SHA2(COALESCE(GROUP_CONCAT({hashed} ORDER BY BINARY {hashed} SEPARATOR ''),''),256)
      FROM `{settings.schemas['world']}`.`{table}`)<=>'{checksum}') THEN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='World metadata content changed: {table}'; END IF;''')
-    values['WORLD_CHECKS'] = '\n'.join(world_checks)
+    values['WORLD_CHECKS'] = eligibility.world_checks(settings.schemas['world'],world) if training_prerequisites else '\n'.join(world_checks)
     if ownership_mode:
         schema = settings.schemas['world']
         names = ','.join("'"+r[0]+"'" for r in world['layout']['tables'])
@@ -588,6 +612,10 @@ def plan_history(settings, work, args, output):
     if config_contract is not None and not two_world_mode:
         values['WORLD_CHECKS'] = """IF NOT (BINARY @ordinary_history_all_spells <=> BINARY '0') THEN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit PlayerStart.AllSpells=0 assertion required for ordinary history v2'; END IF;
+""" + values['WORLD_CHECKS']
+    if training_prerequisites:
+        values['WORLD_CHECKS'] = """IF NOT (BINARY @ordinary_training_ack <=> BINARY 'REVIEWED_TRAINING_PREREQUISITES_ONLY') THEN
+ SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit reviewed ordinary training prerequisites acknowledgement required'; END IF;
 """ + values['WORLD_CHECKS']
     if native_death_coil:
         values['WORLD_CHECKS'] = """IF NOT (BINARY @ordinary_history_native_base <=> BINARY '47541') THEN
@@ -611,7 +639,11 @@ def plan_history(settings, work, args, output):
 """ + values['WORLD_CHECKS']
         if pet_teaching.cower_sources(settings.paths) != cower_proof:
             fail('COWER_NATIVE_SOURCE_DRIFT','Cower source contract changed during planning')
-    final_effective, final_world = read_world(settings,exact_numeric=two_world_mode)
+    if training_prerequisites and (sha(ROOT/'lib/cleanup_ordinary_history.py') != ordinary_reader
+            or sha(ROOT/'lib/cleanup_eligibility.py') != world_guard_reader
+            or sha(ROOT/'lib/cleanup_active_reset.py') != numeric_reader):
+        fail('ORDINARY_TRAINING_POLICY_DRIFT','Training policy or numeric/world guards changed during planning')
+    final_effective, final_world = read_world(settings,exact_numeric=exact_mode)
     if metadata(settings,TABLES)!=meta or final_world!=world or final_effective.hashes!=effective.hashes:
         fail('HISTORY_METADATA_DRIFT','Source schema/world metadata changed while planning')
     if ownership_mode and sha(ROOT/'lib/cleanup_ownership.py') != ownership_reader:
@@ -639,6 +671,13 @@ def plan_history(settings, work, args, output):
         'native_policy':'Disabled direct talent ranks only; no selected family in either spec; no activation, talent reset or grants'}
     if config_contract is not None:
         manifest['configuration_contract'] = config_contract
+    if training_prerequisites:
+        manifest.update(training_prerequisite_proofs=training_proofs,
+                        training_prerequisite_ack=ordinary_history.TRAINING_ACK,
+                        ordinary_reader_sha256=ordinary_reader,
+                        world_guard_reader_sha256=world_guard_reader,
+                        numeric_fingerprint='EXACT_FRACTIONAL_V1',
+                        numeric_reader_sha256=numeric_reader)
     if native_death_coil:
         manifest['native_base_proofs'] = native_base_proofs
     if include_scripts:
@@ -696,6 +735,8 @@ FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.g
     finish(settings,work,output,manifest,render_text(template,values),
            'guid\tspell\tactive\tdisabled\n'+''.join('\t'.join(map(str,row))+'\n' for row in selected),status)
     (output/'excluded-rows.tsv').write_text('guid\tspell\treason\n'+''.join('\t'.join(map(str,row))+'\n' for row in excluded))
+    if training_prerequisites:
+        write_json(output/'ordinary-training-proof.json',training_proofs)
     if native_death_coil:
         write_json(output/'native-base-review.json',{'policy':policy,'configuration_contract':config_contract,
                    'proofs':native_base_proofs,'sql_spell_rows_inserted':0,'sql_skill_rows_changed':0,

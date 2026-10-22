@@ -30,6 +30,9 @@ load = source[start:end]
 start = source.index('// learn dependent spells',source.index('bool Player::AddSpell('))
 end = source.index('if (!GetSession()->PlayerLoading())',start)
 dependent = source[start:end]
+start = source.index('// return false if spell disabled',source.index('bool Player::AddSpell('))
+end = source.index('\n    }',start)
+disabled_gate = source[start:end]
 program = r'''
 #include <array>
 #include <cassert>
@@ -54,11 +57,13 @@ struct Rows {
 };
 using PreparedQueryResult=Rows;
 struct Player {
- std::set<uint32> known;std::vector<uint32> calls;
+ std::set<uint32> known;std::vector<uint32> calls,effectCalls;
  bool IsInWorld()const{return false;}
  bool AddSpell(uint32 spellId,bool,bool,bool,bool disabled,bool loading=false){
   assert(loading||!disabled);calls.push_back(spellId);known.insert(spellId);
-  if(disabled)return false;
+  struct {bool disabled;} newspell{disabled};
+  @DISABLED_GATE@
+  effectCalls.push_back(spellId);
   @DEPENDENT@
   return true;
  }
@@ -67,7 +72,17 @@ struct Player {
 };
 int main(){
  @CASES@
- std::cout<<"Protected TC loader/dependent loop: 10 absent/present teacher pairs, empty input, disabled/auto gates PASS; gameplay NOT TESTED\n";
+ // Disabled ordinary history never reaches effects/dependent learning. The
+ // enabled counterpart is preserved before and after exact retirement.
+ for(uint32 id:{25312,32999,16811}){
+  manager.links.clear();
+  Player before;before._LoadSpells(Rows{{{{{id},{1},{1}}},{{{5195},{1},{0}}}}});
+  assert((before.known==std::set<uint32>{id,5195}));
+  assert(before.effectCalls==std::vector<uint32>{5195});
+  Player after;after._LoadSpells(Rows{{{{{5195},{1},{0}}}}});
+  assert(after.known==std::set<uint32>{5195});assert(after.effectCalls==before.effectCalls);
+ }
+ std::cout<<"Protected TC loader/dependent loop: 10 absent/present teacher pairs, empty input, disabled/auto gates and 3 disabled ordinary-history effect controls PASS; gameplay NOT TESTED\n";
 }
 '''
 cases = []
@@ -86,7 +101,7 @@ for pairs in ABSENT_TEACHERS.values():
  Player automatic;automatic._LoadSpells(Rows{{{{{@P@},{1},{0}}}}});
  assert(automatic.known==std::set<uint32>{@P@});
 }'''.replace('@P@',str(parent)).replace('@C@',str(child)))
-program = program.replace('@DEPENDENT@',dependent).replace('@LOAD@',load).replace('@CASES@','\n'.join(cases))
+program = program.replace('@DEPENDENT@',dependent).replace('@LOAD@',load).replace('@DISABLED_GATE@',disabled_gate).replace('@CASES@','\n'.join(cases))
 with tempfile.TemporaryDirectory() as directory:
     cpp,binary=Path(directory)/'teachers.cpp',Path(directory)/'teachers'
     cpp.write_text(program)

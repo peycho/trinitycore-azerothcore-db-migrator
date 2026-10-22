@@ -1,5 +1,11 @@
 # Inspecting and preparing an old TrinityCore source
 
+The opt-in [ordinary training-prerequisite repair](cleanup-console.md#reviewed-training-prerequisites-ordinary-v4)
+archives only wholly disabled Divine Spirit/Prayer and Nature's Grasp history
+with exact requirement-only links, preserving enabled counterparts, skills and
+talent ownership. It grants no missing prerequisites. Fresh imports need new
+sessions and fresh review packages; retain earlier toolkits for exact restores.
+
 Old character records can contain real historical damage, valid native state,
 and representations that the target core handles differently. These need
 different decisions. A missing persisted lower spell rank is normal when TC

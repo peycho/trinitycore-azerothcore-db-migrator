@@ -1,5 +1,10 @@
 # Cleanup from the Linux shell
 
+The optional [ordinary training-prerequisite repair](#reviewed-training-prerequisites-ordinary-v4)
+archives wholly disabled Divine Spirit/Prayer and Nature's Grasp history under
+exact requirement-only contracts, preserving enabled counterparts and skills.
+Earlier history policies retain their exclusions.
+
 `python3 console` provides the repeatable audit, plan, prepare, apply, status and
 restore workflow for a **stopped restored TrinityCore preparation copy**. Use
 Python 3.10 or later and MySQL 8 client tools against MySQL 8.4.x. It uses the
@@ -1247,3 +1252,82 @@ The optional pet-teaching `--reviewed-cower` mode is a separate v2 contract for
 only the exact reviewed Cower pet-child amount callbacks. Default v1 scripted
 exclusions are unchanged. See the [native contract, direct-SQL acknowledgement
 and repeatable batch procedure](pet-teaching-repair.md#opt-in-reviewed-cower-child-v2).
+
+## Reviewed training prerequisites (ordinary v4)
+
+`tc-disabled-ordinary-training-prerequisites-v4` extends ordinary retirement only
+for Divine Spirit (`14752`), Prayer of Spirit (`27681`) and Nature's Grasp
+(`16689`). Complete stock chain order and touching edges must match. Their
+`spell_required` links gate training, rather than grant learned spells. Native
+TC loading does not activate a disabled spell merely because its ordinary
+prerequisite is known. AC's ordinary mask and both trainers likewise separate
+existing ordinary knowledge from training requirements.
+
+This deliberately discards future reactivation/retraining history. Every stored
+rank in a selected family must be disabled; enabled siblings defer it. Enabled
+counterpart spells, such as Entangling Roots, remain unchanged. No base/higher
+rank is granted. Both talent builds, skills/caps, professions, glyphs, items and
+login flags stay unchanged. Talent/aura or learn routes, skills/rewards, scripts,
+extra/cyclic/changed edges, unsupported classes and pending resets defer.
+Historical ordinary v1/v2/v3 policies retain their behavior; no GM exemption is
+introduced.
+
+Use the complete toolkit with a current sealed migration inspection. After
+source edits, capture fresh context from an existing report using
+`inspect-migration-blockers --report /path/to/spell-state-blockers.tsv --bundle`.
+Continue the existing unchanged preparation session. Verify the stopped TC
+configuration and set the existing `[source] player_start_all_spells = 0`.
+Do not duplicate keys. This is an operator assertion, not a configuration change.
+
+```bash
+python3 console plan disabled-spell-history --migration-inspection latest --training-prerequisites --preview
+python3 console plan disabled-spell-history --migration-inspection INSPECTION_ID --training-prerequisites --expect-review-rows REVIEWED_CANDIDATE_ROWS
+python3 console prepare --batch BATCH_ID
+python3 console status --batch BATCH_ID
+```
+
+Here `--expect-review-rows` is **reviewed_candidate_rows**, including deferred
+rows, rather than selected_rows. Preview creates no SQL package or active batch.
+Review `ordinary-spell-review.json`, `ordinary-training-proof.json`, manifest,
+relationship review and full archived originals. PREPARED leaves selected rows
+stored. After reviewing the exact batch:
+
+```bash
+python3 console apply --batch BATCH_ID
+python3 console status --batch BATCH_ID
+```
+
+Planning rechecks the complete captured semantic scope, including deferred
+characters. V4 seals full custom source rows with exact FLOAT/DOUBLE and DECIMAL
+fingerprints, TC world content/layout, DBC assets, configuration, selector/guard
+hashes, proofs and expected result. Apply/checkpoint commits atomically; late
+errors and interrupted transactions roll back. Reruns verify committed state.
+No new source/world grants are added. The console supplies acknowledgements;
+before each direct SQL action also set:
+
+```sql
+SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';
+SET @ordinary_history_all_spells=0;
+SET @ordinary_training_ack='REVIEWED_TRAINING_PREREQUISITES_ONLY';
+```
+
+Before gameplay or further edits, `python3 console restore --batch BATCH_ID`
+restores exact full removed rows and rejects affected-state/metadata drift.
+Restore overlapping later batches first with their original toolkits. Earlier
+archives retain their original guards and numeric limitations. After a fresh
+baseline import, retain prior evidence, start a **new session**, capture fresh
+inputs and regenerate plans. Never reuse old approvals or SQL. Source preparation
+requires a fresh migration run and target/control schemas. This source-only
+policy does not approve AC compatibility; normal target world/DBC preflight is
+still required.
+
+Static controls keep old policies rejecting these cases. MySQL 8.4 tests exercise
+real console preview/count/full-scope drift, source/world layout and fractional
+changes, extra acknowledgements, late/disconnect rollback, reruns and exact
+custom-row restoration. Protected TC load/disabled/dependent consumers and both
+trainers/AC ordinary-mask consumers run with mocked state, separately from full
+worldserver gameplay. Record all five staging gates individually: ranks/trainers;
+casting; both specs/relog; talent/profession/recipe/riding/skill state; and
+save/relog/restart/logs. Gameplay remains **NOT TESTED** and approval **UNREVIEWED**
+until accepted. Core pins, global manifests, metadata and migration reconstruction
+are unchanged.

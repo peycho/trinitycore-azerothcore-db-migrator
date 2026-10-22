@@ -8,20 +8,62 @@ import cleanup_death_coil as death_coil
 
 POLICY = 'tc-isolated-disabled-ordinary-spell-history-v1'
 INACTIVE_DEFAULT_POLICY = 'tc-disabled-ordinary-inactive-custom-defaults-v2'
+TRAINING_POLICY = 'tc-disabled-ordinary-training-prerequisites-v4'
+TRAINING_ACK = 'REVIEWED_TRAINING_PREREQUISITES_ONLY'
+TRAINING_CHAINS = {
+    14752:(14752,14818,14819,27841,25312,48073),
+    27681:(27681,32999,48074),
+    339:(339,1062,5195,5196,9852,9853,26989,53308),
+    16689:(16689,16810,16811,16812,16813,17329,27009,53312)}
 
 
-def configuration_contract(settings):
+def training_contract(meta, graph, root):
+    """Only reviewed ordinary Spirit/Prayer and Nature's Grasp prerequisites."""
+    roots = (14752,27681) if root in (14752,27681) else (339,16689) if root == 16689 else ()
+    if not roots:
+        return None
+    cls,skill = (5,613) if root in (14752,27681) else (11,574)
+    nodes = {s for r in roots for s in TRAINING_CHAINS[r]}
+    expected = ({(14752,27681,'REQUIRED_BY')} if cls == 5 else
+                {(a,b,'REQUIRED_BY') for a,b in zip(TRAINING_CHAINS[339],TRAINING_CHAINS[16689])})
+    if (any(tuple(meta.chain(s)) != TRAINING_CHAINS[r] for r in roots for s in TRAINING_CHAINS[r])
+            or {edge for edge in graph.edges if edge[0] in nodes or edge[1] in nodes} != expected):
+        return None
+    for s in sorted(nodes):
+        row,abilities = meta.spells[s],meta.abilities[s]
+        if (s in meta.talents or s in getattr(meta,'talent_learn_owners',{})
+                or s in getattr(meta,'aura_owners',{}) or s in getattr(meta,'world_aura_owners',{})
+                or s in getattr(meta,'additional',set()) or meta.scripts[s]
+                or meta.learns[s] or meta.effect_learns[s]
+                or set(row[71:74]) & {36,40,44,47,118} or set(row[95:98]) & {30,98}
+                or len(abilities) != 1 or abilities[0][1] != skill
+                or abilities[0][4] != 1<<(cls-1) or abilities[0][9] != 0
+                or meta.stores['SkillLine'].get(skill,[0,0])[1] != 7):
+            return None
+        try:
+            meta.check_spell(s)
+        except Unsupported:
+            return None
+    return {'contract':'ORDINARY_TRAINING_PREREQUISITES_V1','class':cls,
+            'edges':[list(r) for r in sorted(expected)],'reviewed_spells':sorted(nodes),
+            'native_load_grants':0,'spell_rows_inserted':0,'skill_rows_changed':0,
+            'policy':'Requirements gate future training; enabled counterpart rows remain unchanged'}
+
+
+def configuration_contract(settings, *, training_prerequisites=False):
     """An explicit operator assertion, never inferred from missing config."""
     if settings.get('source','player_start_all_spells') != '0':
         fail('ORDINARY_HISTORY_CONFIG_REQUIRED',
-             '--inactive-custom-defaults requires [source] player_start_all_spells = 0',
+             ('--training-prerequisites' if training_prerequisites else '--inactive-custom-defaults')+' requires [source] player_start_all_spells = 0',
              'Verify PlayerStart.AllSpells in the effective stopped TC configuration. '
              'This setting is an operator assertion; the console cannot inspect the running server configuration.')
     return {'setting':'PlayerStart.AllSpells','value':0,'evidence':'OPERATOR_ASSERTION',
-            'scope':'TC playercreateinfo_spell_custom only; all other learning routes retain their guards'}
+            'scope':('Reviewed ordinary training prerequisites only; no grants or custom defaults' if training_prerequisites else
+                     'TC playercreateinfo_spell_custom only; all other learning routes retain their guards')}
 
 
-def select(state, meta, expected, *, preview=False, inactive_custom_defaults=False, native_death_coil=False):
+def select(state, meta, expected, *, preview=False, inactive_custom_defaults=False, native_death_coil=False,
+           training_prerequisites=False):
     if native_death_coil:
         inactive_custom_defaults = True  # Its separate config contract requires AllSpells=0.
     stored = state['character_spell']
@@ -78,13 +120,15 @@ def select(state, meta, expected, *, preview=False, inactive_custom_defaults=Fal
                 fail('DEATH_COIL_SKILL_STATE','Malformed captured skill row')
             if row[1]==death_coil.SKILL:
                 native_skills[row[0]].append(row)
-    catalog = {}
+    catalog, training = {}, {}
     for root in sorted({r for _,r in groups}):
         nodes = graph.members.get(root, set())
+        if training_prerequisites:
+            training[root] = training_contract(meta,graph,root)
         reason = ''
         if not nodes:
             reason = 'DEFER_UNKNOWN_SPELL'
-        elif graph.incoming[root] or graph.next[root]:
+        elif (graph.incoming[root] or graph.next[root]) and not training.get(root):
             reason = 'DEFER_LEARNING_OR_REQUIREMENT_ROUTE'
         elif (nodes & set(getattr(meta,'aura_owners',{}))
               or nodes & set(getattr(meta,'world_aura_owners',{}))
@@ -155,6 +199,8 @@ def select(state, meta, expected, *, preview=False, inactive_custom_defaults=Fal
             flags = present.get(spell)
             route = ('ORDINARY_RANK_INACTIVE_CUSTOM_DEFAULT' if inactive_custom_defaults
                      and nodes & meta.history_default_spells else 'ORDINARY_RANK')
+            if training.get(root):
+                route = 'ORDINARY_RANK_TRAINING_PREREQUISITE'
             if native_death_coil:
                 route = death_coil.ROLE
             disposition = ('NATIVE_BASE_FROM_EXISTING_SKILL' if native_death_coil and spell==death_coil.CHAIN[0]
@@ -175,6 +221,12 @@ def select(state, meta, expected, *, preview=False, inactive_custom_defaults=Fal
         'deferred_candidate_rows':len(excluded),
         'reviewed_script_binding_count':len(bindings),
         'native_policy':'Archive isolated wholly disabled ordinary rank families; no talent, enabled spell, skill, grant or login-flag change; stored future reactivation/retraining history is discarded'}
+    if training_prerequisites:
+        summary.update(training_prerequisite_proofs=[{'guid':g,'rank_root':r,**training[r]}
+                       for g,r in sorted({(p[0],p[1]) for p in proof}) if training.get(r)],
+                       spell_rows_inserted=0,skill_rows_changed=0,
+                       disabled_rows_removed=len(selected),enabled_rows_removed=0)
+        summary['native_policy'] += '; exact reviewed ordinary training prerequisites allowed; enabled counterpart rows preserved'
     if inactive_custom_defaults:
         summary['selected_custom_default_rows'] = sum(
             bool(graph.members.get(graph.component[row[1]],set()) & meta.history_default_spells)

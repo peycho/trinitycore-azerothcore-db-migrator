@@ -33,6 +33,84 @@ class OrdinaryHistoryTests(unittest.TestCase):
 
     def review(self):return ordinary.select(self.state,self.meta,None,preview=True)
 
+    def training(self):
+        # Keep these tests self-contained; full Metadata/DBC and world parsing
+        # is exercised through the real console in the disposable suite.
+        self.meta.spells={s:[0]*234 for chain in ordinary.TRAINING_CHAINS.values() for s in chain}
+        self.meta.chain=lambda s:next((chain for chain in ordinary.TRAINING_CHAINS.values() if s in chain),(s,))
+        self.meta.talents={};self.meta.requires.clear();self.meta.effect_learns.clear()
+        self.meta.stores['SkillLine'].update({613:[613,7],574:[574,7]})
+        self.meta.stores['SkillRaceClassInfo']={613:[613,613,0,16,0,0,0],574:[574,574,0,1024,0,0,0]}
+        self.meta.requires[27681]={14752}
+        for parent,child in zip(ordinary.TRAINING_CHAINS[339],ordinary.TRAINING_CHAINS[16689]):
+            self.meta.requires[child]={parent}
+        for root,chain in ordinary.TRAINING_CHAINS.items():
+            skill,cls=(613,5) if root in (14752,27681) else (574,11)
+            for s in chain:
+                self.meta.spells[s][71]=6
+                a=[0]*14;a[0],a[1],a[2],a[4]=s,skill,s,1<<(cls-1)
+                self.meta.abilities[s]=[a]
+        self.state={'characters':[[1,1,5,77,0,2,0,0],[2,4,11,38,1,2,0,0]],
+                    'character_spell':[[1,25312,1,1],[1,32999,1,1],[2,16811,1,1],[2,5195,1,0]],
+                    'character_talent':[],'character_skills':[[1,171,320,450],[2,574,1,400]]}
+
+    def test_training_opt_in_preserves_enabled_counterpart_and_future_history_is_explicit(self):
+        self.training();before=copy.deepcopy(self.state)
+        self.assertFalse(self.review()[0])
+        for args in ({'inactive_custom_defaults':True},{'native_death_coil':True}):
+            self.assertFalse(ordinary.select(self.state,self.meta,None,preview=True,**args)[0])
+        result=ordinary.select(self.state,self.meta,None,preview=True,training_prerequisites=True)
+        self.assertEqual(result[0],[(1,25312,1,1),(1,32999,1,1),(2,16811,1,1)])
+        self.assertFalse(result[1]);self.assertEqual(result[3]['enabled_rows_removed'],0)
+        self.assertEqual(result[3]['spell_rows_inserted'],0);self.assertEqual(self.state,before)
+        self.assertEqual(len(result[3]['training_prerequisite_proofs']),3)
+        self.assertEqual(ordinary.select(self.state,self.meta,3,training_prerequisites=True),result)
+        with self.assertRaises(CleanupError):ordinary.select(self.state,self.meta,2,training_prerequisites=True)
+        for active in (0,1):
+            state=copy.deepcopy(self.state)
+            for c in state['characters']:c[4]=active
+            self.assertEqual(ordinary.select(state,self.meta,None,preview=True,training_prerequisites=True)[0],result[0])
+        state=copy.deepcopy(self.state);state['character_spell'][1][3]=0
+        self.assertEqual(ordinary.select(state,self.meta,None,preview=True,training_prerequisites=True)[0],
+                         [(1,25312,1,1),(2,16811,1,1)])
+        self.assertTrue(parser().parse_args(['plan','disabled-spell-history','--migration-inspection','latest',
+                                            '--training-prerequisites','--preview']).training_prerequisites)
+
+    def test_training_known_sibling_and_pending_or_foreign_character_remain_deferred(self):
+        self.training()
+        for index,value in ((6,1),(7,4),(2,9)):
+            before=copy.deepcopy(self.state);self.state['characters'][0][index]=value
+            rows,*_=ordinary.select(self.state,self.meta,None,preview=True,training_prerequisites=True)
+            self.assertEqual(rows,[(2,16811,1,1)]);self.state=before
+        self.state['character_spell'].append([1,14752,1,0])
+        rows,excluded,*_=ordinary.select(self.state,self.meta,None,preview=True,training_prerequisites=True)
+        self.assertEqual(rows,[(1,32999,1,1),(2,16811,1,1)])
+        self.assertEqual({r[2]for r in excluded},{'DEFER_ENABLED_RELATED_SPELL'})
+
+    def test_training_extra_learning_skill_script_talent_cycle_or_chain_change_never_relaxes(self):
+        self.training()
+        for change in (
+                lambda m:m.learns[14752].append((27681,1,False)),
+                lambda m:m.requires[14752].add(27681),
+                lambda m:m.requires[27681].add(339),
+                lambda m:m.scripts[14818].add('unreviewed'),
+                lambda m:m.spells[14818].__setitem__(71,44),
+                lambda m:m.spells[14818].__setitem__(95,98),
+                lambda m:m.abilities[14818][0].__setitem__(9,2),
+                lambda m:m.stores['SkillLine'][613].__setitem__(1,11),
+                lambda m:m.abilities[14818][0].__setitem__(4,1),
+                lambda m:m.talents.__setitem__(14752,(1,1))):
+            before=copy.deepcopy(self.meta);change(self.meta)
+            rows,*_=ordinary.select(self.state,self.meta,None,preview=True,training_prerequisites=True)
+            self.assertLessEqual(set(rows),{(2,16811,1,1)});self.meta=before
+
+    def test_training_requires_explicit_source_configuration(self):
+        for value in ('','1','false'):
+            with self.assertRaises(CleanupError):
+                ordinary.configuration_contract(SimpleNamespace(get=lambda *_:value),training_prerequisites=True)
+        self.assertEqual(ordinary.configuration_contract(SimpleNamespace(get=lambda *_:'0'),
+                         training_prerequisites=True)['value'],0)
+
     def test_exact_isolated_family_absent_rank_no_grant_and_old_failing_control(self):
         before=copy.deepcopy(self.state)
         selected,excluded,proof,summary,_=ordinary.select(self.state,self.meta,3)

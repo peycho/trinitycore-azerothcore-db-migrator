@@ -592,10 +592,14 @@ def command_action(settings, work, args):
     if ack not in ('talent_cleanup_ack','recovery_ack','skill_cleanup_ack'):
         fail('INVALID_POLICY','Unknown cleanup acknowledgement variable')
     configuration_ack = ''
-    from cleanup_ordinary_history import INACTIVE_DEFAULT_POLICY
+    from cleanup_ordinary_history import INACTIVE_DEFAULT_POLICY, TRAINING_POLICY, TRAINING_ACK
     from cleanup_death_coil import POLICY as DEATH_COIL_POLICY
-    if manifest.get('policy') in (INACTIVE_DEFAULT_POLICY,DEATH_COIL_POLICY):
+    if manifest.get('policy') in (INACTIVE_DEFAULT_POLICY,DEATH_COIL_POLICY,TRAINING_POLICY):
         configuration_ack = 'SET @ordinary_history_all_spells=0;\n'
+    if manifest.get('policy') == TRAINING_POLICY:
+        if manifest.get('training_prerequisite_ack') != TRAINING_ACK:
+            fail('ORDINARY_TRAINING_ACK_INVALID','Training-prerequisite acknowledgement differs from reviewed policy')
+        configuration_ack += "SET @ordinary_training_ack='REVIEWED_TRAINING_PREREQUISITES_ONLY';\n"
     if manifest.get('policy') == DEATH_COIL_POLICY:
         configuration_ack += 'SET @ordinary_history_native_base=47541;\n'
     from cleanup_ownership import POLICY as OWNERSHIP_POLICY, ACK as OWNERSHIP_ACK
@@ -729,6 +733,7 @@ def parser():
     ordinary_modes=ordinary.add_mutually_exclusive_group()
     ordinary_modes.add_argument('--inactive-custom-defaults',action='store_true',help='Explicit v2: allow inactive custom-start routes only with [source] player_start_all_spells=0; other guards remain')
     ordinary_modes.add_argument('--native-death-coil',action='store_true',help='Separate v3: retire eligible disabled Death Coil training history, allowing native rank 1 from existing Unholy skill; requires player_start_all_spells=0')
+    ordinary_modes.add_argument('--training-prerequisites',action='store_true',help='Separate v4: exact reviewed disabled ordinary training prerequisites; preserve enabled counterparts, skills and talents')
     ordinary_review=ordinary.add_mutually_exclusive_group(required=True)
     ordinary_review.add_argument('--preview',action='store_true',help='Read-only review; no SQL package, source change or active-batch change')
     ordinary_review.add_argument('--expect-review-rows',type=int,help='Exact reviewed_candidate_rows from this policy preview, including exclusions')

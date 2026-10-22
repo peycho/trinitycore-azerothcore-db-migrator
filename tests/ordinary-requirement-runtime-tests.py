@@ -5,6 +5,7 @@ State getters/catalogs are mocked. This verifies known ordinary spell handling,
 not full worldserver loading, quest completion, casts or gameplay acceptance.
 """
 from pathlib import Path
+import hashlib
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,12 @@ def body(source,marker):
     while depth:
         depth+=(source[end]=='{')-(source[end]=='}');end+=1
     return source[start:end]
+root=Path(__file__).resolve().parents[1]
+for core,prefix in ((tc,'trinitycore'),(ac,'azerothcore')):
+    manifest=dict((n.strip().lstrip('*'),h)for h,n in (line.split(None,1)for line in
+        (root/'compatibility/tc335-acwotlk-v2'/f'{prefix}-semantic.sha256').read_text().splitlines()))
+    for name in ('src/server/game/Entities/Player/Player.cpp','src/server/game/Entities/Creature/Trainer.cpp'):
+        assert hashlib.sha256((core/name).read_bytes()).hexdigest()==manifest[name], 'Protected requirement consumer differs'
 acplayer=(ac/'src/server/game/Entities/Player/Player.cpp').read_text()
 mask_body=body(acplayer,'uint8 Player::GetLearnSpellSpecMask(')
 methods='uint8 Player::GetLearnSpellSpecMask(uint32 spellId) const '+mask_body+'\n'
@@ -74,9 +81,10 @@ struct Trainer {
 main=r'''
 int main(){
  manager.required.emplace(5209,5487);
+ manager.required.emplace(27681,14752);manager.required.emplace(16689,339);
  manager.required.emplace(23214,13819);manager.required.emplace(23214,33391);
  PlayerSpell ordinary{3},otherSpec{2};Trainer trainer;
- for(uint8 spec:{0,1})for(uint32 id:{5209,23214,20154,21084}){
+ for(uint8 spec:{0,1})for(uint32 id:{5209,23214,20154,21084,27681,16689}){
   Player p;p.m_activeSpec=spec;p.m_spells[id]=&ordinary;
   uint32 reads=manager.requirementReads;
   assert(p.GetLearnSpellSpecMask(id)==3&&manager.requirementReads==reads);
@@ -90,7 +98,8 @@ int main(){
   auto missing=(id==20154||id==21084)?SpellState::Available:SpellState::Unavailable;
   assert(trainer.TcState(&p,&direct)==missing&&trainer.AcState(&p,&direct)==missing);
   assert(trainer.TcState(&p,&wrapped)==missing&&trainer.AcState(&p,&wrapped)==missing);
-  assert(!p.HasSpell(5487)&&!p.HasSpell(13819)&&!p.HasSpell(33391)&&p.m_spells.empty());
+  assert(!p.HasSpell(5487)&&!p.HasSpell(13819)&&!p.HasSpell(33391)
+         &&!p.HasSpell(14752)&&!p.HasSpell(339)&&p.m_spells.empty());
  }
  // Old highest-only conversion leaves the singleton lower seal trainable.
  Player old;old.m_spells[21084]=&ordinary;

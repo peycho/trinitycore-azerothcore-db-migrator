@@ -663,3 +663,16 @@ teacher routes. `tests/absent-teacher-runtime-tests.py` compiles the protected
 TC stored loader and dependent-learn loop with mocked recording sinks for all
 ten reviewed absent/present pairs; AC's eligibility harness remains separate.
 These do not establish full native gameplay or change release approval.
+
+
+Ordinary training prerequisites v4 add `tests/spell-eligibility-mysql-tests.py --training-prerequisites`
+to the disposable MySQL 8.4 harness, reusing the real console transaction/rollback
+and exact custom-row restore controls. Source/world fractional drift, requirement
+content/layout changes, explicit acknowledgements, count/full-scope drift and
+enabled counterpart preservation are checked. `tests/ordinary-history-tests.py`
+keeps earlier policies as rejecting controls and tests both specs and unsafe
+routes. Protected loader/disabled/dependent-loop controls are in
+`tests/absent-teacher-runtime-tests.py`; `tests/ordinary-requirement-runtime-tests.py`
+adds exact Spirit/Prayer and Nature's Grasp requirements with protected-source
+hash checks. Consumer mocks and disposable tests remain separate from the five
+native gameplay acceptance gates.
