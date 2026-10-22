@@ -4,7 +4,11 @@ The opt-in `tc-disabled-ordinary-training-prerequisites-v4` source preparation
 contract permits only exact ordinary Divine Spirit/Prayer and Nature's Grasp
 training prerequisites around wholly disabled removals. Enabled counterparts,
 skills/caps, talents, professions and login flags stay unchanged; no ranks are
-granted. Strong fractional full-row/TC-world guards, selector/proof fingerprints,
+granted. Only those reviewed contracts may have inactive custom-start routes
+under the required explicit TC `PlayerStart.AllSpells=0` assertion. The full
+custom-start catalog is required, fingerprinted and included in proof evidence;
+unrelated custom-start families still defer.
+Strong fractional full-row/TC-world guards, selector/proof fingerprints,
 an extra acknowledgement and atomic archive/apply/checkpoint/exact restore apply.
 Historical policies retain their exclusions. Protected load/disabled/dependent,
 ordinary-mask and trainer consumers are tested separately from gameplay. Core

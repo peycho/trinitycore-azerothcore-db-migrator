@@ -5,11 +5,18 @@ Native function bodies are compiled unchanged; state/config/DB sinks are mocked.
 This is behavioral verification, not worldserver login or gameplay acceptance.
 """
 from pathlib import Path
+import hashlib
 import subprocess
 import sys
 import tempfile
 
 tc=Path(sys.argv[1])
+root=Path(__file__).resolve().parents[1]
+manifest=dict((name.strip().lstrip('*'),digest) for digest,name in
+              (line.split(None,1) for line in
+               (root/'compatibility/tc335-acwotlk-v2/trinitycore-semantic.sha256').read_text().splitlines()))
+for name in ('src/server/game/Entities/Player/Player.cpp','src/server/game/World/World.cpp'):
+    assert hashlib.sha256((tc/name).read_bytes()).hexdigest()==manifest[name], 'Protected custom-start consumer differs'
 source=(tc/'src/server/game/Entities/Player/Player.cpp').read_text()
 start=source.index('void Player::LearnCustomSpells()')
 end=source.index('\nvoid Player::LearnDefaultSkills()',start)
@@ -42,7 +49,7 @@ struct World {
     bool getBoolConfig(int key) const {assert(key==CONFIG_START_ALL_SPELLS);return m_bool_configs[key];}
 } world;
 World* sWorld=&world;
-struct PlayerInfo {PlayerCreateInfoSpells customSpells{48743,48707};};
+struct PlayerInfo {PlayerCreateInfoSpells customSpells{48743,48707,25312,32999,16811,48073,48074,53308,53312};};
 struct Manager {
     PlayerInfo info;int reads=0;
     PlayerInfo const* GetPlayerInfo(uint32,uint32) {++reads;return &info;}

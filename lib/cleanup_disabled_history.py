@@ -125,10 +125,7 @@ def read_world(settings, *, exact_numeric=False):
         effective = Metadata('tc',settings.paths['tc_dbc'],world,profile,CapturedWorld())
     except Unsupported as error:
         fail(error.reason,'TC history metadata: '+str(error))
-    fields = [row[1].lower() for row in layout['columns'] if row[0]=='playercreateinfo_spell_custom']
-    if not set(name.lower() for name in WORLD['playercreateinfo_spell_custom'])<=set(fields):
-        fail('HISTORY_WORLD_UNSUPPORTED','Missing native custom starting-spell fields')
-    effective.history_default_spells = {int(row[fields.index('spell')]) for row in state['playercreateinfo_spell_custom']}
+    effective.history_default_spells = ordinary_history.history_default_spells(layout,state)
     return effective, {'layout':dict(layout),'rows':state,'digests':digests}
 
 

@@ -671,7 +671,15 @@ and exact custom-row restore controls. Source/world fractional drift, requiremen
 content/layout changes, explicit acknowledgements, count/full-scope drift and
 enabled counterpart preservation are checked. `tests/ordinary-history-tests.py`
 keeps earlier policies as rejecting controls and tests both specs and unsafe
-routes. Protected loader/disabled/dependent-loop controls are in
+routes. Live and offline reviews share the same case-insensitive custom-start
+catalog reader. Regression fixtures include reviewed training spells in that
+catalog, unrelated custom-start families that still defer, missing catalog
+metadata, setting changes and same-count catalog drift. The console fixture
+requires three selected rows despite their inactive custom-start routes.
+`tests/custom-default-runtime-tests.py` compiles protected TC configuration and
+learning consumers: explicit false must skip all custom-start grants, while a
+true positive control learns the fixture catalog.
+Protected loader/disabled/dependent-loop controls are in
 `tests/absent-teacher-runtime-tests.py`; `tests/ordinary-requirement-runtime-tests.py`
 adds exact Spirit/Prayer and Nature's Grasp requirements with protected-source
 hash checks. Consumer mocks and disposable tests remain separate from the five

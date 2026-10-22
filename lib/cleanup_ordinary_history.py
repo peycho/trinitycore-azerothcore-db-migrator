@@ -17,6 +17,14 @@ TRAINING_CHAINS = {
     16689:(16689,16810,16811,16812,16813,17329,27009,53312)}
 
 
+def history_default_spells(layout, rows):
+    """Use the same custom-start catalog in live and offline metadata readers."""
+    fields=[r[1].lower() for r in layout['columns'] if r[0]=='playercreateinfo_spell_custom']
+    if not {'racemask','classmask','spell'} <= set(fields):
+        fail('HISTORY_WORLD_UNSUPPORTED','Missing native custom starting-spell fields')
+    return {int(row[fields.index('spell')]) for row in rows['playercreateinfo_spell_custom']}
+
+
 def training_contract(meta, graph, root):
     """Only reviewed ordinary Spirit/Prayer and Nature's Grasp prerequisites."""
     roots = (14752,27681) if root in (14752,27681) else (339,16689) if root == 16689 else ()
@@ -46,6 +54,7 @@ def training_contract(meta, graph, root):
             return None
     return {'contract':'ORDINARY_TRAINING_PREREQUISITES_V1','class':cls,
             'edges':[list(r) for r in sorted(expected)],'reviewed_spells':sorted(nodes),
+            'inactive_custom_default_spells':sorted(nodes & meta.history_default_spells),
             'native_load_grants':0,'spell_rows_inserted':0,'skill_rows_changed':0,
             'policy':'Requirements gate future training; enabled counterpart rows remain unchanged'}
 
@@ -58,12 +67,14 @@ def configuration_contract(settings, *, training_prerequisites=False):
              'Verify PlayerStart.AllSpells in the effective stopped TC configuration. '
              'This setting is an operator assertion; the console cannot inspect the running server configuration.')
     return {'setting':'PlayerStart.AllSpells','value':0,'evidence':'OPERATOR_ASSERTION',
-            'scope':('Reviewed ordinary training prerequisites only; no grants or custom defaults' if training_prerequisites else
+            'scope':('Reviewed ordinary training prerequisites; their custom-start routes inactive under AllSpells=0; no grants' if training_prerequisites else
                      'TC playercreateinfo_spell_custom only; all other learning routes retain their guards')}
 
 
 def select(state, meta, expected, *, preview=False, inactive_custom_defaults=False, native_death_coil=False,
            training_prerequisites=False):
+    if training_prerequisites and not isinstance(getattr(meta,'history_default_spells',None),set):
+        fail('ORDINARY_HISTORY_DEFAULTS_REQUIRED','Training-prerequisite review requires the explicit TC custom-start catalog')
     if native_death_coil:
         inactive_custom_defaults = True  # Its separate config contract requires AllSpells=0.
     stored = state['character_spell']
@@ -140,7 +151,8 @@ def select(state, meta, expected, *, preview=False, inactive_custom_defaults=Fal
             reason = 'DEFER_PROFESSION_OR_RIDING_RELATION'
         elif nodes & graph.unknown_skill_spells or nodes & graph.unsupported:
             reason = 'DEFER_UNSUPPORTED_RELATION_METADATA'
-        elif nodes & getattr(meta,'history_default_spells',set()) and not inactive_custom_defaults:
+        elif (nodes & getattr(meta,'history_default_spells',set()) and not inactive_custom_defaults
+              and not training.get(root)):
             reason = 'DEFER_CUSTOM_DEFAULT_ROUTE'
         if not reason and native_death_coil:
             reason = (death_coil.metadata_reason(meta,nodes) if root==death_coil.CHAIN[0]
@@ -225,8 +237,11 @@ def select(state, meta, expected, *, preview=False, inactive_custom_defaults=Fal
         summary.update(training_prerequisite_proofs=[{'guid':g,'rank_root':r,**training[r]}
                        for g,r in sorted({(p[0],p[1]) for p in proof}) if training.get(r)],
                        spell_rows_inserted=0,skill_rows_changed=0,
-                       disabled_rows_removed=len(selected),enabled_rows_removed=0)
-        summary['native_policy'] += '; exact reviewed ordinary training prerequisites allowed; enabled counterpart rows preserved'
+                       disabled_rows_removed=len(selected),enabled_rows_removed=0,
+                       selected_custom_default_rows=sum(bool(graph.members[graph.component[r[1]]] & meta.history_default_spells)
+                                                        for r in selected))
+        summary['native_policy'] += ('; exact reviewed ordinary training prerequisites allowed; enabled counterpart rows preserved; '
+                                    'custom-start routes inactive only for reviewed contracts under PlayerStart.AllSpells=0')
     if inactive_custom_defaults:
         summary['selected_custom_default_rows'] = sum(
             bool(graph.members.get(graph.component[row[1]],set()) & meta.history_default_spells)

@@ -93,6 +93,8 @@ def main(pet_teaching=False,reviewed_cower=False,absent_teachers=False,ordinary_
             sql(f"INSERT INTO `{source}`.character_spell(guid,spell,active,disabled) VALUES(4,14752,1,0)")
             sql(f"UPDATE `{source}`.character_talent SET spell=34914 WHERE spell=12282")
             sql(f"UPDATE `{source}`.character_talent SET spell=900000 WHERE spell=12664")
+            sql(f"INSERT INTO `{tcworld}`.playercreateinfo_spell_custom(racemask,classmask,Spell) VALUES(0,16,48073),(0,16,48074),(0,1024,53308),(0,1024,53312),(0,0,6603)")
+            sql(f"INSERT INTO `{source}`.character_spell(guid,spell,active,disabled) VALUES(4,6603,1,1)")
         if absent_teachers:
             sql(f"UPDATE `{source}`.character_spell SET spell=18540 WHERE guid=5 AND spell=48942")
             sql(f"INSERT INTO `{tcworld}`.spell_learn_spell VALUES(20700,18540,1)")
@@ -206,8 +208,9 @@ backup_reference=disposable-synthetic-fixture
             run('inspect-migration-blockers', '--report', str(report))
             plan = ('plan',kind,'--migration-inspection','latest') + (('--training-prerequisites',) if ordinary_training else ('--reviewed-cower',) if reviewed_cower else ('--absent-teachers',) if absent_teachers else ())
             if ordinary_training:
-                config.write_text(text.replace('player_start_all_spells=0','player_start_all_spells='))
-                assert 'ORDINARY_HISTORY_CONFIG_REQUIRED' in run(*plan,'--preview',code=2).stderr
+                for setting in ('','1'):
+                    config.write_text(text.replace('player_start_all_spells=0','player_start_all_spells='+setting))
+                    assert 'ORDINARY_HISTORY_CONFIG_REQUIRED' in run(*plan,'--preview',code=2).stderr
             else:
                 config.write_text(text.replace('[target]\nworld='+acworld, '[target]\nworld='+source))
                 assert 'ELIGIBILITY_TARGET_OVERLAP' in run(*plan,'--preview',code=2).stderr
@@ -224,11 +227,15 @@ backup_reference=disposable-synthetic-fixture
             if reviewed_cower:
                 control=run('plan','pet-teaching','--migration-inspection','latest','--preview')
                 assert '"selected_rows": 0' in control.stdout
-            run(*plan, '--preview')
+            preview=run(*plan, '--preview')
+            if ordinary_training:
+                assert '"selected_rows": 3' in preview.stdout
+                assert '"selected_custom_default_rows": 3' in preview.stdout
+                assert '"DEFER_CUSTOM_DEFAULT_ROUTE": 1' in preview.stdout
             assert not (session/'active-batch.json').exists() and not list((session/'batches').glob('*'))
             assert checksum() == baseline
             count_flag='--expect-review-rows' if ordinary_training else '--expect-rows'
-            expected_count='5' if ordinary_training else '3'
+            expected_count='6' if ordinary_training else '3'
             run(*plan,count_flag,'2',code=2)
             sql(f'UPDATE `{source}`.characters SET level=79 WHERE guid=2')
             changed=checksum()
@@ -243,6 +250,9 @@ backup_reference=disposable-synthetic-fixture
                 assert manifest['policy']=='tc-disabled-ordinary-training-prerequisites-v4'
                 assert manifest['numeric_fingerprint']=='EXACT_FRACTIONAL_V1'
                 assert len(manifest['training_prerequisite_proofs'])==3
+                assert manifest['selected_custom_default_rows']==3
+                assert all(p['inactive_custom_default_spells'] for p in manifest['training_prerequisite_proofs'])
+                assert json.loads((package/'ordinary-training-proof.json').read_text())==manifest['training_prerequisite_proofs']
             if absent_teachers:
                 assert manifest['policy']=='tc-ineligible-ordinary-absent-teacher-repair-v2'
                 assert manifest['absent_teacher_ack']=='VERIFIED_TEACHERS_ABSENT'
@@ -252,7 +262,7 @@ backup_reference=disposable-synthetic-fixture
             assert manifest['selected_rows']==3 and manifest['enabled_rows_removed']==(0 if ordinary_training else 3)
             assert manifest['excluded_reason_counts']==(
                 {'DEFER_PENDING_NATIVE_RESET':1,'DEFER_PET_ABILITY_IN_PLAYER_BOOK':1,'DEFER_PET_TEACHER_CHARACTER_STATE':1}
-                if pet_teaching else {'DEFER_PENDING_NATIVE_RESET':1,'DEFER_ENABLED_RELATED_SPELL':1}
+                if pet_teaching else {'DEFER_PENDING_NATIVE_RESET':1,'DEFER_ENABLED_RELATED_SPELL':1,'DEFER_CUSTOM_DEFAULT_ROUTE':1}
                 if ordinary_training else {'DEFER_PENDING_NATIVE_RESET':1,'DEFER_EXISTING_ASSOCIATED_SKILL':1})
             if not ordinary_training:
                 assert json.loads((package/('pet-teaching-native-proof.json' if pet_teaching else 'eligibility-native-proof.json')).read_text())
@@ -339,6 +349,15 @@ backup_reference=disposable-synthetic-fixture
                 assert checksum()==changed
                 sql(f'UPDATE `{schema}`.spell_ranks SET `rank`={original_rank} WHERE spell_id={changed_spell}')
             if ordinary_training:
+                config.write_text(text.replace('player_start_all_spells=0','player_start_all_spells=1'))
+                assert 'ORDINARY_HISTORY_CONFIG_REQUIRED' in run('apply',code=2).stderr
+                assert checksum()==baseline
+                config.write_text(text)
+                sql(f'UPDATE `{tcworld}`.playercreateinfo_spell_custom SET Spell=14818 WHERE Spell=48073')
+                changed=checksum();run('apply',code=2)
+                assert 'world content drift' in sql(ack+f'CALL `{archive}`.apply_batch();',writer,False)
+                assert checksum()==changed
+                sql(f'UPDATE `{tcworld}`.playercreateinfo_spell_custom SET Spell=48073 WHERE Spell=14818')
                 sql(f'UPDATE `{tcworld}`.spell_required SET req_spell=14818 WHERE spell_id=27681')
                 changed=checksum();run('apply',code=2)
                 assert 'world content drift' in sql(ack+f'CALL `{archive}`.apply_batch();',writer,False)

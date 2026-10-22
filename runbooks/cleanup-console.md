@@ -1279,6 +1279,16 @@ Continue the existing unchanged preparation session. Verify the stopped TC
 configuration and set the existing `[source] player_start_all_spells = 0`.
 Do not duplicate keys. This is an operator assertion, not a configuration change.
 
+The exact reviewed training families may also occur in
+`playercreateinfo_spell_custom`. With this required `PlayerStart.AllSpells=0`
+assertion, their custom-start routes are inactive and do not prevent selection.
+This allowance applies only to families satisfying the full training contract;
+unrelated custom-start families still defer. Missing custom-start catalog
+metadata fails with `ORDINARY_HISTORY_DEFAULTS_REQUIRED`, rather than being
+treated as an empty catalog. Review `selected_custom_default_rows` in the
+summary and `inactive_custom_default_spells` in each training proof. The catalog
+is fingerprinted even when its routes are inactive; content drift blocks apply.
+
 ```bash
 python3 console plan disabled-spell-history --migration-inspection latest --training-prerequisites --preview
 python3 console plan disabled-spell-history --migration-inspection INSPECTION_ID --training-prerequisites --expect-review-rows REVIEWED_CANDIDATE_ROWS

@@ -111,6 +111,43 @@ class OrdinaryHistoryTests(unittest.TestCase):
         self.assertEqual(ordinary.configuration_contract(SimpleNamespace(get=lambda *_:'0'),
                          training_prerequisites=True)['value'],0)
 
+    def test_training_with_inactive_custom_defaults_regression_is_narrow(self):
+        self.training()
+        before=copy.deepcopy(self.state)
+        # Real catalogs can name only the highest rank, not the stored row.
+        for defaults in ({25312,32999,16811},{48073,48074,53308,53312}):
+            with self.subTest(defaults=defaults):
+                self.meta.history_default_spells=defaults
+                rows,excluded,_,summary,_=ordinary.select(self.state,self.meta,None,preview=True,
+                                                        training_prerequisites=True)
+                self.assertEqual(rows,[(1,25312,1,1),(1,32999,1,1),(2,16811,1,1)])
+                self.assertFalse(excluded)
+                self.assertEqual(summary['selected_custom_default_rows'],3)
+                self.assertEqual(self.state,before)
+                for proof in summary['training_prerequisite_proofs']:
+                    self.assertTrue(proof['inactive_custom_default_spells'])
+        # The option must not become an alias for --inactive-custom-defaults.
+        self.meta.spells[500]=[0]*234
+        self.meta.history_default_spells.add(500)
+        self.state['character_spell'].append([1,500,1,1])
+        result=ordinary.select(self.state,self.meta,None,preview=True,training_prerequisites=True)
+        self.assertEqual(result[0],rows)
+        self.assertIn((1,500,'DEFER_CUSTOM_DEFAULT_ROUTE'),result[1])
+
+    def test_training_rejects_metadata_without_explicit_custom_default_catalog(self):
+        self.training()
+        del self.meta.history_default_spells
+        with self.assertRaises(CleanupError) as error:
+            ordinary.select(self.state,self.meta,None,preview=True,training_prerequisites=True)
+        self.assertEqual(error.exception.code,'ORDINARY_HISTORY_DEFAULTS_REQUIRED')
+
+    def test_live_and_offline_custom_default_catalog_share_case_insensitive_column_lookup(self):
+        layout={'columns':[['playercreateinfo_spell_custom',name] for name in ('Extra','SPELL','classmask','racemask')]}
+        rows={'playercreateinfo_spell_custom':[[0,25312,16,0],[0,32999,16,0],[0,25312,0,0]]}
+        self.assertEqual(ordinary.history_default_spells(layout,rows),{25312,32999})
+        self.assertEqual(ordinary.history_default_spells(layout,{'playercreateinfo_spell_custom':[]}),set())
+        with self.assertRaises(CleanupError):ordinary.history_default_spells({'columns':[]},rows)
+
     def test_exact_isolated_family_absent_rank_no_grant_and_old_failing_control(self):
         before=copy.deepcopy(self.state)
         selected,excluded,proof,summary,_=ordinary.select(self.state,self.meta,3)
