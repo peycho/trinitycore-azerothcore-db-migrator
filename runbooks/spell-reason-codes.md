@@ -185,3 +185,9 @@ is absent. This clears an overstrict initial skill check; it neither inserts a
 skill nor changes talent ownership. Active/shared ownership and stored child
 rows retain skill checks. See the
 [inactive talent contract](spell-reconstruction.md#inactive-dual-wield-talent-spell-state-v12).
+
+The separate preparation flag `pet-teaching --reviewed-cower` permits retirement
+of only the verified Cower pet-teaching wrappers under an exact native child
+contract. It does not rename or bypass `UNSUPPORTED_PERSISTENT_LEARN_EFFECT`,
+modify real pet spells, or permit arbitrary scripted teachers. Default v1
+exclusions are unchanged. See [Cower v2](pet-teaching-repair.md#opt-in-reviewed-cower-child-v2).

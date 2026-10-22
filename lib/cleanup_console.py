@@ -609,12 +609,16 @@ def command_action(settings, work, args):
             fail('ELIGIBILITY_ACK_INVALID','Eligibility acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS';\n"
         configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
-    from cleanup_pet_teaching import POLICY as PET_TEACHING_POLICY, ACK as PET_TEACHING_ACK
-    if manifest.get('policy') == PET_TEACHING_POLICY:
+    from cleanup_pet_teaching import POLICIES as PET_TEACHING_POLICIES, ACK as PET_TEACHING_ACK, COWER_POLICY, COWER_ACK
+    if manifest.get('policy') in PET_TEACHING_POLICIES:
         if manifest.get('pet_teaching_ack') != PET_TEACHING_ACK:
             fail('PET_TEACHING_ACK_INVALID','Pet-teaching acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @pet_teaching_ack='RETIRE_VERIFIED_PET_TEACHERS';\n"
         configuration_ack += 'SET @pet_teaching_tc_all_spells=0; SET @pet_teaching_ac_custom_spells=0;\n'
+    if manifest.get('policy') == COWER_POLICY:
+        if manifest.get('cower_ack') != COWER_ACK:
+            fail('COWER_ACK_INVALID','Cower acknowledgement differs from the reviewed candidate')
+        configuration_ack += "SET @pet_teaching_cower_ack='REVIEWED_COWER_CHILD_ONLY';\n"
     try:
         result=settings.sql(f"SET @{ack}='STOPPED_PREPARATION_COPY_ONLY';\n"+configuration_ack+scripts[action],'write',headers=True)
     except CleanupError as error:
@@ -733,6 +737,7 @@ def parser():
     pet=types.add_parser('pet-teaching',help='Archived retirement of verified player-side pet-teaching wrappers; preserve actual pets, talents and skills')
     pet.set_defaults(pet_teaching=True,inspection=None,audit=None)
     pet.add_argument('--migration-inspection',required=True,help='Sealed migration-blocker inspection ID or latest')
+    pet.add_argument('--reviewed-cower',action='store_true',help='Separate v2 contract for exact reviewed Cower pet-child amount callbacks; other scripts still defer')
     pet_review=pet.add_mutually_exclusive_group(required=True)
     pet_review.add_argument('--preview',action='store_true',help='Read-only review; no SQL package or active batch')
     pet_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows from this policy preview')

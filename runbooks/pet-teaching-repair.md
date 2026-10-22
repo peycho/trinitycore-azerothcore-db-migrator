@@ -157,3 +157,47 @@ individually: trainers/ranks; casting; both specs/relog; talent points, pets,
 professions/recipes/riding and skills/caps; save/relog/restart and logs. Include
 retained pet abilities and removal of retired player-side pet-training actions.
 These remain **NOT TESTED** until executed; approval stays **UNREVIEWED**.
+
+## Opt-in reviewed Cower child (v2)
+
+After review, `--reviewed-cower` uses the separate
+`tc-pet-teaching-reviewed-cower-retirement-v2` contract. The v1 command above
+continues to reject every scripted parent or child. V2 permits only child `1742`
+with TC binding `spell_hun_pet_cower` and AC binding `spell_hun_cower`, exact
+stock aura effects/targets/flags/icon/family metadata and no extra binding. All
+other script, skill, ownership, reset, player-teaching and profession guards stay.
+
+```bash
+python3 console plan pet-teaching --migration-inspection latest --reviewed-cower --preview
+python3 console plan pet-teaching --migration-inspection INSPECTION_ID --reviewed-cower --expect-rows SELECTED_ROWS
+```
+
+Both native callbacks only calculate the pet's movement-speed aura amount. They
+do not consult the retired player wrapper or mutate spell ownership, skills,
+professions, talent selection or pet database rows. The player wrapper remains
+non-passive and pet-target-only; it is never cast by this repair. No actual pet
+ability or aura record is normalized or removed. Review `cower-native-contract.json`
+in addition to the normal complete originals and selected-row proofs. Normal
+prepare/status/apply/restore commands are unchanged. Direct SQL also requires:
+
+```sql
+SET @pet_teaching_cower_ack='REVIEWED_COWER_CHILD_ONLY';
+```
+
+The console seals and rechecks the native Hunter script, Unit header and explicit
+reviewed `Unit.cpp` versions. The TC file matches its retained pin. AC's complete
+`Unit.cpp` differs between pin `1cd97629...` and staging `f089543d...`, while the
+relevant aura getter is byte-identical; both exact file versions are recorded by
+this policy. The configured checkout must match one of these reviewed versions.
+Unknown native changes block instead of substituting a revision. Global core
+pins, v1/v2 manifests, reconstruction policy and approval are unchanged. Keep the
+original toolkit for restoring earlier v1 batches.
+
+`tests/cower-runtime-tests.py` compiles both protected callbacks and native aura
+getters with isolated state sinks. It covers stock modifier calculation, absent/
+wrong modifiers and an explicit native difference: TC rejects modifier auras
+with nonzero family flags; AC's getter does not. V2 leaves that existing behavior
+and all aura data intact. It does **not** assert arbitrary pet-combat equivalence.
+Include Cower/Improved Cower use, retained pet abilities and save/relog/restart
+in gameplay acceptance. All five gameplay gates remain NOT TESTED until run;
+release approval remains UNREVIEWED.

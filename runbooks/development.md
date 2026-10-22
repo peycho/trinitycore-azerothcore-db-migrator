@@ -646,3 +646,10 @@ retained `character_pet`/`pet_spell` controls. The protected AC insertion/save
 checks in `tests/native-passive-rank-tests.py` include persistent-wrapper refusal
 and the unsafe temporary-player-child control. These checks do not replace the
 five staging gameplay gates or change UNREVIEWED approval.
+
+The opt-in Cower v2 contract adds `tests/cower-runtime-tests.py` (compiled native
+callbacks and aura getters) and `tests/pet-teaching-mysql-tests.py --reviewed-cower`
+(real console v1 rejection/v2 acceptance, extra acknowledgement, source/world
+drift, transaction interruption and exact restoration). These run in the
+disposable rehearsal harness. Unknown scripts and native source changes remain
+blocked; gameplay and release approval remain separate.

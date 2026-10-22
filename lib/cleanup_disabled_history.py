@@ -22,7 +22,7 @@ import cleanup_pet_teaching as pet_teaching
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
-POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, death_coil.POLICY, ownership.POLICY, eligibility.POLICY, pet_teaching.POLICY)
+POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, death_coil.POLICY, ownership.POLICY, eligibility.POLICY, *pet_teaching.POLICIES)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -133,7 +133,7 @@ def read_world(settings, *, exact_numeric=False):
 
 
 def check_metadata(settings, manifest):
-    if manifest.get('policy') in (eligibility.POLICY, pet_teaching.POLICY):
+    if manifest.get('policy') in (eligibility.POLICY, *pet_teaching.POLICIES):
         if (manifest.get('numeric_fingerprint') != 'EXACT_FRACTIONAL_V1'
                 or sha(ROOT/'lib/cleanup_active_reset.py') != manifest.get('numeric_reader_sha256')):
             fail('ELIGIBILITY_POLICY_DRIFT','Exact numeric fingerprint contract differs from this candidate')
@@ -141,8 +141,12 @@ def check_metadata(settings, manifest):
             fail('ELIGIBILITY_POLICY_DRIFT','Eligibility selector differs; retain the original toolkit for restoration')
         if eligibility.configuration_contract(settings) != manifest.get('configuration_contract'):
             fail('ELIGIBILITY_CONFIG_DRIFT','Eligibility configuration differs from the reviewed candidate')
-    if manifest.get('policy') == pet_teaching.POLICY and sha(ROOT/'lib/cleanup_pet_teaching.py') != manifest.get('pet_teaching_reader_sha256'):
+    if manifest.get('policy') in pet_teaching.POLICIES and sha(ROOT/'lib/cleanup_pet_teaching.py') != manifest.get('pet_teaching_reader_sha256'):
         fail('PET_TEACHING_POLICY_DRIFT','Pet-teaching selector differs; retain the original toolkit for restoration')
+    if manifest.get('policy') == pet_teaching.COWER_POLICY:
+        if (manifest.get('cower_ack') != pet_teaching.COWER_ACK
+                or pet_teaching.cower_sources(settings.paths) != manifest.get('cower_native_contract')):
+            fail('COWER_NATIVE_CONTRACT_DRIFT','Native Cower contract differs from the reviewed batch')
     if manifest.get('policy') == ownership.POLICY and sha(ROOT/'lib/cleanup_ownership.py') != manifest.get('ownership_reader_sha256'):
         fail('OWNERSHIP_POLICY_DRIFT','Ownership selection code differs from this reviewed batch; retain its original toolkit for restore')
     if manifest.get('policy') == ordinary_history.INACTIVE_DEFAULT_POLICY:
@@ -157,10 +161,10 @@ def check_metadata(settings, manifest):
     for key,entry in manifest.get('core_compatibility',{}).items():
         if settings.compatibility.get(key,{}).get('manifest_sha256') != entry.get('manifest_sha256'):
             fail('CORE_PROFILE_MISMATCH','Core compatibility manifests differ from the reviewed history batch')
-    effective, world = read_world(settings,exact_numeric=manifest.get('policy') in (eligibility.POLICY, pet_teaching.POLICY))
+    effective, world = read_world(settings,exact_numeric=manifest.get('policy') in (eligibility.POLICY, *pet_teaching.POLICIES))
     if sha_json(world) != manifest.get('world_sha256') or effective.hashes != manifest.get('semantic_dbc_sha256'):
         fail('HISTORY_METADATA_DRIFT','Effective TC world/DBC metadata differs from this reviewed history batch')
-    if manifest.get('policy') in (eligibility.POLICY, pet_teaching.POLICY):
+    if manifest.get('policy') in (eligibility.POLICY, *pet_teaching.POLICIES):
         target, captured = eligibility.read_target(settings)
         if sha_json(captured) != manifest.get('target_world_sha256') or target.hashes != manifest.get('target_dbc_sha256'):
             fail('ELIGIBILITY_TARGET_DRIFT','Effective AC world/DBC metadata differs from the reviewed candidate')
@@ -306,6 +310,8 @@ def plan_history(settings, work, args, output):
     pet_mode = getattr(args,'pet_teaching',False)
     two_world_mode = getattr(args,'spell_eligibility',False) or pet_mode
     pet_reader = sha(ROOT/'lib/cleanup_pet_teaching.py') if pet_mode else None
+    reviewed_cower = pet_mode and getattr(args,'reviewed_cower',False)
+    cower_proof = pet_teaching.cower_sources(settings.paths) if reviewed_cower else None
     native_selector = pet_teaching if pet_mode else eligibility
     eligibility_reader = sha(ROOT/'lib/cleanup_eligibility.py') if two_world_mode else None
     ownership_mode = getattr(args,'talent_ownership',False)
@@ -364,7 +370,7 @@ def plan_history(settings, work, args, output):
     if ownership_mode:
         policy = ownership.POLICY
     if two_world_mode:
-        policy = native_selector.POLICY
+        policy = pet_teaching.COWER_POLICY if reviewed_cower else native_selector.POLICY
         print('Capturing effective AC world/DBC eligibility inputs (read-only)',flush=True)
         target_effective, target_world = eligibility.read_target(settings)
     relation_rows,relation_proof,relation_summary,relation_edges = [],[],{},[]
@@ -376,7 +382,8 @@ def plan_history(settings, work, args, output):
         relation_rows=context['character_spell']
         if two_world_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=native_selector.select(
-                context,effective,target_effective,args.expect_review_rows,preview=preview)
+                context,effective,target_effective,args.expect_review_rows,preview=preview,
+                **({'reviewed_cower':True} if reviewed_cower else {}))
             eligibility_proofs = relation_summary.pop('eligibility_proofs')
         elif ownership_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ownership.select(
@@ -406,6 +413,8 @@ def plan_history(settings, work, args, output):
                 review['eligibility_proofs'] = eligibility_proofs
                 review['target_world_sha256'] = sha_json(target_world)
                 review['target_dbc_sha256'] = target_effective.hashes
+            if reviewed_cower:
+                review['cower_native_contract'] = cower_proof
             if native_death_coil:
                 review['native_base_proofs'] = native_base_proofs
             write_json(work.operation/review_name,review)
@@ -530,6 +539,8 @@ def plan_history(settings, work, args, output):
         batch_inputs['native_base_proofs'] = native_base_proofs
     if pet_mode:
         batch_inputs['pet_teaching_reader_sha256'] = pet_reader
+    if reviewed_cower:
+        batch_inputs['cower_native_contract'] = cower_proof
     batch = sha_json(batch_inputs)
     archive = ('tc_pet_teaching_' if pet_mode else 'tc_eligibility_' if two_world_mode else 'tc_ownership_' if ownership_mode else 'tc_disabled_history_')+uuid.uuid4().hex[:20]
     blocks = check_sets(meta,source,archive,counts,exact_numeric=two_world_mode)
@@ -586,6 +597,12 @@ def plan_history(settings, work, args, output):
  OR NOT (BINARY @{config_prefix}_ac_custom_spells <=> BINARY '0') THEN
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit {"pet-teaching" if pet_mode else "eligibility"} repair and native custom-start-off assertions required'; END IF;
 """ + eligibility.world_checks(settings.schemas['world'],world) + '\n' + eligibility.world_checks(config_contract['target_world'],target_world)
+    if reviewed_cower:
+        values['WORLD_CHECKS'] = """IF NOT (BINARY @pet_teaching_cower_ack <=> BINARY 'REVIEWED_COWER_CHILD_ONLY') THEN
+ SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit reviewed Cower child acknowledgement required'; END IF;
+""" + values['WORLD_CHECKS']
+        if pet_teaching.cower_sources(settings.paths) != cower_proof:
+            fail('COWER_NATIVE_SOURCE_DRIFT','Cower source contract changed during planning')
     final_effective, final_world = read_world(settings,exact_numeric=two_world_mode)
     if metadata(settings,TABLES)!=meta or final_world!=world or final_effective.hashes!=effective.hashes:
         fail('HISTORY_METADATA_DRIFT','Source schema/world metadata changed while planning')
@@ -646,6 +663,9 @@ def plan_history(settings, work, args, output):
     if pet_mode:
         manifest.update(pet_teaching_ack=pet_teaching.ACK,pet_teaching_reader_sha256=pet_reader,
                         script_contract='Verified pet-target teaching wrappers only; no scripts, skills, talents or player-learning routes')
+    if reviewed_cower:
+        manifest.update(cower_ack=pet_teaching.COWER_ACK,cower_native_contract=cower_proof,
+                        script_contract='Only exact reviewed Cower child amount callbacks; no wrapper or other child scripts')
     if trained_mode:
         manifest.update(migration_inspection_id=path.name,source_context_sha256=capture_report['source_state_sha256'],
                         reviewed_character_scope=len(context['characters']))
@@ -674,6 +694,8 @@ FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.g
     if two_world_mode:
         write_json(output/('pet-teaching-native-proof.json' if pet_mode else 'eligibility-native-proof.json'), eligibility_proofs)
         write_json(output/'target-metadata.json',target_world)
+    if reviewed_cower:
+        write_json(output/'cower-native-contract.json',cower_proof)
     if include_scripts:
         script_family_column = 'ordinary_first_spell' if ordinary_mode else 'talent_entry'
         (output/'scripted-family-review.tsv').write_text(script_family_column+'\tspell\tscript\tstatus\treason\n'+''.join(

@@ -304,3 +304,9 @@ actual pet abilities or changes talents/skills. Capture current context, preview
 review an exact-count batch and use normal prepare/apply/status/restore. Retain
 prior toolkits/archives and regenerate every plan in a new session after a fresh
 baseline import. Scripted and unsupported mappings stay blocked.
+
+For remaining scripted Cower teachers, the [pet-teaching v2 contract](pet-teaching-repair.md#opt-in-reviewed-cower-child-v2)
+is explicitly selected with `--reviewed-cower` during preview and planning. It
+verifies native script/lookup versions and exact metadata without changing real
+pet abilities or aura behavior. Other scripts remain deferred; use the ordinary
+archived transaction and original toolkit for restoration.

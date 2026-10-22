@@ -9,7 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'lib'))
 from cleanup_console import CleanupError,parser
-from cleanup_pet_teaching import select,CONTRACTS
+from cleanup_pet_teaching import select,CONTRACTS,cower_sources,COWER_POLICY
 from cleanup_eligibility import select as old_select
 from spells import Metadata,reconstruct,Unsupported
 
@@ -147,6 +147,71 @@ class PetTeachingTests(unittest.TestCase):
         self.assertIn((1,6603,'DEFER_UNREVIEWED_PET_TEACHER'),self.review()[1])
         self.ac.chains[1747]=(1747,1748)
         with self.assertRaises(CleanupError):self.review()
+
+    def bind_cower(self):
+        for m,name in ((self.tc,'spell_hun_pet_cower'),(self.ac,'spell_hun_cower')):
+            pet.cower({'Spell':m.spells})
+            m.scripts[1742]={name}
+
+    def test_reviewed_cower_is_opt_in_and_preserves_v1_rejection(self):
+        self.bind_cower();baseline=copy.deepcopy(self.state)
+        self.assertEqual(self.review()[0],[(1,27351,1,0)])
+        rows,excluded,proof,summary,_=select(self.state,self.tc,self.ac,preview=True,reviewed_cower=True)
+        self.assertEqual(rows,[(1,1747,0,0),(1,1749,1,0),(1,27351,1,0)])
+        self.assertFalse(excluded);self.assertEqual(summary['reviewed_cower_rows'],2)
+        self.assertEqual(summary['pet_rows_changed'],0);self.assertEqual(self.state,baseline)
+        self.assertNotIn(1742,{r[1]for r in rows})
+        self.assertNotIn(1748,{r[1]for r in rows})
+
+    def test_reviewed_cower_unknown_bindings_and_both_catalog_mutations_defer(self):
+        self.bind_cower()
+        changes=(lambda m:m.scripts[1742].add('spell_other'),
+                 lambda m:m.scripts[1747].add('spell_hun_cower'),
+                 lambda m:m.spells[1742].__setitem__(133,1),
+                 lambda m:m.spells[1742].__setitem__(96,44),
+                 lambda m:m.spells[1742].__setitem__(12,1),
+                 lambda m:m.spells[1742].__setitem__(6,0),
+                 lambda m:m.script_policy.__setitem__('spell_hun_cower','UNREVIEWED'))
+        for change in changes:
+            tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+            change(tc);change(ac)
+            rows=select(self.state,tc,ac,preview=True,reviewed_cower=True)[0]
+            self.assertEqual(rows,[(1,27351,1,0)])
+
+    def test_reviewed_cower_keeps_character_and_pet_player_ownership_guards(self):
+        self.bind_cower();self.state['characters'][0][7]|=4
+        self.assertFalse(select(self.state,self.tc,self.ac,preview=True,reviewed_cower=True)[0])
+        self.state['characters'][0][7]&=~4
+        self.state['character_spell'].append([1,1742,1,0])
+        rows,excluded,*_=select(self.state,self.tc,self.ac,preview=True,reviewed_cower=True)
+        self.assertEqual(rows,[(1,27351,1,0)])
+        self.assertEqual({r[2]for r in excluded},{'DEFER_PET_ABILITY_IN_PLAYER_BOOK'})
+
+    def test_cower_native_guard_rejects_missing_or_changed_checkout(self):
+        import tempfile
+        with self.assertRaises(CleanupError):cower_sources({})
+        with tempfile.TemporaryDirectory()as directory:
+            root=Path(directory)
+            file=root/'src/server/scripts/Spells/spell_hunter.cpp'
+            file.parent.mkdir(parents=True);file.write_text('// changed native handler')
+            with self.assertRaises(CleanupError)as error:
+                cower_sources({'tc_source':root,'ac_source':root})
+            self.assertEqual(error.exception.code,'COWER_NATIVE_SOURCE_DRIFT')
+        args=parser().parse_args(['plan','pet-teaching','--migration-inspection','latest','--reviewed-cower','--preview'])
+        self.assertTrue(args.reviewed_cower)
+
+    def test_cower_hashes_cannot_be_replaced_by_an_unreviewed_new_manifest(self):
+        import tempfile
+        from unittest import mock
+        import cleanup_pet_teaching as policy
+        with tempfile.TemporaryDirectory()as directory:
+            root=Path(directory)
+            file=root/'src/server/scripts/Spells/spell_hunter.cpp'
+            file.parent.mkdir(parents=True);file.write_text('// altered native behavior')
+            with mock.patch.object(policy,'COWER_FILES',{'tc':{str(file.relative_to(root)):'not-the-reviewed-hash'}}):
+                with self.assertRaises(CleanupError)as error:
+                    cower_sources({'tc_source':root,'ac_source':root})
+                self.assertEqual(error.exception.code,'COWER_NATIVE_PROFILE_DRIFT')
 
     def test_cli_requires_preview_or_exact_count(self):
         for options in (['--preview'],['--expect-rows','3']):

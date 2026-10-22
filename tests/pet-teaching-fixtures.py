@@ -20,3 +20,13 @@ def extend(data, profile):
         talent = record('Talent',ident)
         talent[1],talent[4] = 900050,spell
     return data
+
+
+def cower(data):
+    """Actual child metadata; no player teaching flags or additional grants."""
+    row=data['Spell'][1742]
+    row[4:12]=[65536,0,67108864,0,0,0,0,0]
+    row[71:74]=[6,6,0];row[86:92]=[1,1,0,0,0,0]
+    row[95:98]=[87,33,0];row[116:119]=[0,0,0]
+    row[133]=958;row[208:212]=[9,0,268435456,0]
+    return data

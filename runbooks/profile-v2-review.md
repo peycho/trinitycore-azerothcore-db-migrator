@@ -1,5 +1,19 @@
 # Profile v2 review and acceptance record
 
+The separate opt-in `tc-pet-teaching-reviewed-cower-retirement-v2` preparation
+contract permits only Cower child 1742's exact TC/AC amount-calculation scripts.
+V1 default exclusions are unchanged. The Hunter script and Unit header match
+protected manifests. Additional policy-level full-file hashes protect TC's
+pinned Unit.cpp and both reviewed AC Unit.cpp variants (retained 1cd97629 pin
+and f089543d staging); the relevant AC getter is byte-identical across them.
+No revision is substituted. Native callbacks/getters are compiled with mocked
+state and explicit family-flag difference controls; pet data/behavior is not
+normalized. Complete originals, two-world/asset guards, extra acknowledgement,
+atomic reruns/rollback and exact restoration apply. Global pins/manifests,
+spell-state-v13, v1 and UNREVIEWED approval remain unchanged. See the
+[Cower contract and acceptance boundary](pet-teaching-repair.md#opt-in-reviewed-cower-child-v2).
+
+
 The separate `tc-pet-teaching-wrapper-retirement-v1` preparation policy removes
 only exact reviewed old player-side pet-teaching rows with full originals and
 strong numeric/world guards. Actual pets/pet spells, selected talents, skills,

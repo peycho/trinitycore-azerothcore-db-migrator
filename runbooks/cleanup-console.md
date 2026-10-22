@@ -1236,3 +1236,8 @@ apply and exact restore. Scripted, profession, player-teaching and ambiguous
 cases defer. See the [complete repeatable procedure](pet-teaching-repair.md).
 Reuse the existing read-only target metadata and verified custom-start-off
 configuration; no new source session is needed for an unchanged baseline.
+
+The optional pet-teaching `--reviewed-cower` mode is a separate v2 contract for
+only the exact reviewed Cower pet-child amount callbacks. Default v1 scripted
+exclusions are unchanged. See the [native contract, direct-SQL acknowledgement
+and repeatable batch procedure](pet-teaching-repair.md#opt-in-reviewed-cower-child-v2).

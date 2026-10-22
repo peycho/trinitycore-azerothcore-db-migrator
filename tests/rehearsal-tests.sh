@@ -50,6 +50,8 @@ python3 "$ROOT/tests/active-talent-reset-mysql-tests.py"
 python3 "$ROOT/tests/disabled-history-mysql-tests.py"
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py"
 python3 "$ROOT/tests/pet-teaching-mysql-tests.py"
+python3 "$ROOT/tests/pet-teaching-mysql-tests.py" --reviewed-cower
+python3 "$ROOT/tests/cower-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/cleanup-console-mysql-tests.py"
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT

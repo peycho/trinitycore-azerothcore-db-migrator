@@ -14,7 +14,8 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main(pet_teaching=False):
+def main(pet_teaching=False,reviewed_cower=False):
+    assert not reviewed_cower or pet_teaching
     port = os.environ.get('REHEARSAL_MYSQL_PORT', '33317')
     if (os.environ.get('MIGRATOR_DISPOSABLE_MYSQL') != '1' or not port.isascii() or not port.isdigit()
             or not 1 <= int(port) <= 65535 or int(port) == 3306):
@@ -35,7 +36,7 @@ def main(pet_teaching=False):
     version = sql('SELECT @@version;')
     assert version.startswith('8.4.'), version
     kind = 'pet-teaching' if pet_teaching else 'spell-eligibility'
-    label = 'pet-teaching' if pet_teaching else 'eligibility'
+    label = 'reviewed-cower' if reviewed_cower else 'pet-teaching' if pet_teaching else 'eligibility'
     prefix = 'eligibility_'+uuid.uuid4().hex[:10]
     source, auth, tcworld, acworld = [prefix+s for s in ('_chars','_auth','_tc','_ac')]
     writer, reader = prefix+'_w', prefix+'_r'
@@ -98,7 +99,7 @@ def main(pet_teaching=False):
             pet_spec=importlib.util.spec_from_file_location('pet_assets',ROOT/'tests/pet-teaching-fixtures.py')
             pet_assets=importlib.util.module_from_spec(pet_spec);pet_spec.loader.exec_module(pet_assets)
             original=assets.stores
-            assets.stores=lambda p:pet_assets.extend(original(p),p)
+            assets.stores=lambda p:pet_assets.cower(pet_assets.extend(original(p),p)) if reviewed_cower else pet_assets.extend(original(p),p)
             from cleanup_pet_teaching import CONTRACTS
             values=','.join(f'({root},{spell},{rank})' for root,pairs in CONTRACTS.items()
                             for rank,(spell,_) in enumerate(pairs,1))
@@ -106,6 +107,9 @@ def main(pet_teaching=False):
             values = ','.join(f'(465,{s},{n})' for n,s in enumerate(assets.CHAINS[0],1))
         for schema in (tcworld, acworld):
             sql(f'INSERT INTO `{schema}`.spell_ranks VALUES '+values)
+        if reviewed_cower:
+            sql(f"INSERT INTO `{tcworld}`.spell_script_names VALUES(1742,'spell_hun_pet_cower');")
+            sql(f"INSERT INTO `{acworld}`.spell_script_names VALUES(1742,'spell_hun_cower');")
         for user in (writer, reader):
             sql(f"CREATE USER '{user}'@'%' IDENTIFIED BY '';")
             users.append(user)
@@ -166,13 +170,16 @@ backup_reference=disposable-synthetic-fixture
             report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(
                 f'{g}\t*\tAC_WOULD_DELETE_SPELL\t48942: captured fixture scope\n' for g in range(1,6)))
             run('inspect-migration-blockers', '--report', str(report))
-            plan = ('plan',kind,'--migration-inspection','latest')
+            plan = ('plan',kind,'--migration-inspection','latest') + (('--reviewed-cower',) if reviewed_cower else ())
             config.write_text(text.replace('[target]\nworld='+acworld, '[target]\nworld='+source))
             assert 'ELIGIBILITY_TARGET_OVERLAP' in run(*plan,'--preview',code=2).stderr
             config.write_text(text.replace('[target]\nworld='+acworld+'\nplayer_start_custom_spells=0',
                                            '[target]\nworld='+acworld+'\nplayer_start_custom_spells='))
             assert 'ELIGIBILITY_CONFIG_REQUIRED' in run(*plan,'--preview',code=2).stderr
             config.write_text(text)
+            if reviewed_cower:
+                control=run('plan','pet-teaching','--migration-inspection','latest','--preview')
+                assert '"selected_rows": 0' in control.stdout
             run(*plan, '--preview')
             assert not (session/'active-batch.json').exists() and not list((session/'batches').glob('*'))
             assert checksum() == baseline
@@ -186,6 +193,9 @@ backup_reference=disposable-synthetic-fixture
             package=session/'batches'/json.loads((session/'active-batch.json').read_text())['batch']
             manifest=json.loads((package/'manifest.json').read_text())
             archive=manifest['archive_schema'];owned.append(archive)
+            if reviewed_cower:
+                assert manifest['policy']=='tc-pet-teaching-reviewed-cower-retirement-v2'
+                assert json.loads((package/'cower-native-contract.json').read_text())==manifest['cower_native_contract']
             assert manifest['selected_rows']==3 and manifest['enabled_rows_removed']==3
             assert manifest['excluded_reason_counts']==(
                 {'DEFER_PENDING_NATIVE_RESET':1,'DEFER_PET_ABILITY_IN_PLAYER_BOOK':1,'DEFER_PET_TEACHER_CHARACTER_STATE':1}
@@ -197,12 +207,27 @@ backup_reference=disposable-synthetic-fixture
             ack="SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'; SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS'; SET @eligibility_tc_all_spells=0;SET @eligibility_ac_custom_spells=0;"
             if pet_teaching:
                 ack="SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'; SET @pet_teaching_ack='RETIRE_VERIFIED_PET_TEACHERS'; SET @pet_teaching_tc_all_spells=0; SET @pet_teaching_ac_custom_spells=0;"
+            if reviewed_cower:
+                without_cower_ack=ack
+                ack+="SET @pet_teaching_cower_ack='REVIEWED_COWER_CHILD_ONLY';"
+                error=sql(without_cower_ack+f'CALL `{archive}`.apply_batch();',writer,False)
+                assert 'Explicit reviewed Cower child' in error
+                assert checksum()==baseline
+                error=sql(ack+f"SET @pet_teaching_cower_ack='UNKNOWN';CALL `{archive}`.apply_batch();",writer,False)
+                assert 'Explicit reviewed Cower child' in error
             ack_label='Explicit pet-teaching repair' if pet_teaching else 'Explicit eligibility repair'
             error=sql(f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';CALL `{archive}`.apply_batch();",writer,False)
-            assert ack_label in error
+            assert ('Explicit reviewed Cower child' if reviewed_cower else ack_label) in error
             for variable in (('pet_teaching_tc_all_spells','pet_teaching_ac_custom_spells') if pet_teaching else ('eligibility_tc_all_spells','eligibility_ac_custom_spells')):
                 error=sql(ack+f"SET @{variable}='UNKNOWN'; CALL `{archive}`.apply_batch();",writer,False)
                 assert ack_label in error
+            if reviewed_cower:
+                sql(f"UPDATE `{acworld}`.spell_script_names SET ScriptName='spell_unknown' WHERE spell_id=1742")
+                changed=checksum()
+                assert 'ELIGIBILITY_TARGET_DRIFT' in run('apply',code=2).stderr
+                assert 'world content drift' in sql(ack+f'CALL `{archive}`.apply_batch();',writer,False)
+                assert checksum()==changed
+                sql(f"UPDATE `{acworld}`.spell_script_names SET ScriptName='spell_hun_cower' WHERE spell_id=1742")
             # Failing control: historical HEX(number) collapses these changes.
             assert sql('SELECT HEX(0.1)=HEX(0.2),HEX(0.100001)=HEX(0.100002)')=='1\t1'
             for update, restore in (
