@@ -24,6 +24,13 @@ For spell rows conflicting with existing talent selections, the separate
 enabled-availability changes while preserving both selected builds. Pending
 resets and unsupported native state remain deferred; preview first.
 
+For ordinary spell families AC would delete for race/class incompatibility,
+the separate [eligibility repair](spell-eligibility-repair.md) permits reviewed
+enabled-row retirement only when both effective catalogs agree. It protects
+talents, associated skills, professions/riding, dependencies/scripts and pending
+resets. Both custom-start settings must be explicitly verified off; source and
+AC world/DBC evidence and exact archived restoration are required.
+
 For ordinary disabled spells, use the separate opt-in
 [isolated ordinary-history policy](cleanup-console.md#review-isolated-disabled-ordinary-spells).
 It previews exact candidates from a fresh migration inspection and excludes

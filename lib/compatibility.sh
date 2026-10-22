@@ -162,6 +162,8 @@ write_azerothcore_semantic_manifest() {
         src/server/scripts/Outland/BlackTemple/boss_teron_gorefiend.cpp \
         src/server/scripts/Outland/BlackTemple/instance_black_temple.cpp \
         src/server/game/World/World.cpp \
+        src/server/game/World/WorldConfig.cpp \
+        src/server/game/World/WorldConfig.h \
         data/sql/base/db_world/spell_dbc.sql \
         data/sql/base/db_world/talent_dbc.sql \
         data/sql/base/db_world/talenttab_dbc.sql \

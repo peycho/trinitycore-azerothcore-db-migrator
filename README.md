@@ -34,6 +34,7 @@ is historical and requires the corresponding older toolkit release.
 | [Cleanup shell console](runbooks/cleanup-console.md) | One config, private sessions, talent/item/skill plans, apply and exact restore |
 | [Native skill repairs](runbooks/native-skill-repair.md) | Reviewed missing-skill repair and explicit Generic normalization |
 | [Talent ownership repair](runbooks/talent-ownership-repair.md) | Archived reconciliation of conflicting spell rows against selected builds |
+| [Spell eligibility repair](runbooks/spell-eligibility-repair.md) | Reviewed retirement of ordinary spells AC rejects for race/class |
 | [Invalid talent cleanup](runbooks/talent-cleanup.md) | Generate exact-row archive, apply and restore SQL from an audit |
 | [Migration behavior](runbooks/migration-behavior.md) | Data policies and semantic transforms |
 | [Spell reconstruction](runbooks/spell-reconstruction.md) | Omitted ranks, specialization safety and gameplay checks |

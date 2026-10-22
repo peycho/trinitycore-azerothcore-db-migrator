@@ -6,6 +6,14 @@ production-sized rehearsal or native gameplay acceptance.
 
 ## CI coverage
 
+Ordinary eligibility tests verify the separate opt-in enabled-row retirement
+policy, whole chains and both effective catalogs/DBC overlays. Protected AC
+lookup/check/stored-row-loader consumers run with mocked state/DB sinks and
+verify real GUID-scoped rejection/deletion. Dedicated MySQL tests cover preview,
+configuration/count/full-scope drift, both world content/layout guards, direct
+acknowledgements, late/disconnected rollback, reruns and exact custom-row restore.
+No gameplay or release acceptance is inferred from those results.
+
 Seal split-rank regressions cover TC highest-only and complete/inactive-lower
 state, AC singleton storage, both specs, reverse conversion, lower-only no-upper
 grants, missing skill and changed chain/effect/script/ownership/skill metadata.

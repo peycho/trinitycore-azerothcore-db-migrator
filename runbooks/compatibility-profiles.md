@@ -39,6 +39,16 @@ policy change also invalidates earlier run/checkpoint identities.
 
 ## Reviewing a candidate
 
+The separate [ordinary eligibility repair](spell-eligibility-repair.md) protects
+AC `WorldConfig.cpp` and `WorldConfig.h` in addition to the existing player
+consumers. Current v2 semantic counts are **100 TC / 105 AC**. The two added files
+match AC pin `1cd97629...`, staging `f089543d...` and the configured checkout byte
+for byte; no revision is substituted. They verify AC's actual
+`PlayerStart.CustomSpells` gate, distinct from TC `PlayerStart.AllSpells`.
+Pins, v1, v13 reconstruction, spell metadata and UNREVIEWED approval remain.
+Expanded profile/toolkit hashes require a fresh migration run and target/control
+schemas. Keep prior preparation toolkits/archives for original guarded restores.
+
 The `spell-state-v13` Seal of Righteousness mapping uses existing protected
 player, storage, trainer, spell/skill and aura/script consumers. No pins,
 manifests, metadata-profile or v1 changes are needed. Its exact TC rank pair,

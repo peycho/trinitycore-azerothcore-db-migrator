@@ -1,5 +1,17 @@
 # Profile v2 review and acceptance record
 
+The separate `tc-ineligible-ordinary-spell-repair-v1` preparation policy adds
+reviewed retirement of ordinary spell rows rejected by AC race/class validation,
+including enabled rows. Both effective world/DBC catalogs and complete rank
+families must agree; talents, associated stored skills, routes/scripts, riding,
+professions and pending resets retain their exclusions. Both custom-start
+settings require explicit verified-off assertions. Full originals, direct SQL
+world/layout guards, transactional reruns and exact inverse restoration are
+required. This is not a migration exception. AC `WorldConfig.cpp`/`.h` join the protected v2 manifest (105 AC / 100 TC files)
+and match the retained pin and staging reference byte for byte. Existing core
+pins, v1, v13 reconstruction and UNREVIEWED approval remain unchanged. See the
+[policy and validation procedure](spell-eligibility-repair.md).
+
 `spell-state-v13` adds the exact ordinary paladin `20154 -> 21084` TC-chain/
 AC-singleton contract. Both effective spell mechanics and skill-ability
 supersession links are verified. The transform preserves TC-known lower state,

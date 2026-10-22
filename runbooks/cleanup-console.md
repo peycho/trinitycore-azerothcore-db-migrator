@@ -5,7 +5,20 @@ restore workflow for a **stopped restored TrinityCore preparation copy**. Use
 Python 3.10 or later and MySQL 8 client tools against MySQL 8.4.x. It uses the
 standard library; no Python database package is required.
 
-The console supports six reviewed policies: remove verified non-rank talent
+The separate [ordinary spell eligibility repair](spell-eligibility-repair.md)
+uses `plan spell-eligibility --migration-inspection latest --preview`. It requires
+read-only AC world/DBC inputs, verified TC `PlayerStart.AllSpells=0` and AC
+`PlayerStart.CustomSpells=0`.
+It deliberately permits reviewed enabled-row retirement when both catalogs
+reject the complete ordinary rank family, while protecting skills and talents.
+It does not change existing history policies or migration rejection rules.
+
+New eligibility batches also use an exact fractional numeric fingerprint.
+Historical archives keep their original guards, which can miss fractional-only
+FLOAT/DECIMAL changes. Do not rely on old guards after gameplay or edits; retain
+the unchanged stopped baseline and original toolkits for restoration.
+
+The console supports reviewed policies to remove verified non-rank talent
 records; archive an unavailable second group and queue a single character's
 free native talent reset; recover existing item instances from reviewed
 zero-entry containers into mail; and explicitly clamp reviewed over-cap skill

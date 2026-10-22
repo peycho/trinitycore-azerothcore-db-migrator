@@ -109,7 +109,7 @@ both cores' chains and native runtime behavior before extending support.
 
 | Code | Meaning and next evidence to inspect |
 | --- | --- |
-| `AC_WOULD_DELETE_SPELL` | AC has skill-ability entries for the spell but no eligible race/class skill metadata for this character. Inspect class/race eligibility and spell provenance. |
+| `AC_WOULD_DELETE_SPELL` | AC has skill-ability entries but no eligible race/class skill metadata. Details identify race/class, the original stored anchor/flags, source/target skill IDs and TC metadata eligibility. The failing ID can be a derived predecessor; it is not automatically a deletion candidate. See the separate [eligibility repair](spell-eligibility-repair.md); otherwise keep blocked. |
 | `SPELL_WOULD_ADD_SKILL` | Native loading or learning would create a skill absent from the source character. Inspect existing skills and the spell/dependency that would add it. |
 | `SPELL_WOULD_CHANGE_SKILL` | Native effects require raising skill values/caps, or a reviewed exact riding/Runeforging state is not met. Inspect the reported skill, values, cap and known tier anchors. |
 | `RESEARCH_SKILL_MISSING` | A reviewed profession research spell lacks its required existing positive skill value/cap. No profession or recipes are inferred. |

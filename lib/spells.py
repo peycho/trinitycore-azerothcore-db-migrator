@@ -1193,7 +1193,15 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
         target_skill_abilities = [ability for ability in ac.abilities[spell]
                                   if ability[1] in ac.stores['SkillLine']]
         if target_skill_abilities and not any(race_class_rows(ac, ability[1]) for ability in target_skill_abilities):
-            reject('AC_WOULD_DELETE_SPELL', f'{spell}: no eligible race/class skill ability')
+            source_skills = sorted({ability[1] for ability in tc.abilities[spell]
+                                    if ability[1] in tc.stores['SkillLine']})
+            source_eligible = not source_skills or any(race_class_rows(tc, skill) for skill in source_skills)
+            reject('AC_WOULD_DELETE_SPELL',
+                   f'{spell}: race={race}; class={cls}; anchor={anchor}; '
+                   f'stored_anchor_flags={stored.get(anchor, ())}; '
+                   f'source_skill_ids={source_skills}; '
+                   f'target_skill_ids={sorted({ability[1] for ability in target_skill_abilities})}; '
+                   f'source_skill_eligible={source_eligible}; no eligible target SkillRaceClassInfo')
         if any(ability[1] == 776 for ability in ac.abilities[spell]):
             # Both native skill loaders normalize Runeforging's mono range
             # to 1/1; some addSpell paths also call LearnDefaultSkill. Refuse

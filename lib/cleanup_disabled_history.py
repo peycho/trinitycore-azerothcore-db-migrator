@@ -17,10 +17,11 @@ import cleanup_trained_history as trained_history
 import cleanup_ordinary_history as ordinary_history
 import cleanup_death_coil as death_coil
 import cleanup_ownership as ownership
+import cleanup_eligibility as eligibility
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
-POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, death_coil.POLICY, ownership.POLICY)
+POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, death_coil.POLICY, ownership.POLICY, eligibility.POLICY)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -55,7 +56,7 @@ def inspection(settings, work, inspection_id):
     return path, report, state, rows, audit
 
 
-def read_world(settings):
+def read_world(settings, *, exact_numeric=False):
     """Capture effective TC input tables in one read-only consistent snapshot."""
     world = settings.schemas['world']
     names = ['spell_dbc', *WORLD]
@@ -75,7 +76,12 @@ def read_world(settings):
             fail('HISTORY_WORLD_UNSUPPORTED','Missing or oversized TC world layout: '+table)
         expressions = ','.join('`'+name+'`' for name in fields)
         queries.append((table,f'SELECT JSON_ARRAY({expressions}) row_value FROM `{world}`.`{table}` LIMIT 100001'))
-        hashed = 'SHA2(CONCAT_WS(\'|\','+','.join(f"IFNULL(HEX(`{name}`),'N')" for name in fields)+'),256)'
+        if exact_numeric:
+            from cleanup_active_reset import exact_hex
+            types = {r[1]:r[2] for r in layout['columns'] if r[0] == table}
+            hashed = "SHA2(CONCAT_WS('|',"+','.join(f"IFNULL({exact_hex('`'+name+'`',types[name])},'N')" for name in fields)+'),256)'
+        else:
+            hashed = 'SHA2(CONCAT_WS(\'|\','+','.join(f"IFNULL(HEX(`{name}`),'N')" for name in fields)+'),256)'
         queries.append(('digests',f"SELECT JSON_ARRAY('{table}',COUNT(*),SHA2(COALESCE(GROUP_CONCAT({hashed} "
                         f"ORDER BY BINARY {hashed} SEPARATOR ''),''),256)) row_value FROM `{world}`.`{table}`"))
     original_sql = settings.sql
@@ -126,6 +132,14 @@ def read_world(settings):
 
 
 def check_metadata(settings, manifest):
+    if manifest.get('policy') == eligibility.POLICY:
+        if (manifest.get('numeric_fingerprint') != 'EXACT_FRACTIONAL_V1'
+                or sha(ROOT/'lib/cleanup_active_reset.py') != manifest.get('numeric_reader_sha256')):
+            fail('ELIGIBILITY_POLICY_DRIFT','Exact numeric fingerprint contract differs from this candidate')
+        if sha(ROOT/'lib/cleanup_eligibility.py') != manifest.get('eligibility_reader_sha256'):
+            fail('ELIGIBILITY_POLICY_DRIFT','Eligibility selector differs; retain the original toolkit for restoration')
+        if eligibility.configuration_contract(settings) != manifest.get('configuration_contract'):
+            fail('ELIGIBILITY_CONFIG_DRIFT','Eligibility configuration differs from the reviewed candidate')
     if manifest.get('policy') == ownership.POLICY and sha(ROOT/'lib/cleanup_ownership.py') != manifest.get('ownership_reader_sha256'):
         fail('OWNERSHIP_POLICY_DRIFT','Ownership selection code differs from this reviewed batch; retain its original toolkit for restore')
     if manifest.get('policy') == ordinary_history.INACTIVE_DEFAULT_POLICY:
@@ -140,9 +154,13 @@ def check_metadata(settings, manifest):
     for key,entry in manifest.get('core_compatibility',{}).items():
         if settings.compatibility.get(key,{}).get('manifest_sha256') != entry.get('manifest_sha256'):
             fail('CORE_PROFILE_MISMATCH','Core compatibility manifests differ from the reviewed history batch')
-    effective, world = read_world(settings)
+    effective, world = read_world(settings,exact_numeric=manifest.get('policy') == eligibility.POLICY)
     if sha_json(world) != manifest.get('world_sha256') or effective.hashes != manifest.get('semantic_dbc_sha256'):
         fail('HISTORY_METADATA_DRIFT','Effective TC world/DBC metadata differs from this reviewed history batch')
+    if manifest.get('policy') == eligibility.POLICY:
+        target, captured = eligibility.read_target(settings)
+        if sha_json(captured) != manifest.get('target_world_sha256') or target.hashes != manifest.get('target_dbc_sha256'):
+            fail('ELIGIBILITY_TARGET_DRIFT','Effective AC world/DBC metadata differs from the reviewed candidate')
 
 
 def script_bindings(effective):
@@ -241,10 +259,10 @@ def select(rows, state, effective, expected_review_rows, include_reviewed_script
     return selected,excluded
 
 
-def aggregate(meta, table, database, scope, alias='s'):
+def aggregate(meta, table, database, scope, alias='s', *, exact_numeric=False):
     keys = ','.join(f'{alias}.`{name}`' for name in KEYS[table])
     size = '+'.join(f'COALESCE(OCTET_LENGTH({alias}.`{name}`),0)' for name in columns(meta,table))
-    hashed = f'IF(({size})<=1048576,{row_hash(meta,table,alias)},NULL)'
+    hashed = f'IF(({size})<=1048576,{row_hash(meta,table,alias,exact_numeric=exact_numeric)},NULL)'
     return (f'SELECT {alias}.guid,COUNT(*) n,IF(COUNT({hashed})=COUNT(*),SHA2(GROUP_CONCAT({hashed} '
             f'ORDER BY {keys} SEPARATOR \'\'),256),NULL) h FROM `{database}`.`{table}` {alias} '
             f'WHERE {scope} GROUP BY {alias}.guid')
@@ -255,14 +273,14 @@ def enabled_ids_query(source):
             'WHERE disabled=0) enabled_spells ORDER BY spell')
 
 
-def check_sets(meta, source, archive, counts, changed_table='character_spell'):
+def check_sets(meta, source, archive, counts, changed_table='character_spell', *, exact_numeric=False):
     blocks = {}
     for phase in ('original','archive','applied'):
         lines = []
         for table in TABLES:
             db = archive if phase == 'archive' else source
             actual_table = table+'_before' if phase == 'archive' else table
-            query = aggregate(meta,table,db,'s.guid IN (SELECT guid FROM affected)')
+            query = aggregate(meta,table,db,'s.guid IN (SELECT guid FROM affected)',exact_numeric=exact_numeric)
             if phase == 'archive':
                 query = query.replace(f'`{db}`.`{table}`',f'`{db}`.`{actual_table}`')
             expected = 'expected_snapshot'
@@ -282,6 +300,8 @@ def check_sets(meta, source, archive, counts, changed_table='character_spell'):
 
 
 def plan_history(settings, work, args, output):
+    eligibility_mode = getattr(args,'spell_eligibility',False)
+    eligibility_reader = sha(ROOT/'lib/cleanup_eligibility.py') if eligibility_mode else None
     ownership_mode = getattr(args,'talent_ownership',False)
     ownership_reader = sha(ROOT/'lib/cleanup_ownership.py') if ownership_mode else None
     trained_mode = bool(getattr(args,'migration_inspection',None))
@@ -291,14 +311,15 @@ def plan_history(settings, work, args, output):
     native_death_coil = getattr(args,'native_death_coil',False)
     if native_death_coil and (inactive_defaults or not ordinary_mode):
         fail('HISTORY_POLICY_CONFLICT','--native-death-coil is a separate ordinary-history policy')
-    config_contract = (death_coil.configuration_contract(settings) if native_death_coil else
+    config_contract = (eligibility.configuration_contract(settings) if eligibility_mode else
+                       death_coil.configuration_contract(settings) if native_death_coil else
                        ordinary_history.configuration_contract(settings) if inactive_defaults else None)
     preview = getattr(args,'preview',False)
     if child_mode and not trained_mode:
         fail('HISTORY_POLICY_CONFLICT','--orphaned-talent-children requires --migration-inspection')
     if ordinary_mode and not trained_mode:
         fail('HISTORY_POLICY_CONFLICT','Ordinary spell history requires --migration-inspection')
-    if preview and not (child_mode or ordinary_mode or ownership_mode):
+    if preview and not (child_mode or ordinary_mode or ownership_mode or eligibility_mode):
         fail('HISTORY_POLICY_CONFLICT','--preview requires the explicit talent-child or ordinary-history policy')
     selected_mode = getattr(args,'selected_rank_history',False)
     if trained_mode and any(getattr(args,field,False) for field in ('include_reviewed_scripts','include_inert_relations','include_reviewed_routes','selected_rank_history')):
@@ -316,8 +337,13 @@ def plan_history(settings, work, args, output):
         path, report, state, rows, audit = inspection(settings,work,inspection_id)
     inspection_sha = sha(path/'SHA256SUMS')
     print('Reviewing effective TC world/DBC learning routes (read-only)',flush=True)
-    effective, world = read_world(settings)
-    if trained_mode and (world!=captured_world or effective.hashes!=capture_report['dbc_sha256']):
+    effective, world = read_world(settings,exact_numeric=eligibility_mode)
+    # Older sealed inspections retain their historical numeric digest. The
+    # full typed rows/layout and asset hashes still have to match exactly;
+    # new eligibility packets then use the stronger digest at every phase.
+    same_world = (all(world[k]==captured_world[k] for k in ('layout','rows')) if eligibility_mode
+                  else world==captured_world) if trained_mode else True
+    if trained_mode and (not same_world or effective.hashes!=capture_report['dbc_sha256']):
         fail('HISTORY_METADATA_DRIFT','Effective TC metadata differs from the captured migration context')
     state['enabled_ids'] = snapshot(settings,[('ids',enabled_ids_query(settings.schemas['characters']))])['ids']
     include_routes = getattr(args,'include_reviewed_routes',False)
@@ -331,6 +357,10 @@ def plan_history(settings, work, args, output):
                   ordinary_history.INACTIVE_DEFAULT_POLICY if inactive_defaults else ordinary_history.POLICY)
     if ownership_mode:
         policy = ownership.POLICY
+    if eligibility_mode:
+        policy = eligibility.POLICY
+        print('Capturing effective AC world/DBC eligibility inputs (read-only)',flush=True)
+        target_effective, target_world = eligibility.read_target(settings)
     relation_rows,relation_proof,relation_summary,relation_edges = [],[],{},[]
     rank_proof = []
     native_base_proofs = []
@@ -338,7 +368,11 @@ def plan_history(settings, work, args, output):
     if trained_mode:
         check_retained_scripts(state,effective)
         relation_rows=context['character_spell']
-        if ownership_mode:
+        if eligibility_mode:
+            selected,excluded,relation_proof,relation_summary,relation_edges=eligibility.select(
+                context,effective,target_effective,args.expect_review_rows,preview=preview)
+            eligibility_proofs = relation_summary.pop('eligibility_proofs')
+        elif ownership_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ownership.select(
                 context,effective,args.expect_review_rows,preview=preview,source_dir=settings.paths['tc_source'])
             ownership_native_proofs = relation_summary.pop('native_owner_proofs')
@@ -350,9 +384,9 @@ def plan_history(settings, work, args, output):
         else:
             selected,excluded,relation_proof,relation_summary,relation_edges=trained_history.select(
                 context,effective,args.expect_review_rows,orphan_children=child_mode,preview=preview)
-        if child_mode or ordinary_mode or ownership_mode:
-            review_name = 'talent-ownership-review.json' if ownership_mode else 'ordinary-spell-review.json' if ordinary_mode else 'talent-child-review.json'
-            review_label = 'Talent-ownership' if ownership_mode else 'Ordinary-spell' if ordinary_mode else 'Talent-child'
+        if child_mode or ordinary_mode or ownership_mode or eligibility_mode:
+            review_name = 'spell-eligibility-review.json' if eligibility_mode else 'talent-ownership-review.json' if ownership_mode else 'ordinary-spell-review.json' if ordinary_mode else 'talent-child-review.json'
+            review_label = 'Spell-eligibility' if eligibility_mode else 'Talent-ownership' if ownership_mode else 'Ordinary-spell' if ordinary_mode else 'Talent-child'
             review={'policy':policy,'migration_inspection':path.name,'scope_characters':len(context['characters']),
                     'summary':relation_summary,'selected':selected,'excluded':excluded,
                     'deferred':dict(Counter(row[2] for row in excluded)),
@@ -362,6 +396,10 @@ def plan_history(settings, work, args, output):
                 review['configuration_contract'] = config_contract
             if ownership_mode:
                 review['native_owner_proofs'] = ownership_native_proofs
+            if eligibility_mode:
+                review['eligibility_proofs'] = eligibility_proofs
+                review['target_world_sha256'] = sha_json(target_world)
+                review['target_dbc_sha256'] = target_effective.hashes
             if native_death_coil:
                 review['native_base_proofs'] = native_base_proofs
             write_json(work.operation/review_name,review)
@@ -390,7 +428,7 @@ def plan_history(settings, work, args, output):
         bindings = sorted(set(bindings) | {(family,spell,name,'') for _,family,spell,*_ in relation_proof
                                          for name in effective.scripts[spell]})
     selected_families = {effective.talents[row[1]][0] for row in selected if row[1] in effective.talents}
-    if child_mode or ordinary_mode or ownership_mode:
+    if child_mode or ordinary_mode or ownership_mode or eligibility_mode:
         selected_families |= {row[1] for row in relation_proof}
     reviewed = [row[:3] for row in bindings if row[0] in selected_families]
     scripted_families = {entry[0] for entry in reviewed}
@@ -414,7 +452,7 @@ def plan_history(settings, work, args, output):
         fail('UNSUPPORTED_COLUMN','History policy requires at most 512 columns without automatic updates')
     queries = []
     for table in TABLES:
-        query = aggregate(meta,table,source,f's.guid IN ({selector})')
+        query = aggregate(meta,table,source,f's.guid IN ({selector})',exact_numeric=eligibility_mode)
         queries.append(('sets',f"SELECT JSON_ARRAY('{table}',guid,n,h) row_value FROM ({query}) a ORDER BY guid"))
     # Exact live inspection inputs reject same-count ownership/flags changes.
     scope = ' WHERE guid IN ('+','.join(str(r[0]) for r in context['characters'])+')' if trained_mode else ''
@@ -441,7 +479,7 @@ def plan_history(settings, work, args, output):
         by_guid[guid].append(spell)
     exclusion = ' OR '.join('(s.guid='+str(guid)+' AND s.spell IN ('+','.join(map(str,spells))+'))'
                             for guid,spells in sorted(by_guid.items()))
-    query = aggregate(meta,'character_spell',source,f's.guid IN ({selector}) AND NOT ({exclusion})')
+    query = aggregate(meta,'character_spell',source,f's.guid IN ({selector}) AND NOT ({exclusion})',exact_numeric=eligibility_mode)
     queries.append(('after',f"SELECT JSON_ARRAY('character_spell',guid,n,h) row_value FROM ({query}) a ORDER BY guid"))
     # Each digest is bounded per character, not one concatenation of millions
     # of source rows. Counts are checked before any executable package exists.
@@ -469,19 +507,24 @@ def plan_history(settings, work, args, output):
     counts = {table:sum(row[2] for row in cells if row[0]==table) for table in TABLES}
     if counts['characters'] != len(guids) or sum(counts.values())>5_000_000:
         fail('HISTORY_SNAPSHOT_BOUND','Missing affected characters or more than 5000000 archived rows')
-    template = ROOT/('tools/talent-ownership-repair.sql.in' if ownership_mode else 'tools/disabled-talent-history.sql.in')
+    template = ROOT/('tools/spell-eligibility-repair.sql.in' if eligibility_mode else
+                    'tools/talent-ownership-repair.sql.in' if ownership_mode else 'tools/disabled-talent-history.sql.in')
     batch_inputs = {'policy':policy,'inspection':sha(path/'SHA256SUMS'),'snapshot':cells,'after':after,
                     'selection':selected,'world':world,'meta':meta,'template':sha(template),'id':output.name}
     if ownership_mode:
         batch_inputs.update(ownership_reader_sha256=ownership_reader,ownership_proofs=relation_proof,
                             native_owner_proofs=ownership_native_proofs)
+    if eligibility_mode:
+        batch_inputs.update(eligibility_reader_sha256=eligibility_reader,eligibility_proofs=eligibility_proofs,
+                            target_world=target_world,target_dbc_sha256=target_effective.hashes,
+                            numeric_reader_sha256=sha(ROOT/'lib/cleanup_active_reset.py'))
     if config_contract is not None:
         batch_inputs['configuration_contract'] = config_contract
     if native_death_coil:
         batch_inputs['native_base_proofs'] = native_base_proofs
     batch = sha_json(batch_inputs)
-    archive = ('tc_ownership_' if ownership_mode else 'tc_disabled_history_')+uuid.uuid4().hex[:20]
-    blocks = check_sets(meta,source,archive,counts)
+    archive = ('tc_eligibility_' if eligibility_mode else 'tc_ownership_' if ownership_mode else 'tc_disabled_history_')+uuid.uuid4().hex[:20]
+    blocks = check_sets(meta,source,archive,counts,exact_numeric=eligibility_mode)
     values = {'SOURCE':source,'ARCHIVE':archive,'UUID':work.current()['identity']['uuid'],
         'BATCH':batch,'AUDIT':audit['audited_results_sha256'],'COUNT':len(selected),'GUID_COUNT':len(guids),
         'EXPECTED_HASH':planner.key_hash(selected),'SNAPSHOT_COUNT':len(cells),'SNAPSHOT_HASH':planner.key_hash(cells),
@@ -519,7 +562,7 @@ def plan_history(settings, work, args, output):
         values['WORLD_CHECKS'] = """IF NOT (BINARY @talent_ownership_ack <=> BINARY 'SELECTED_TALENTS_AUTHORITATIVE') THEN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit selected-talent ownership repair acknowledgement required'; END IF;
 """ + layout_checks + values['WORLD_CHECKS']
-    if config_contract is not None:
+    if config_contract is not None and not eligibility_mode:
         values['WORLD_CHECKS'] = """IF NOT (BINARY @ordinary_history_all_spells <=> BINARY '0') THEN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit PlayerStart.AllSpells=0 assertion required for ordinary history v2'; END IF;
 """ + values['WORLD_CHECKS']
@@ -527,11 +570,22 @@ def plan_history(settings, work, args, output):
         values['WORLD_CHECKS'] = """IF NOT (BINARY @ordinary_history_native_base <=> BINARY '47541') THEN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit native Death Coil rank 1 availability assertion required'; END IF;
 """ + values['WORLD_CHECKS']
-    final_effective, final_world = read_world(settings)
+    if eligibility_mode:
+        values['WORLD_CHECKS'] = """IF NOT (BINARY @spell_eligibility_ack <=> BINARY 'RETIRE_VERIFIED_INELIGIBLE_SPELLS')
+ OR NOT (BINARY @eligibility_tc_all_spells <=> BINARY '0')
+ OR NOT (BINARY @eligibility_ac_custom_spells <=> BINARY '0') THEN
+ SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit eligibility repair and native custom-start-off assertions required'; END IF;
+""" + eligibility.world_checks(settings.schemas['world'],world) + '\n' + eligibility.world_checks(config_contract['target_world'],target_world)
+    final_effective, final_world = read_world(settings,exact_numeric=eligibility_mode)
     if metadata(settings,TABLES)!=meta or final_world!=world or final_effective.hashes!=effective.hashes:
         fail('HISTORY_METADATA_DRIFT','Source schema/world metadata changed while planning')
     if ownership_mode and sha(ROOT/'lib/cleanup_ownership.py') != ownership_reader:
         fail('OWNERSHIP_POLICY_DRIFT','Ownership selector changed while planning')
+    if eligibility_mode:
+        final_target, final_target_world = eligibility.read_target(settings)
+        if (final_target_world != target_world or final_target.hashes != target_effective.hashes
+                or sha(ROOT/'lib/cleanup_eligibility.py') != eligibility_reader):
+            fail('ELIGIBILITY_TARGET_DRIFT','Eligibility reader or AC inputs changed during planning')
     verify(path)
     if sha(path/'SHA256SUMS') != inspection_sha:
         fail('HISTORY_INSPECTION_INVALID','Retained inspection changed during planning')
@@ -572,6 +626,12 @@ def plan_history(settings, work, args, output):
         manifest['ownership_ack'] = ownership.ACK
         manifest['ownership_reader_sha256'] = ownership_reader
         manifest['native_owner_proofs'] = ownership_native_proofs
+    if eligibility_mode:
+        manifest.update(eligibility_ack=eligibility.ACK,eligibility_reader_sha256=eligibility_reader,
+                        target_world_sha256=sha_json(target_world),target_dbc_sha256=target_effective.hashes,
+                        numeric_fingerprint='EXACT_FRACTIONAL_V1',
+                        numeric_reader_sha256=sha(ROOT/'lib/cleanup_active_reset.py'),
+                        script_contract='No removed family script or dependency; both native skill catalogs agree')
     if trained_mode:
         manifest.update(migration_inspection_id=path.name,source_context_sha256=capture_report['source_state_sha256'],
                         reviewed_character_scope=len(context['characters']))
@@ -597,13 +657,16 @@ FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.g
                    'native_availability_change':'Only rank 1 from existing Unholy skill; no higher-rank inference'})
     if ownership_mode:
         write_json(output/'ownership-native-proof.json', ownership_native_proofs)
+    if eligibility_mode:
+        write_json(output/'eligibility-native-proof.json', eligibility_proofs)
+        write_json(output/'target-metadata.json',target_world)
     if include_scripts:
         script_family_column = 'ordinary_first_spell' if ordinary_mode else 'talent_entry'
         (output/'scripted-family-review.tsv').write_text(script_family_column+'\tspell\tscript\tstatus\treason\n'+''.join(
             '\t'.join(map(str,(family,spell,name,'DEFERRED' if reason else 'REVIEWED_NO_SPELLBOOK_MUTATION',reason)))+'\n'
             for family,spell,name,reason in bindings))
     if include_relations:
-        family_column = 'ordinary_first_spell' if ordinary_mode else 'talent_entry'
+        family_column = 'ordinary_first_spell' if ordinary_mode or eligibility_mode else 'talent_entry'
         (output/'relationship-review.tsv').write_text('guid\t'+family_column+'\tspell\trole\tdisposition\tactive\tdisabled\n'+
             ''.join('\t'.join(map(str,r))+'\n' for r in relation_proof))
         selected_nodes = {r[2] for r in relation_proof}
@@ -615,7 +678,9 @@ FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.g
     write_json(output/'metadata.json',world)
     from cleanup_console import seal
     seal(output)
-    if ownership_mode:
+    if eligibility_mode:
+        print(f'Reviewed {relation_summary["reviewed_candidate_rows"]} ineligible stored rows; selected {len(selected)} exact rows; deferred {len(excluded)}; no source changes')
+    elif ownership_mode:
         print(f'Reviewed {relation_summary["reviewed_candidate_rows"]} conflicting spell candidates; selected {len(selected)} exact rows; deferred {len(excluded)}; no source changes')
     elif ordinary_mode:
         print(f'Reviewed {args.expect_review_rows} disabled ordinary candidates; selected {len(selected)} exact rows; deferred {len(excluded)} candidate rows; no source changes')

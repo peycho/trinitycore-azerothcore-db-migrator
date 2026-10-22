@@ -24,7 +24,26 @@ def row_key(table, alias='s'):
     return 'CONCAT_WS(\':\',' + ','.join(f'{alias}.`{key}`' for key in KEYS[table]) + ')'
 
 
-def row_hash(meta, table, alias='s'):
+def exact_hex(expression, sql_type):
+    """Preserve fractions; HEX(number) itself rounds to an integer in MySQL.
+
+    Promoting FLOAT to DOUBLE preserves its stored value before MySQL's
+    round-trip text conversion. DECIMAL stays decimal, without a float cast.
+    Binary/text/integer columns retain the historical byte representation.
+    """
+    kind = re.split(r'[ (]',sql_type.lower(),maxsplit=1)[0]
+    if kind in ('float','double','real'):
+        expression = f'CAST(CAST({expression} AS DOUBLE) AS CHAR)'
+    elif kind in ('decimal','numeric'):
+        expression = f'CAST({expression} AS CHAR)'
+    return f'HEX({expression})'
+
+
+def row_hash(meta, table, alias='s', *, exact_numeric=False):
+    if exact_numeric:
+        return "SHA2(CONCAT_WS('|'," + ','.join(
+            f"IFNULL({exact_hex(alias+'.`'+r[1]+'`',r[2])},'N')"
+            for r in meta['columns'] if r[0] == table) + '),256)'
     return 'SHA2(CONCAT_WS(\'|\',' + ','.join(
         f"IFNULL(HEX({alias}.`{name}`),'N')" for name in columns(meta,table)) + '),256)'
 

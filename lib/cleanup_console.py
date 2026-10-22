@@ -55,7 +55,7 @@ def toolkit_hashes():
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
            'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','lib/cleanup_talent_relations.py','lib/cleanup_selected_rank_history.py','lib/cleanup_migration_evidence.py','lib/cleanup_trained_history.py','tools/disabled-talent-history.sql.in',
-           'lib/cleanup_native_skills.py','lib/cleanup_ordinary_history.py','lib/cleanup_death_coil.py','lib/cleanup_ownership.py','tools/talent-ownership-repair.sql.in','tools/native-skill-repair.sql.in','tools/native-generic-repair.sql.in')
+           'lib/cleanup_native_skills.py','lib/cleanup_ordinary_history.py','lib/cleanup_death_coil.py','lib/cleanup_ownership.py','lib/cleanup_eligibility.py','tools/spell-eligibility-repair.sql.in','tools/talent-ownership-repair.sql.in','tools/native-skill-repair.sql.in','tools/native-generic-repair.sql.in')
     hashes={}
     for name in names:
         path=ROOT/name
@@ -159,7 +159,7 @@ class Settings:
             location=f' at line {line}' if isinstance(line,int) else ''
             section=getattr(error,'section',None)
             option=getattr(error,'option',None)
-            safe_sections={'workspace','source','paths','safety','mysql','mysql_audit','mysql_admin'}
+            safe_sections={'workspace','source','target','paths','safety','mysql','mysql_audit','mysql_admin'}
             safe_options={'socket','host','port','user','password','defaults_file'}
             if isinstance(error,configparser.DuplicateSectionError):
                 label=f' [{section}]' if section in safe_sections else ''
@@ -178,11 +178,12 @@ class Settings:
                 message='Invalid INI configuration'+location+'; values were omitted to protect credentials'
                 hint='Use config/cleanup.ini.example as the format.'
             fail('CONFIG_SYNTAX',message,hint)
-        allowed = {'workspace','source','paths','safety','mysql','mysql_audit','mysql_admin'}
+        allowed = {'workspace','source','target','paths','safety','mysql','mysql_audit','mysql_admin'}
         if set(self.ini.sections())-allowed:
             fail('CONFIG_UNKNOWN_SECTION', 'Unknown configuration section: '+','.join(sorted(set(self.ini.sections())-allowed)))
         fields = {
             'workspace':{'directory'}, 'source':{'core','characters','auth','world','player_start_all_spells'},
+            'target':{'world','player_start_custom_spells'},
             'paths':{'tc_dbc','ac_dbc','tc_source','ac_source'},
             'safety':{'preparation_copy','writers_stopped','backup_reference'},
             'mysql':{'host','port','socket','user','password','defaults_file','ssl_mode','connect_timeout'},
@@ -602,6 +603,12 @@ def command_action(settings, work, args):
         if manifest.get('ownership_ack') != OWNERSHIP_ACK:
             fail('OWNERSHIP_ACK_INVALID','Ownership policy acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';\n"
+    from cleanup_eligibility import POLICY as ELIGIBILITY_POLICY, ACK as ELIGIBILITY_ACK
+    if manifest.get('policy') == ELIGIBILITY_POLICY:
+        if manifest.get('eligibility_ack') != ELIGIBILITY_ACK:
+            fail('ELIGIBILITY_ACK_INVALID','Eligibility acknowledgement differs from the reviewed candidate')
+        configuration_ack += "SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS';\n"
+        configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
     try:
         result=settings.sql(f"SET @{ack}='STOPPED_PREPARATION_COPY_ONLY';\n"+configuration_ack+scripts[action],'write',headers=True)
     except CleanupError as error:
@@ -717,6 +724,12 @@ def parser():
     ownership_review=ownership.add_mutually_exclusive_group(required=True)
     ownership_review.add_argument('--preview',action='store_true',help='Read-only complete captured-scope review; no active batch or SQL package')
     ownership_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows printed by this policy preview')
+    eligibility=types.add_parser('spell-eligibility',help='Separate archived repair of ordinary rank families rejected by AC race/class validation')
+    eligibility.set_defaults(spell_eligibility=True,inspection=None,audit=None)
+    eligibility.add_argument('--migration-inspection',required=True,help='Sealed migration-blocker inspection ID or latest')
+    eligibility_review=eligibility.add_mutually_exclusive_group(required=True)
+    eligibility_review.add_argument('--preview',action='store_true',help='Read-only review; no SQL package or active batch')
+    eligibility_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows from this policy preview')
     reset=types.add_parser('reset-talents',help='One character: archive unavailable group 1 and queue free native reset')
     reset.add_argument('--guid',type=int,required=True)
     active_reset=types.add_parser('reset-active-talents',help='Queue one native active reset; inactive builds must be empty; archive explicit foreign talent 12284')

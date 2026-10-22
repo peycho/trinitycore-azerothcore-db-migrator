@@ -298,6 +298,27 @@ class SpellTests(unittest.TestCase):
             self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:altered.check_spell(spell))
         self.assertNotIn('spell_black_template_harpooners_mark_aura',self.ac.script_policy)
 
+    def test_skill_eligibility_blocker_distinguishes_metadata_from_stored_anchor(self):
+        # The failing ID can be a reconstructed predecessor, so name the
+        # original stored anchor rather than suggesting deletion of that ID.
+        chain=fixtures.CHAINS[0]
+        low,high=chain[0],chain[-1]
+        ac=copy.deepcopy(self.ac)
+        ac.abilities[low]=[[900001,220,low,0,0,0,0,0,0,0,0,0,0,0]]
+        with self.assertRaises(Unsupported) as caught:
+            self.convert({high:(1,0)},ac=ac,cls=2,race=1)
+        error=caught.exception
+        self.assertEqual(error.reason,'AC_WOULD_DELETE_SPELL')
+        for text in (f'{low}: race=1; class=2; anchor={high};',
+                     'stored_anchor_flags=(1, 0)', 'target_skill_ids=[220]',
+                     'source_skill_eligible=True'):
+            self.assertIn(text,str(error))
+        with self.assertRaises(Unsupported) as caught:
+            self.convert({7744:(1,0)},skills={220:(1,1)},cls=1,race=1)
+        for text in ('source_skill_ids=[220]', 'target_skill_ids=[220]',
+                     'source_skill_eligible=False'):
+            self.assertIn(text,str(caught.exception))
+
     def test_script_inventory_covers_each_binding_despite_earlier_ownership_failure(self):
         tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
         ac.scripts[40081].update({'unreviewed_one','unreviewed_two'})

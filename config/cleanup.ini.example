@@ -11,9 +11,16 @@ characters = tc_characters_prep
 auth = tc_auth_prep
 world = tc_world_snapshot
 # Optional operator assertion of the effective TC worldserver setting.
-# Blank means unknown; used only with plan disabled-spell-history --inactive-custom-defaults.
+# Blank means unknown; used by explicit ordinary-history and eligibility policies.
 # Verify PlayerStart.AllSpells before setting 0; it is not detected automatically.
 player_start_all_spells =
+
+# Optional; required only by plan spell-eligibility. Same MySQL endpoint,
+# SELECT-only AC world input. Never an AC character cleanup destination.
+[target]
+world =
+# Verify PlayerStart.CustomSpells in the effective AC config; this policy requires 0.
+player_start_custom_spells =
 
 [paths]
 tc_dbc = /secure/assets/tc-dbc
