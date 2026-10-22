@@ -6,6 +6,20 @@ production-sized rehearsal or native gameplay acceptance.
 
 ## CI coverage
 
+Native Generic switch-skill v3 tests retain old policies as rejecting controls
+and cover one/two specs, both active groups, exact level-derived values,
+existing-skill preservation, unsupported anchors/routes, reset/online states and
+the 127-slot limit. The real-console MySQL 8.4 suite tests source/world fractional
+and layout drift, full deferred-scope drift, explicit SQL acknowledgement,
+transaction interruption and late rollback, reruns, no spec changes, and exact
+full custom-row restoration. Protected TC/AC skill-acquisition/default-skill/range
+consumers execute with mocked state, including both spec counts; the protected
+TC loader/cast gate confirms that known non-passive switch spells are not cast
+while loading. Generic skill-reward consumers also restore the reviewed system
+actions in both cores without altering spec fields in recording sinks; unknown,
+learning and skill-modifying reward-catalog regressions block v3. Full native
+gameplay and realm-wide migration remain separate.
+
 Ordinary eligibility tests verify the separate opt-in enabled-row retirement
 policy, whole chains and both effective catalogs/DBC overlays. Protected AC
 lookup/check/stored-row-loader consumers run with mocked state/DB sinks and

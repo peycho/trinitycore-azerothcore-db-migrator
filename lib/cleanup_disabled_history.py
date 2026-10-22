@@ -130,6 +130,14 @@ def read_world(settings, *, exact_numeric=False):
 
 
 def check_metadata(settings, manifest):
+    from cleanup_native_skills import SWITCH_POLICY, SWITCH_ACK
+    if manifest.get('policy') == SWITCH_POLICY:
+        if (manifest.get('native_switch_ack') != SWITCH_ACK
+                or manifest.get('numeric_fingerprint') != 'EXACT_FRACTIONAL_V1'
+                or sha(ROOT/'lib/cleanup_native_skills.py') != manifest.get('native_skill_reader_sha256')
+                or sha(ROOT/'lib/cleanup_active_reset.py') != manifest.get('numeric_reader_sha256')
+                or sha(ROOT/'lib/cleanup_eligibility.py') != manifest.get('world_guard_reader_sha256')):
+            fail('NATIVE_SWITCH_POLICY_DRIFT','Known-switch skill policy or exact numeric/world guards differ; retain original toolkit')
     if manifest.get('policy') == ordinary_history.TRAINING_POLICY:
         if (manifest.get('training_prerequisite_ack') != ordinary_history.TRAINING_ACK
                 or sha(ROOT/'lib/cleanup_ordinary_history.py') != manifest.get('ordinary_reader_sha256')
@@ -174,7 +182,7 @@ def check_metadata(settings, manifest):
     for key,entry in manifest.get('core_compatibility',{}).items():
         if settings.compatibility.get(key,{}).get('manifest_sha256') != entry.get('manifest_sha256'):
             fail('CORE_PROFILE_MISMATCH','Core compatibility manifests differ from the reviewed history batch')
-    effective, world = read_world(settings,exact_numeric=manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, ordinary_history.TRAINING_POLICY, ownership.FOREIGN_POLICY))
+    effective, world = read_world(settings,exact_numeric=manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, ordinary_history.TRAINING_POLICY, ownership.FOREIGN_POLICY, SWITCH_POLICY))
     if sha_json(world) != manifest.get('world_sha256') or effective.hashes != manifest.get('semantic_dbc_sha256'):
         fail('HISTORY_METADATA_DRIFT','Effective TC world/DBC metadata differs from this reviewed history batch')
     if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES):

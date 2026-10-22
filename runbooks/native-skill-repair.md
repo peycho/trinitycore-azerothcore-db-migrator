@@ -76,6 +76,76 @@ inactive/disabled anchors, unsupported metadata, custom skill-table columns,
 and a resulting skill count over AC's 127-slot limit also defer or block. A
 single-spec `63680` wrapper cannot establish second-spec ownership.
 
+## V3: known switch spells and missing Generic
+
+`tc-known-generic-switch-skill-v3` is an explicit **insertion-only** policy.
+Native TC `AddSpell` and AC `_addSpell` use SkillLineAbility acquisition method
+2 to create a missing Generic skill from an already-known enabled `63644` or
+`63645`. That native branch has no requirement to own two specs. The earlier
+v1/v2 preparation exclusions were conservative; they are retained unchanged.
+
+V3 allows those known switch anchors with either valid spec count. It inserts
+only absent Generic `183`, with value/cap both character level × 5, and retains
+the existing verified `2382` anchor. It does **not** purchase a second spec,
+activate one, insert any spell, change either build, normalize existing skills,
+or modify profession slots, recipes, character/login flags or unrelated data.
+Known non-passive switch spells are not cast by the stored-spell loader.
+
+On native skill loading, TC/AC may restore Generic's stock system actions,
+including switch buttons, as dependent/temporary spells. SQL inserts no spell
+rows. V3 checks a bounded stock action catalog and rejects unknown rewards,
+learning/skill effects, skill-modifying auras, scripts or dependency routes.
+The proof's `native_generic_reward_spells` lists this native consequence;
+`sql_spell_rows_inserted` is zero. Restoration of these actions does not purchase
+or change stored spec ownership. Gameplay checks must verify the retained spec
+count and active group after login, relog and restart.
+
+```bash
+python3 console plan native-skills --migration-inspection latest --skills generic --known-generic-switch --preview
+python3 console plan native-skills --migration-inspection INSPECTION_ID --skills generic --known-generic-switch --expect-rows SELECTED_ROWS
+python3 console prepare --batch BATCH_ID
+python3 console status --batch BATCH_ID
+```
+
+Review the README, exact selected rows, complete archived originals and
+`native-skill-proof.json` before apply. Proofs record the retained spec count,
+active group and zero spec-ownership changes. Use **selected_rows** from the
+preview, not a prior snapshot's count. After review:
+
+```bash
+python3 console apply --batch BATCH_ID
+python3 console status --batch BATCH_ID
+```
+
+This option requires `--skills generic` and cannot be combined with
+`--normalize-generic`. Existing Generic rows, including malformed ones, stay
+unchanged. Online characters, pending resets, inactive/disabled anchors,
+unsupported metadata/effects/scripts/dependencies, and exceeding AC's 127 skill
+slots still defer. The two-spec `63680` teacher is not an extra v3 anchor;
+Runeforging recipes still cannot justify missing Runeforging by themselves.
+
+Full affected originals and original absences, source/world layouts, DBC hashes,
+exact fractional source/world fingerprints and selector/numeric/world reader
+hashes are sealed. Complete captured context, including deferred characters,
+must match at planning. Apply and checkpoint commit atomically; interrupted or
+failed transactions roll back. Reruns verify the committed result. Before later
+edits or gameplay, `console restore --batch BATCH_ID` removes only the inserted
+rows and verifies exact restoration of the captured original state.
+
+The console supplies acknowledgements. Direct SQL requires both:
+
+```sql
+SET @skill_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';
+SET @native_generic_switch_ack='KNOWN_SWITCH_SKILL_ONLY';
+```
+
+Retain prior toolkits for earlier archives. No new configuration or source/world
+grants are added automatically. This preparation policy does not change migration
+skill preservation, core pins/manifests, or approval **UNREVIEWED**. Native
+consumer tests use mocked state; full gameplay remains **NOT TESTED**.
+
+## Capture fresh context and review Generic normalization
+
 After any previous preparation apply, capture current state once using the
 **saved blocker report**, without rerunning migration preflight:
 

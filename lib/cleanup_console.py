@@ -555,7 +555,7 @@ def command_action(settings, work, args):
     path,manifest=work.batch(args.batch)
     settings.safety()
     from cleanup_disabled_history import POLICIES, check_metadata
-    from cleanup_native_skills import POLICY as NATIVE_SKILLS_POLICY, POLICIES as NATIVE_SKILL_POLICIES, GENERIC_POLICY
+    from cleanup_native_skills import POLICY as NATIVE_SKILLS_POLICY, POLICIES as NATIVE_SKILL_POLICIES, GENERIC_POLICY, SWITCH_POLICY, SWITCH_ACK
     if manifest.get('policy') in (*POLICIES,*NATIVE_SKILL_POLICIES):
         check_metadata(settings,manifest)
     for name,expected_hash in manifest.get('dbc_sha256',{}).items():
@@ -592,6 +592,10 @@ def command_action(settings, work, args):
     if ack not in ('talent_cleanup_ack','recovery_ack','skill_cleanup_ack'):
         fail('INVALID_POLICY','Unknown cleanup acknowledgement variable')
     configuration_ack = ''
+    if manifest.get('policy') == SWITCH_POLICY:
+        if manifest.get('native_switch_ack') != SWITCH_ACK:
+            fail('NATIVE_SWITCH_ACK_INVALID','Known-switch skill acknowledgement differs from the reviewed candidate')
+        configuration_ack += "SET @native_generic_switch_ack='KNOWN_SWITCH_SKILL_ONLY';\n"
     from cleanup_ordinary_history import INACTIVE_DEFAULT_POLICY, TRAINING_POLICY, TRAINING_ACK
     from cleanup_death_coil import POLICY as DEATH_COIL_POLICY
     if manifest.get('policy') in (INACTIVE_DEFAULT_POLICY,DEATH_COIL_POLICY,TRAINING_POLICY):
@@ -709,7 +713,9 @@ def parser():
     native_skills=types.add_parser('native-skills',help='Review insertion of missing native Generic/Runeforging skill rows from already known enabled spells')
     native_skills.add_argument('--migration-inspection',help='Sealed migration blocker context ID; defaults to latest captured context in this session')
     native_skills.add_argument('--skills',nargs='+',choices=('generic','runeforging'),default=['generic','runeforging'])
-    native_skills.add_argument('--normalize-generic',action='store_true',help='Opt in to v2: verified dual-spec teacher anchors and exact native level*5 normalization of existing Generic only; requires --skills generic')
+    native_policy=native_skills.add_mutually_exclusive_group()
+    native_policy.add_argument('--normalize-generic',action='store_true',help='Opt in to v2: verified dual-spec teacher anchors and exact native level*5 normalization of existing Generic only; requires --skills generic')
+    native_policy.add_argument('--known-generic-switch',action='store_true',help='Opt in to v3: insert absent Generic from verified enabled switch spells even with one spec; no spec grant or existing skill update; requires --skills generic')
     native_mode=native_skills.add_mutually_exclusive_group(required=True)
     native_mode.add_argument('--expect-rows',type=int,help='Exact eligible skill change count from preview')
     native_mode.add_argument('--preview',action='store_true',help='Review the captured selection without a SQL package, active-batch change or source writes')

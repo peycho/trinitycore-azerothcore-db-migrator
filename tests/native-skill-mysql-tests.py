@@ -228,6 +228,76 @@ backup_reference=dedicated-disposable-native-skill-fixture
             sql(f"GRANT INSERT,DELETE ON `{source}`.character_skills TO '{writer}'@'%';")
             run('prepare');run('apply');run('restore');assert checksum()==v2baseline
             passed('insert-only v2 package with empty prior set works with SELECT plus INSERT/DELETE, no source UPDATE')
+            # V3 corrects only the old spec-count restriction on native
+            # Generic acquisition, without buying a spec or normalizing skills.
+            for g in range(20,26):
+                level=48 if g==20 else 80;cls=6 if g==21 else 1;groups=2 if g==23 else 1;active=1 if g==23 else 0;login=4 if g==24 else 0
+                sql(f"INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,activeTalentGroup,talentGroupsCount,at_login) VALUES({g},1,'Switch{g}','',1,{cls},{level},{active},{groups},{login})")
+            sql(f"INSERT INTO `{source}`.character_spell(guid,spell,active,disabled,custom_blob) VALUES(20,63645,1,0,0xff00),(21,53323,1,0,NULL),(22,63680,1,0,NULL),(23,63644,1,0,NULL),(23,12282,1,0,NULL),(24,63644,1,0,NULL),(25,63644,1,1,NULL)")
+            sql(f"INSERT INTO `{source}`.character_skills VALUES(20,171,375,450),(21,776,5,5),(23,183,1,400)")
+            sql(f"INSERT INTO `{source}`.character_talent VALUES(23,12282,1)")
+            sql(f"ALTER TABLE `{source}`.character_spell ADD custom_decimal DECIMAL(12,6) NOT NULL DEFAULT 0.100001")
+            sql(f"UPDATE `{source}`.characters SET position_x=0.1 WHERE guid=6")
+            sql(f"INSERT INTO `{world}`.spell_dbc(Id,EffectRealPointsPerLevel1) VALUES(900088,0.1)")
+            v3baseline=checksum();other_tables=[t for t in tables if t!=f'`{source}`.`character_skills`'];v3other=sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')
+            v3report=work/'known-switch.tsv';v3report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(f'{g}\t*\tSPELL_WOULD_ADD_SKILL\t63644: skill=183\n'for g in (6,20,21,22,23,24,25)))
+            captured=run('inspect-migration-blockers','--report',str(v3report));v3inspection=Path(captured.stdout.split('Reports: ',1)[1].strip()).name
+            old=run('plan','native-skills','--migration-inspection',v3inspection,'--skills','generic','--preview')
+            assert '"selected_rows": 0' in old.stdout,old.stdout
+            v3plan=['plan','native-skills','--migration-inspection',v3inspection,'--skills','generic','--known-generic-switch']
+            assert 'NATIVE_SKILL_POLICY_SCOPE' in run('plan','native-skills','--known-generic-switch','--preview',code=2).stderr
+            pointer=(session/'active-batch.json').read_bytes();batches=set((session/'batches').iterdir())
+            preview=run(*v3plan,'--preview');assert '"selected_rows": 2' in preview.stdout and '"normalized_rows": 0' in preview.stdout,preview.stdout
+            assert checksum()==v3baseline and pointer==(session/'active-batch.json').read_bytes()and batches==set((session/'batches').iterdir())
+            run(*v3plan,'--expect-rows','1',code=2)
+            sql(f'UPDATE `{source}`.characters SET level=79 WHERE guid=23')
+            changed=checksum();assert 'NATIVE_SKILL_INPUT_DRIFT' in run(*v3plan,'--expect-rows','2',code=2).stderr;assert checksum()==changed
+            sql(f'UPDATE `{source}`.characters SET level=80 WHERE guid=23')
+            run(*v3plan,'--expect-rows','2');v3package=session/'batches'/json.loads((session/'active-batch.json').read_text())['batch']
+            v3manifest=json.loads((v3package/'manifest.json').read_text());v3archive=v3manifest['archive_schema'];owned.append(v3archive)
+            assert v3manifest['policy']=='tc-known-generic-switch-skill-v3'and v3manifest['numeric_fingerprint']=='EXACT_FRACTIONAL_V1'
+            assert v3manifest['normalized_rows']==0 and v3manifest['inserted_rows']==2
+            assert all(p['talent_groups']==1 and p['spec_ownership_change']==0 for p in v3manifest['native_skill_proofs'])
+            assert json.loads((v3package/'native-skill-proof.json').read_text())==v3manifest['native_skill_proofs']
+            run('prepare');run('prepare');assert checksum()==v3baseline
+            def direct_switch(extra):
+                return subprocess.run(['mysql',*base,'--user='+writer],text=True,capture_output=True,input="SET @skill_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';"+extra+f'CALL `{v3archive}`.apply_batch();')
+            for extra in ('',"SET @native_generic_switch_ack='WRONG';"):
+                denied=direct_switch(extra);assert denied.returncode!=0 and 'Explicit known Generic switch-skill' in denied.stderr,denied.stderr
+                assert checksum()==v3baseline
+            extra="SET @native_generic_switch_ack='KNOWN_SWITCH_SKILL_ONLY';"
+            for update,inverse,expected in (
+                (f'UPDATE `{source}`.characters SET position_x=0.2 WHERE guid=6',f'UPDATE `{source}`.characters SET position_x=0.1 WHERE guid=6','full-row fingerprint differs'),
+                (f'UPDATE `{source}`.character_spell SET custom_decimal=0.100002 WHERE guid=20 AND spell=63645',f'UPDATE `{source}`.character_spell SET custom_decimal=0.100001 WHERE guid=20 AND spell=63645','full-row fingerprint differs'),
+                (f'UPDATE `{world}`.spell_dbc SET EffectRealPointsPerLevel1=0.2 WHERE Id=900088',f'UPDATE `{world}`.spell_dbc SET EffectRealPointsPerLevel1=0.1 WHERE Id=900088','world content drift')):
+                sql(update);changed=checksum();denied=direct_switch(extra)
+                assert denied.returncode!=0 and expected in denied.stderr,denied.stderr
+                assert checksum()==changed;sql(inverse)
+            sql(f'ALTER TABLE `{world}`.spell_required ADD unexpected INT DEFAULT 0')
+            denied=direct_switch(extra);assert denied.returncode!=0 and 'world layout' in denied.stderr,denied.stderr
+            sql(f'ALTER TABLE `{world}`.spell_required DROP unexpected')
+            sql(f"CREATE TRIGGER `{v3archive}`.late_error BEFORE UPDATE ON `{v3archive}`.batch FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='v3 late failure'")
+            run('apply',code=2);assert checksum()==v3baseline and sql(f'SELECT state FROM `{v3archive}`.batch')=='PREPARED'
+            sql(f'DROP TRIGGER `{v3archive}`.late_error')
+            sql(f"CREATE TRIGGER `{v3archive}`.pause_commit BEFORE UPDATE ON `{v3archive}`.batch FOR EACH ROW DO SLEEP(30)")
+            worker=subprocess.Popen(command+['apply'],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            connection='';deadline=time.monotonic()+10
+            while time.monotonic()<deadline:
+                if worker.poll()is not None:raise AssertionError(worker.communicate())
+                connection=sql(f"SELECT ID FROM information_schema.PROCESSLIST WHERE DB='{v3archive}' AND STATE='User sleep' LIMIT 1")
+                if connection:break
+                time.sleep(.1)
+            assert connection;sql('KILL CONNECTION '+connection);worker.communicate(timeout=10);assert worker.returncode!=0;worker=None
+            assert checksum()==v3baseline and sql(f'SELECT state FROM `{v3archive}`.batch')=='PREPARED';sql(f'DROP TRIGGER `{v3archive}`.pause_commit')
+            run('status');run('apply');applied=checksum();run('apply');run('status');assert checksum()==applied
+            assert sql(f'SELECT guid,value,max FROM `{source}`.character_skills WHERE skill=183 AND guid IN(6,20)ORDER BY guid')=='6\t400\t400\n20\t240\t240'
+            assert sql(f'SELECT talentGroupsCount FROM `{source}`.characters WHERE guid=6')=='1'
+            assert sql(f'SELECT value,max FROM `{source}`.character_skills WHERE guid=23 AND skill=183')=='1\t400'
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==v3other
+            sql(f'UPDATE `{source}`.character_skills SET value=399 WHERE guid=6 AND skill=183');changed=checksum();run('restore',code=2);assert checksum()==changed
+            sql(f'UPDATE `{source}`.character_skills SET value=400 WHERE guid=6 AND skill=183')
+            run('restore');run('restore');assert checksum()==v3baseline;run('apply',code=2)
+            passed('v3 explicit known-switch Generic insertion independent of spec count; old-policy rejecting control, no second spec, existing skills/spells/talents unchanged; fractional source/world/layout drift, direct SQL acknowledgement, deferred-scope drift, late/disconnect rollback, reruns and exact full restore')
             original=(package/'02-apply.sql').read_text();(package/'02-apply.sql').write_text(original+'SELECT 1;\n')
             assert 'PACKAGE_CHANGED'in run('apply','--batch',package.name,code=2).stderr
             passed('sealed-package tampering rejected; archives retained until owned-fixture teardown')

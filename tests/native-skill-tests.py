@@ -10,7 +10,7 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'lib'))
 from spells import Metadata
 from cleanup_native_skills import select,skill_cells
-from cleanup_console import parser
+from cleanup_console import parser,CleanupError
 spec=importlib.util.spec_from_file_location('native_skill_fixtures',ROOT/'tests/native-skill-fixtures.py')
 assets=importlib.util.module_from_spec(spec);spec.loader.exec_module(assets)
 class World:
@@ -66,6 +66,80 @@ class NativeSkillsTests(unittest.TestCase):
     def test_arbitrary_recipe_alone_does_not_establish_runeforging(self):
         self.state['character_spell'][1][1]=53323
         self.assertEqual(self.selected(['runeforging'])[0],[])
+
+    def test_v3_known_switch_single_spec_regression_and_no_ownership_change(self):
+        self.state['characters'][0][5]=1
+        before=copy.deepcopy(self.state)
+        self.assertEqual(self.selected(['generic'])[0],[])
+        rows,excluded,proof=select(self.state,self.meta,['generic'],known_generic_switch=True)
+        self.assertEqual(rows,[(1,183,400,400)])
+        self.assertEqual(proof[0]['talent_groups'],1)
+        self.assertEqual(proof[0]['spec_ownership_change'],0)
+        self.assertEqual(self.state,before)
+        self.assertEqual((rows,excluded,proof),select(self.state,self.meta,['generic'],known_generic_switch=True))
+
+    def test_v3_both_known_switch_buttons_valid_spec_states_and_levels(self):
+        for spell in (63644,63645):
+            for groups,active in ((1,0),(2,0),(2,1)):
+                for level in (1,48,80):
+                    self.state['characters'][0][3:6]=[level,active,groups]
+                    self.state['character_spell'][0][1]=spell
+                    self.assertEqual(select(self.state,self.meta,['generic'],known_generic_switch=True)[0],[(1,183,level*5,level*5)])
+
+    def test_v3_never_normalizes_existing_generic_or_other_skills(self):
+        for value,cap in ((0,400),(1,400),(400,400),(5,350)):
+            self.state['character_skills']=[[1,183,value,cap],[2,776,5,5]]
+            before=copy.deepcopy(self.state)
+            self.assertEqual(select(self.state,self.meta,['generic'],known_generic_switch=True)[0],[])
+            self.assertEqual(self.state,before)
+
+    def test_v3_rejects_normalization_other_skills_and_missing_switch_authority(self):
+        for requested,normalize in ((['generic'],True),(['runeforging'],False),(['generic','runeforging'],False)):
+            with self.assertRaises(CleanupError)as error:
+                select(self.state,self.meta,requested,normalize,known_generic_switch=True)
+            self.assertEqual(error.exception.code,'NATIVE_SKILL_POLICY_SCOPE')
+        for spell in (63680,6603,53323):
+            self.state['character_spell'][0][1]=spell
+            self.assertEqual(select(self.state,self.meta,['generic'],known_generic_switch=True)[0],[])
+
+    def test_v3_keeps_disabled_inactive_pending_online_and_acquisition_guards(self):
+        self.state['characters'][0][5]=1
+        for kind in ('disabled','inactive','reset','online','acquire','effect','requirement','passive','learn','script','metadata'):
+            state,meta=copy.deepcopy(self.state),copy.deepcopy(self.meta)
+            if kind=='disabled':state['character_spell'][0][3]=1
+            elif kind=='inactive':state['character_spell'][0][2]=0
+            elif kind=='reset':state['characters'][0][7]=4
+            elif kind=='online':state['characters'][0][6]=1
+            elif kind=='acquire':meta.abilities[63644][0][9]=0
+            elif kind=='effect':meta.spells[63644][71]=36
+            elif kind=='requirement':meta.requires[63644].add(6603)
+            elif kind=='passive':meta.spells[63644][4]|=64
+            elif kind=='learn':meta.learns[63644].append((6603,1,False))
+            elif kind=='script':meta.scripts[63644].add('spell_unknown')
+            else:meta.stores['SkillRaceClassInfo'][5][5]=1
+            self.assertEqual(select(state,meta,['generic'],known_generic_switch=True)[0],[],kind)
+
+    def test_v3_slot_bound_and_explicit_parser_flag(self):
+        self.state['character_skills']=[[1,2000+i,1,1]for i in range(127)]
+        self.assertIn((1,183,'DEFER_NATIVE_SKILL_SLOT_LIMIT'),select(self.state,self.meta,['generic'],known_generic_switch=True)[1])
+        self.state['character_skills'].pop()
+        self.assertEqual(select(self.state,self.meta,['generic'],known_generic_switch=True)[0],[(1,183,400,400)])
+        args=parser().parse_args(['plan','native-skills','--skills','generic','--known-generic-switch','--preview'])
+        self.assertTrue(args.known_generic_switch)
+        self.assertFalse(parser().parse_args(['plan','native-skills','--preview']).known_generic_switch)
+
+    def test_v3_unknown_or_learning_generic_rewards_never_become_native_grants(self):
+        self.state['characters'][0][5]=1
+        for kind in ('unknown','learn','skill_aura','dependency'):
+            meta=copy.deepcopy(self.meta)
+            if kind=='unknown':
+                row=list(meta.abilities[63644][0]);row[2]=999999;meta.abilities[999999].append(row)
+            elif kind=='learn':meta.spells[2382][71]=36
+            elif kind=='skill_aura':meta.spells[2382][95]=30
+            else:meta.learns[2382].append((6603,1,False))
+            result=select(self.state,meta,['generic'],known_generic_switch=True)
+            self.assertEqual(result[0],[],kind)
+            self.assertIn((1,183,'DEFER_NATIVE_GENERIC_REWARD_CATALOG'),result[1])
     def test_explicit_skill_subset_and_deterministic_merging(self):
         self.state['character_spell'].append([1,63645,1,0])
         rows,_,proof=self.selected(['generic']);self.assertEqual(rows,[(1,183,400,400)])

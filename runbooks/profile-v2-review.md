@@ -1,5 +1,17 @@
 # Profile v2 review and acceptance record
 
+The opt-in `tc-known-generic-switch-skill-v3` preparation repair inserts only
+absent Generic `183` rows from verified enabled known anchors. Both protected
+cores' native skill-acquisition branch is independent of spec count; one-spec
+characters remain one-spec. Existing skills, both builds, spells, recipes,
+profession slots and flags stay unchanged. Source/world exact fractional
+fingerprints, layouts, DBC and reader hashes, an extra acknowledgement, atomic
+rollback/rerun and exact restoration apply. V1/v2 retain their exclusions;
+Recipe-only missing Runeforging and unsupported passive cases remain blocked. Core
+pins, 100 TC / 105 AC manifests and spell-state-v13 are unchanged; approval
+stays UNREVIEWED and full native gameplay NOT TESTED. See the
+[v3 workflow](native-skill-repair.md#v3-known-switch-spells-and-missing-generic).
+
 The opt-in `tc-unselected-foreign-talent-retirement-v2` preparation policy
 retires only isolated unselected families belonging exclusively to another
 player class, including enabled history. All skill/reward/shared-route guards

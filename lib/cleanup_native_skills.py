@@ -16,15 +16,45 @@ from spells import Unsupported, consumed_teacher_rule
 
 POLICY = 'tc-missing-native-skills-v1'
 GENERIC_POLICY = 'tc-native-generic-skills-v2'
-POLICIES = (POLICY, GENERIC_POLICY)
+SWITCH_POLICY = 'tc-known-generic-switch-skill-v3'
+SWITCH_ACK = 'KNOWN_SWITCH_SKILL_ONLY'
+POLICIES = (POLICY, GENERIC_POLICY, SWITCH_POLICY)
 ANCHORS = {183:{2382:(25,60,0),63644:(162,0,0),63645:(162,0,0)},
            776:{53428:(47,0,0),53341:(53,3,0),53343:(53,3,0)}}
 NAMES = {'generic':183,'runeforging':776}
+GENERIC_SYSTEM_ACTIONS = {2382,3365,3050,6233,6246,6247,6477,6478,6603,7266,7267,
+                         7355,8386,9125,21651,21652,22027,22810,2479,27764,27762,
+                         27763,34082,45927,52665,61437,63645,63644,68398}
 
 
-def select(state, effective, requested, normalize_generic=False):
-    """V1 inserts absent rows; explicit v2 also normalizes authorized Generic only."""
+def generic_reward_contract(effective):
+    """Bound native Generic rewards to reviewed stock system actions only."""
+    rewards=set()
+    for abilities in effective.abilities.values():
+        for a in abilities:
+            if a[1]!=183 or a[9]not in(1,2):
+                continue
+            s=a[2];record=effective.spells.get(s,[])
+            if (s not in GENERIC_SYSTEM_ACTIONS or a[9]!=2 or a[8] or a[10] or a[11]
+                    or not record or s in effective.talents or s in effective.additional
+                    or effective.chain(s)!=(s,) or effective.requires[s]
+                    or effective.learns[s] or effective.effect_learns[s] or effective.scripts[s]
+                    or set(record[71:74])&{36,40,44,47,118} or set(record[95:98])&{30,98}):
+                return None
+            try:
+                effective.check_spell(s)
+            except Unsupported:
+                return None
+            rewards.add(s)
+    return sorted(rewards)
+
+
+def select(state, effective, requested, normalize_generic=False, *, known_generic_switch=False):
+    """V1 inserts; v2 normalizes Generic; v3 relaxes only switch spec count."""
+    if known_generic_switch and (normalize_generic or requested!=['generic']):
+        fail('NATIVE_SKILL_POLICY_SCOPE','Known-switch policy inserts absent Generic only; no normalization or other skills')
     chosen = {NAMES[name] for name in requested}
+    generic_rewards=generic_reward_contract(effective) if known_generic_switch else None
     chars = {r[0]:r for r in state['characters']}
     books,skills = defaultdict(dict),defaultdict(dict)
     for g,s,a,d in state['character_spell']:
@@ -44,7 +74,7 @@ def select(state, effective, requested, normalize_generic=False):
             reason = ''
             if cls not in (1,2,3,4,5,6,7,8,9,11) or not 1<=race<=32 or not 1<=level<=80 or groups not in (1,2) or not 0<=active<groups:
                 reason='DEFER_NATIVE_SKILL_CHARACTER_STATE'
-            elif normalize_generic and len(skills[guid]) + (original is None) > 127:
+            elif (normalize_generic or known_generic_switch) and len(skills[guid]) + (original is None) > 127:
                 reason='DEFER_NATIVE_SKILL_SLOT_LIMIT'
             elif original is not None and original[0] == 0:
                 reason='DEFER_ZERO_VALUE_NATIVE_SKILL'
@@ -54,6 +84,8 @@ def select(state, effective, requested, normalize_generic=False):
                 reason='DEFER_PENDING_NATIVE_RESET'
             elif skill==776 and cls!=6:
                 reason='DEFER_FOREIGN_CLASS_SKILL'
+            elif known_generic_switch and generic_rewards is None:
+                reason='DEFER_NATIVE_GENERIC_REWARD_CATALOG'
             valid=[]
             teacher_proof=None
             for anchor in anchors:
@@ -62,7 +94,7 @@ def select(state, effective, requested, normalize_generic=False):
                 flags=books[guid][anchor]
                 if flags!=(1,0):
                     continue
-                if anchor in (63644,63645) and groups!=2:
+                if anchor in (63644,63645) and groups!=2 and not known_generic_switch:
                     continue  # A switch button alone never establishes dual-spec ownership.
                 if anchor == 63680:
                     if groups != 2:
@@ -82,6 +114,10 @@ def select(state, effective, requested, normalize_generic=False):
                         or anchor in effective.talents or effective.chain(anchor)!=(anchor,)
                         or effective.skill_effect(anchor) is not None or effective.requires[anchor]):
                     reason='DEFER_NATIVE_SKILL_SPELL_CONTRACT';break
+                if known_generic_switch and anchor in (63644,63645) and (
+                        record[4]&64 or effective.learns[anchor] or effective.effect_learns[anchor]
+                        or effective.scripts[anchor]):
+                    reason='DEFER_NATIVE_SKILL_SPELL_CONTRACT';break
                 try:
                     effective.check_spell(anchor)
                 except Unsupported:
@@ -95,7 +131,7 @@ def select(state, effective, requested, normalize_generic=False):
                 if (not abilities or not infos or not line or line[1]!=(12 if skill==183 else 7)
                         or any(r[6] in effective.stores['SkillTiers'] for r in infos)
                         or any(r[6]!=0 for r in infos)
-                        or (skill==183 and any(r[4]!=1170 or normalize_generic and r[5]!=0 for r in infos))
+                        or (skill==183 and any(r[4]!=1170 or (normalize_generic or known_generic_switch) and r[5]!=0 for r in infos))
                         or (skill==776 and any(r[4]!=128 or r[3]!=32 for r in infos))):
                     reason='DEFER_NATIVE_SKILL_METADATA';break
                 valid.append((anchor,sorted(r[0] for r in abilities),sorted(r[0] for r in infos)))
@@ -109,6 +145,10 @@ def select(state, effective, requested, normalize_generic=False):
                 'action':'INSERT' if original is None else 'NORMALIZE_GENERIC',
                 **({'teacher_contract':teacher_proof} if teacher_proof else {}),
                 'level':level,'anchors':[{'spell':s,'flags':[1,0],'ability_ids':a,'race_class_ids':r} for s,a,r in valid],
+                **({'anchor_contract':'KNOWN_GENERIC_SWITCH_V3','talent_groups':groups,
+                    'active_talent_group':active,'spec_ownership_change':0,
+                    'native_generic_reward_spells':generic_rewards,'sql_spell_rows_inserted':0}
+                   if known_generic_switch else {}),
                 'native_policy':'ALWAYS_MAX_LEVEL_TIMES_FIVE' if skill==183 else 'DEATH_KNIGHT_MONO_1_1'})
     return selected,excluded,proof
 
@@ -131,7 +171,13 @@ def skill_cells(rows):
 
 def plan_native_skills(settings,work,args,output):
     normalize_generic=getattr(args,'normalize_generic',False)
-    policy=GENERIC_POLICY if normalize_generic else POLICY
+    known_switch=getattr(args,'known_generic_switch',False)
+    if known_switch and (normalize_generic or args.skills!=['generic']):
+        fail('NATIVE_SKILL_POLICY_SCOPE','--known-generic-switch is a separate insertion-only policy requiring --skills generic')
+    policy=SWITCH_POLICY if known_switch else GENERIC_POLICY if normalize_generic else POLICY
+    selector_reader=sha(ROOT/'lib/cleanup_native_skills.py') if known_switch else None
+    numeric_reader=sha(ROOT/'lib/cleanup_active_reset.py') if known_switch else None
+    world_reader=sha(ROOT/'lib/cleanup_eligibility.py') if known_switch else None
     if normalize_generic and args.skills!=['generic']:
         fail('NATIVE_SKILL_POLICY_SCOPE','--normalize-generic requires --skills generic; existing other skills are outside this policy')
     if (not args.preview and not 1<=(args.expect_rows or 0)<=10000) or len(set(args.skills))!=len(args.skills):
@@ -143,14 +189,17 @@ def plan_native_skills(settings,work,args,output):
         args.migration_inspection=captures[-1]
     print('Using migration inspection: '+args.migration_inspection,flush=True)
     path,_,_,context,audit,captured_world,captured_layout,report=inspection(settings,work,args.migration_inspection)
-    effective,world=read_world(settings)
-    if world!=captured_world or effective.hashes!=report['dbc_sha256']:
+    effective,world=read_world(settings,exact_numeric=known_switch)
+    same_world=all(world[k]==captured_world[k] for k in ('layout','rows')) if known_switch else world==captured_world
+    if not same_world or effective.hashes!=report['dbc_sha256']:
         fail('NATIVE_SKILL_METADATA_DRIFT','Effective TC world/DBC differs from the captured migration context')
-    selected,excluded,proof=select(context,effective,args.skills,normalize_generic)
+    selected,excluded,proof=select(context,effective,args.skills,normalize_generic,known_generic_switch=known_switch)
     prior=[(p['guid'],p['skill'],*p['original']) for p in proof if p['original']!='ABSENT']
     inserted=len(selected)-len(prior)
     summary={'inserted_rows':inserted,'normalized_rows':len(prior),'selected_rows':len(selected),'by_skill':dict(Counter(r[1] for r in selected)),
              'deferred':dict(Counter(r[2] for r in excluded)),'scope_characters':len(context['characters'])}
+    if known_switch:
+        summary['native_reward_policy']='Reviewed stock Generic actions may be restored at login; SQL inserts no spells and changes no spec ownership'
     (work.operation/'native-skill-review.json').write_text(json.dumps({'summary':summary,'proofs':proof,'excluded':excluded},indent=2)+'\n')
     print('Native skill review (read-only): '+json.dumps(summary,sort_keys=True),flush=True)
     if args.preview:
@@ -178,7 +227,7 @@ def plan_native_skills(settings,work,args,output):
         cols=','.join('`'+f+'`'for f in fields);order=','.join(KEYS[table])
         queries.append(('context_'+table,f'SELECT JSON_ARRAY({cols}) row_value FROM `{source}`.`{table}` WHERE guid IN ({scope}) ORDER BY {order} LIMIT 5000001'))
     for table in TABLES:
-        query=aggregate(meta,table,source,f's.guid IN ({selector})')
+        query=aggregate(meta,table,source,f's.guid IN ({selector})',exact_numeric=known_switch)
         queries.append(('sets',f"SELECT JSON_ARRAY('{table}',guid,n,h) row_value FROM ({query}) a ORDER BY guid"))
     old_sql=settings.sql
     def bounded(query,*a,**kw):
@@ -201,9 +250,10 @@ def plan_native_skills(settings,work,args,output):
     if counts['characters']!=len(guids) or sum(counts.values())>5000000 or any(r[2]>10000 or not re.fullmatch('[a-f0-9]{64}',str(r[3]))for r in cells+after):
         fail('NATIVE_SKILL_SNAPSHOT_BOUND','Full affected snapshots exceed safe bounds or lack valid digests')
     template=ROOT/('tools/native-generic-repair.sql.in' if normalize_generic else 'tools/native-skill-repair.sql.in');inspection_sha=sha(path/'SHA256SUMS')
-    batch=sha_json({'policy':policy,'inspection':inspection_sha,'selected':selected,'proof':proof,'world':world,'metadata':meta,'template':sha(template),'id':output.name})
+    batch=sha_json({'policy':policy,'inspection':inspection_sha,'selected':selected,'proof':proof,'world':world,'metadata':meta,'template':sha(template),'id':output.name,
+                    **({'selector':selector_reader,'numeric_reader':numeric_reader,'world_reader':world_reader}if known_switch else {})})
     archive='tc_native_skills_'+uuid.uuid4().hex[:20]
-    blocks=check_sets(meta,source,archive,counts,changed_table='character_skills')
+    blocks=check_sets(meta,source,archive,counts,changed_table='character_skills',exact_numeric=known_switch)
     values={'SOURCE':source,'ARCHIVE':archive,'UUID':work.current()['identity']['uuid'],'BATCH':batch,
         'AUDIT':report['source_state_sha256'],'COUNT':len(selected),'GUID_COUNT':len(guids),
         'EXPECTED_HASH':planner.key_hash(selected),'SNAPSHOT_COUNT':len(cells),'SNAPSHOT_HASH':planner.key_hash(cells),
@@ -252,7 +302,16 @@ def plan_native_skills(settings,work,args,output):
         hashed="SHA2(CONCAT_WS('|',"+','.join(f"IFNULL(HEX(`{f}`),'N')"for f in fields)+'),256)'
         checks.append(f" IF (SELECT COUNT(*) FROM `{settings.schemas['world']}`.`{table}`)<>{count} OR NOT ((SELECT SHA2(COALESCE(GROUP_CONCAT({hashed} ORDER BY BINARY {hashed} SEPARATOR ''),''),256) FROM `{settings.schemas['world']}`.`{table}`)<=>'{checksum}') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Native skill world input drift'; END IF;")
     values['WORLD_CHECKS']='\n'.join(checks)
-    final_effective,final_world=read_world(settings)
+    if known_switch:
+        from cleanup_eligibility import world_checks
+        values['WORLD_CHECKS']="""IF NOT (BINARY @native_generic_switch_ack <=> BINARY 'KNOWN_SWITCH_SKILL_ONLY') THEN
+ SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit known Generic switch-skill acknowledgement required'; END IF;
+"""+world_checks(settings.schemas['world'],world)
+        if (sha(ROOT/'lib/cleanup_native_skills.py')!=selector_reader
+                or sha(ROOT/'lib/cleanup_active_reset.py')!=numeric_reader
+                or sha(ROOT/'lib/cleanup_eligibility.py')!=world_reader):
+            fail('NATIVE_SWITCH_POLICY_DRIFT','Native switch-skill policy or exact numeric/world guards changed during planning')
+    final_effective,final_world=read_world(settings,exact_numeric=known_switch)
     if metadata(settings,TABLES)!=meta or final_world!=world or final_effective.hashes!=effective.hashes or sha(path/'SHA256SUMS')!=inspection_sha:
         fail('NATIVE_SKILL_METADATA_DRIFT','Source metadata or sealed context changed while planning')
     verify(path)
@@ -263,6 +322,11 @@ def plan_native_skills(settings,work,args,output):
         'expected_sha256':values['EXPECTED_HASH'],'template_sha256':sha(template),'archived_rows':counts,
         'inserted_rows':inserted,'normalized_rows':len(prior),'requested_skills':args.skills,'skill_counts':summary['by_skill'],'excluded_rows':len(excluded),'excluded_reason_counts':summary['deferred'],
         'native_skill_proofs':proof,'skill_policy':('Normalize only reviewed Generic 183 to native level*5; insert justified absent Generic; no other skill/spell/talent changes' if normalize_generic else 'Insert absent reviewed native skill rows only; no updates to existing skills, no spell or talent changes')}
+    if known_switch:
+        manifest.update(native_switch_ack=SWITCH_ACK,native_skill_reader_sha256=selector_reader,
+                        numeric_fingerprint='EXACT_FRACTIONAL_V1',numeric_reader_sha256=numeric_reader,
+                        world_guard_reader_sha256=world_reader,
+                        skill_policy='Insert absent Generic only from verified enabled known spells; switch buttons do not require two specs for native skill acquisition; no spec, talent, spell or existing skill changes')
     status=f"SELECT * FROM `{archive}`.batch;\nSELECT e.*,s.value current_value,s.max current_cap FROM `{archive}`.expected_skills e LEFT JOIN `{source}`.character_skills s ON s.guid=e.guid AND s.skill=e.skill ORDER BY e.guid,e.skill;\n"
     if normalize_generic:
         status=(f"SELECT * FROM `{archive}`.batch;\n"

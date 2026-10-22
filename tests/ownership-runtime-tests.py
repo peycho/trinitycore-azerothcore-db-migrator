@@ -5,11 +5,18 @@ Only the protected load/cast consumers are compiled; spell effects, catalogs
 and state are recording sinks. This is not full worldserver gameplay.
 """
 from pathlib import Path
+import hashlib
 import subprocess
 import sys
 import tempfile
 
 tc, ac = map(Path, sys.argv[1:])
+root=Path(__file__).resolve().parents[1]
+for core,prefix in ((tc,'trinitycore'),(ac,'azerothcore')):
+    manifest=dict((name.strip().lstrip('*'),digest)for digest,name in(line.split(None,1)for line in
+        (root/'compatibility/tc335-acwotlk-v2'/f'{prefix}-semantic.sha256').read_text().splitlines()))
+    name='src/server/game/Entities/Player/Player.cpp'
+    assert hashlib.sha256((core/name).read_bytes()).hexdigest()==manifest[name], 'Protected loading consumer differs'
 t = (tc/'src/server/game/Entities/Player/Player.cpp').read_text()
 a = (ac/'src/server/game/Entities/Player/Player.cpp').read_text()
 
@@ -42,9 +49,9 @@ constexpr uint32 SPELL_ATTR0_CU_IS_TALENT=1,SPELL_ATTR0_DO_NOT_DISPLAY=128;
 constexpr uint8 MAX_SPELL_EFFECTS=3,SPEC_MASK_ALL=3;
 struct Effect {uint32 Effect=0,TriggerSpell=0;};
 struct SpellInfo {
- std::array<Effect,3> Effects{};bool passive=false;uint32 Stances=0;
+ std::array<Effect,3> Effects{};bool passive=false,talent=true;uint32 Stances=0;
  bool HasEffect(uint32 e)const{for(auto const&r:Effects)if(r.Effect==e)return true;return false;}
- bool HasAttribute(uint32 e)const{return e==SPELL_ATTR0_CU_IS_TALENT;}
+ bool HasAttribute(uint32 e)const{return talent&&e==SPELL_ATTR0_CU_IS_TALENT;}
  bool IsPassive()const{return passive;}
 };
 struct Manager{
@@ -76,6 +83,11 @@ struct Player{
  void _addSpell(uint32 id,uint8 mask,bool temporary){assert(mask==3&&temporary);added.push_back(id);}
 };
 int main(){
+ for(uint32 button:{63644,63645}){
+  manager.spells[button].Effects[0]={162,0};manager.spells[button].talent=false;
+  Player player;Rows rows;rows.data.push_back({Field{button},Field{1},Field{0}});player._LoadSpells(rows);
+  assert(player.known.count(button)&&player.cast.empty()&&player.added.empty());
+ }
  for(auto pair:std::vector<std::pair<uint32,uint32>>{{37116,16952},{49189,52284},{49146,51969},{61154,50096},{64357,44441}}){
   auto parent=pair.first,child=pair.second;
   manager.spells[parent].Effects[0]={36,child};
