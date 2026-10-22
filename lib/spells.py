@@ -15,7 +15,7 @@ import struct
 import subprocess
 import sys
 
-POLICY = 'spell-state-v12'
+POLICY = 'spell-state-v13'
 LEARN, SKILL, SKILL_STEP, DUAL_WIELD = 36, 118, 44, 40
 PASSIVE, HIDDEN = 0x40, 0x80
 
@@ -719,6 +719,58 @@ def consumed_teacher_rule(spell, character, flags, skills, tc, ac, direction, le
             'effects_executed':False}
 
 
+def seal_rank_split_rule(tc, ac, cls):
+    """TC rank prefix -> AC singleton seals, with identical replacement metadata.
+
+    AC retains both known IDs; its client-facing skill ability still supersedes
+    20154 with 21084. This rule never learns the upper seal from the lower one.
+    Incoming trainers are not grant sources and teaching wrappers remain blocked.
+    """
+    def blocked(detail):
+        reject('INCOMPATIBLE_SEAL_RANK_SPLIT', f'20154:21084: {detail}')
+    if (cls != 2 or tc.chain(20154) != (20154,21084)
+            or tc.chain(21084) != (20154,21084)
+            or ac.chain(20154) != (20154,) or ac.chain(21084) != (21084,)):
+        blocked('class or exact source/target chains differ')
+    for metadata in (tc,ac):
+        for spell in (20154,21084):
+            metadata.check_spell(spell)
+            record = metadata.spells[spell]
+            upper = spell == 21084
+            # Exact relevant mechanics, including judgement's extra aura on
+            # the upper seal. Equality between two changed inputs is not proof.
+            effects = ([6,6,6] if upper else [6,6,0])
+            expected = (effects + [1,1,int(upper)] + [0,0,0]
+                        + [0xffffffff,0xffffffff,20186 if upper else 0]
+                        + [0,0,0] + [1,1,int(upper)] + [0,0,0] + [0,0,0]
+                        + [4,108,4 if upper else 0] + [0]*12
+                        + [0,14,0] + [0]*6)
+            scripts = {'spell_pal_seal_of_righteousness'}
+            if metadata.core == 'tc':
+                scripts.add('spell_pal_seals')
+            if (record[4:13] != [327680,0,0,524288,0,0,0,0,0]
+                    or record[20] or record[41] or record[71:119] != expected
+                    or record[208:212] != [10,0x08000000,0x20000000,0]
+                    or spell in metadata.talents or spell in metadata.additional
+                    or metadata.talent_learn_owners.get(spell) or metadata.aura_owners.get(spell)
+                    or metadata.skill_effect(spell) is not None
+                    or metadata.requires[spell] or metadata.prerequisite_users[spell]
+                    or metadata.learns[spell] or metadata.effect_learns[spell]
+                    or metadata.learn_parents[spell] != ({10321} if upper else set())
+                    or metadata.scripts[spell] != scripts):
+                blocked(f'{metadata.core}: {spell}: mechanics, ownership or learning routes differ')
+            abilities = metadata.abilities[spell]
+            expected_ability = [594,spell,0,2,0,0,1,0 if upper else 21084,2,0,0]
+            if (len(abilities) != 1 or abilities[0][1:12] != expected_ability
+                    or metadata.stores['SkillLine'].get(594,[0,0])[1] != 7
+                    or sorted(r[1:7] for r in metadata.stores['SkillRaceClassInfo'].values()
+                              if r[1] == 594) != [[594,0xffffffff,2,1040,0,0]]):
+                blocked(f'{metadata.core}: {spell}: class skill/replacement link differs')
+    return {'policy':'NATIVE_SEAL_RANK_SPLIT', 'tc_chain':[20154,21084],
+            'ac_chains':[[20154],[21084]], 'skill':594,
+            'superseded_by':{'20154':21084}, 'higher_rank_granted':False}
+
+
 def reconstruct(character, stored, talents, skills, source, target, direction, level=None):
     """Return one deterministic result per spell, retaining all derivations."""
     race, cls, active_group, groups = character
@@ -746,6 +798,9 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
     seeds = set(stored) | set(owners)
     for metadata in (tc, ac):
         assert_acyclic(metadata, seeds)
+    seal_split = None
+    if seeds & {20154,21084} and tc.chain(21084) != ac.chain(21084):
+        seal_split = seal_rank_split_rule(tc,ac,cls)
     consumed_teachers = {}
     aura_helpers = defaultdict(dict)
     for spell in stored:
@@ -825,7 +880,8 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
         # No persistent row or target predecessor is granted by this exception.
         runtime_exact = (spell in temporary_spells and not source_prefix
                          and bool(tc.spells[spell][4] & (PASSIVE | HIDDEN)))
-        if source_prefix != target_prefix and not runtime_exact:
+        split_seal = seal_split and spell in (20154,21084)
+        if source_prefix != target_prefix and not runtime_exact and not split_seal:
             reject('INCOMPATIBLE_SPELL_CHAIN',
                    f'{spell}: tc_predecessors={source_prefix}; ac_predecessors={target_prefix}; '
                    f'stored_flags={stored.get(spell)}; selected_learn_owners={sorted(authorization_owners.get(spell,{}).items())}')
@@ -1251,7 +1307,9 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
                 superseded_mask = source_mask if disabled else 1 << active_group
                 native_superseded = (spell in source_passive_masks
                                      and passive_higher_masks[spell] & superseded_mask == superseded_mask)
-                if tc.stackable(spell) or ac.stackable(spell) or (not higher and not native_superseded):
+                seal_superseded = seal_split and spell == 20154 and 21084 in higher
+                if ((tc.stackable(spell) or ac.stackable(spell)) and not seal_superseded
+                        or (not higher and not native_superseded)):
                     # Direct hidden/passive talent rows are represented by
                     # AC's talent loader, not an inferred active spell.
                     if spell not in owners or not ac.spells[spell][4] & (PASSIVE | HIDDEN):
@@ -1410,6 +1468,8 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
         if load_contracts:
             row['authorization']['load_script_contracts'] = load_contracts
         row['derived'] = spell not in stored
+        if seal_split and spell in (20154,21084):
+            row['authorization']['seal_rank_split'] = seal_split
         row['active'] = 1
         row['disabled'] = int(not row['mask'] & (1 << active_group))
         if direction == 'ac-to-tc' and not tc.stackable(spell):

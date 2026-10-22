@@ -39,6 +39,15 @@ policy change also invalidates earlier run/checkpoint identities.
 
 ## Reviewing a candidate
 
+The `spell-state-v13` Seal of Righteousness mapping uses existing protected
+player, storage, trainer, spell/skill and aura/script consumers. No pins,
+manifests, metadata-profile or v1 changes are needed. Its exact TC rank pair,
+AC singletons, skill supersession link and non-talent mechanics are checked
+against effective metadata. Policy identity changes: use a new run and fresh
+target/control schemas. Existing preparation archives retain their original
+toolkits; approval remains UNREVIEWED. See the
+[seal contract](spell-reconstruction.md#seal-of-righteousness-split-ranks-spell-state-v13).
+
 Native Death Coil preparation v3 uses the already protected TC/AC player,
 storage, skill-level-update, script and DBC consumers. It adds no core revision,
 protected file, metadata or migration-logic exception. The exact source skill

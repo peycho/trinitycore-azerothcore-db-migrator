@@ -81,6 +81,16 @@ for chain in fixtures.CHAINS:
         # migrated character data or the reconstruction's grant set.
         main.append(f'manager.spells[{1000000+spell}].effects.push_back({{36,{spell}}});')
 main.append('''
+manager.spells[20154];manager.spells[21084];
+manager.spells[1020154].effects={{36,20154}};
+for(uint32 guid:{132,134})for(uint32 spec:{0,1}){
+ Player player=players[guid];player.spec=spec;
+ Trainer::Spell low{20154},high{21084},wrapped{1020154};
+ assert(trainer.GetDefaultSpellState(&player,&low)==SpellState::Known);
+ assert(trainer.GetDefaultSpellState(&player,&high)==SpellState::Known);
+ assert(trainer.GetDefaultSpellState(&player,&wrapped)==SpellState::Known);
+}
+assert(players[133].HasSpell(20154)&&!players[133].HasSpell(21084));
 for (auto const& original : players) {
     Player player=original.second;
     for (uint32 spec=0;spec<2;++spec) {

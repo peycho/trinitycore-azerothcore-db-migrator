@@ -76,20 +76,27 @@ int main(){
  manager.required.emplace(5209,5487);
  manager.required.emplace(23214,13819);manager.required.emplace(23214,33391);
  PlayerSpell ordinary{3},otherSpec{2};Trainer trainer;
- for(uint8 spec:{0,1})for(uint32 id:{5209,23214}){
+ for(uint8 spec:{0,1})for(uint32 id:{5209,23214,20154,21084}){
   Player p;p.m_activeSpec=spec;p.m_spells[id]=&ordinary;
   uint32 reads=manager.requirementReads;
   assert(p.GetLearnSpellSpecMask(id)==3&&manager.requirementReads==reads);
   Trainer::Spell direct{id};
   assert(trainer.TcState(&p,&direct)==SpellState::Known&&trainer.AcState(&p,&direct)==SpellState::Known);
   uint32 wrapper=1000000+id;manager.spells[wrapper].effects={{36,id}};
-  manager.required.emplace(wrapper,5487);Trainer::Spell wrapped{wrapper};
+  if(id!=20154&&id!=21084)manager.required.emplace(wrapper,5487);
+  Trainer::Spell wrapped{wrapper};
   assert(trainer.TcState(&p,&wrapped)==SpellState::Known&&trainer.AcState(&p,&wrapped)==SpellState::Known);
   p.m_spells.erase(id);
-  assert(trainer.TcState(&p,&direct)==SpellState::Unavailable&&trainer.AcState(&p,&direct)==SpellState::Unavailable);
-  assert(trainer.TcState(&p,&wrapped)==SpellState::Unavailable&&trainer.AcState(&p,&wrapped)==SpellState::Unavailable);
+  auto missing=(id==20154||id==21084)?SpellState::Available:SpellState::Unavailable;
+  assert(trainer.TcState(&p,&direct)==missing&&trainer.AcState(&p,&direct)==missing);
+  assert(trainer.TcState(&p,&wrapped)==missing&&trainer.AcState(&p,&wrapped)==missing);
   assert(!p.HasSpell(5487)&&!p.HasSpell(13819)&&!p.HasSpell(33391)&&p.m_spells.empty());
  }
+ // Old highest-only conversion leaves the singleton lower seal trainable.
+ Player old;old.m_spells[21084]=&ordinary;
+ Trainer::Spell low{20154};assert(trainer.AcState(&old,&low)==SpellState::Available);
+ old.m_spells[20154]=&ordinary;
+ for(uint8 spec:{0,1}){old.m_activeSpec=spec;assert(trainer.AcState(&old,&low)==SpellState::Known);}
  // Native talent/additional classification does not take the ordinary early return.
  costs[20911]=1;manager.additional.insert(25899);manager.required.emplace(25899,20911);
  Player talent;uint32 reads=manager.requirementReads;

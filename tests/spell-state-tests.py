@@ -45,6 +45,12 @@ class World:
             rows += [['44440','44440','1'],['44440','44441','2']]
         if world=='tc' and table=='spell_learn_spell':
             rows += [['17002','24867','0'],['24866','24864','0']]
+        if world=='tc' and table=='spell_ranks':
+            rows += [['20154','20154','1'],['20154','21084','2']]
+        if table=='spell_script_names':
+            rows += [[str(s),'spell_pal_seal_of_righteousness'] for s in (20154,21084)]
+            if world=='tc':
+                rows += [[str(s),'spell_pal_seals'] for s in (20154,21084)]
         if world=='ac' and table=='spell_script_names':
             rows += [[str(s),'spell_dru_feral_swiftness'] for s in (-17002,5487,9634)]
         if table=='trainer_spell':
@@ -220,6 +226,57 @@ class SpellTests(unittest.TestCase):
         with self.assertRaises(Unsupported) as error:
             call()
         self.assertEqual(error.exception.reason,reason)
+
+    def test_seal_split_restores_only_verified_lower_rank_and_round_trips(self):
+        for active in (0,1):
+            for book in ({21084:(1,0)}, {20154:(0,0),21084:(1,0)},
+                         {20154:(1,0),21084:(1,0)}):
+                result=self.convert(book,active=active)
+                self.assertEqual(set(result),{20154,21084})
+                self.assertTrue(all(r['mask']==3 and r['disposition']=='PERSISTENT' for r in result.values()))
+                self.assertEqual(result[20154]['derived'],20154 not in book)
+                self.assertIn([21084,[21084,20154],'LOWER_RANK'],result[20154]['proofs'])
+                proof=result[20154]['authorization']['seal_rank_split']
+                self.assertFalse(proof['higher_rank_granted'])
+                back=self.convert({s:(r['mask'],)for s,r in result.items()},reverse=True,active=active)
+                self.assertEqual(set(back),{20154,21084})
+                self.assertEqual((back[20154]['active'],back[21084]['active']),(0,1))
+                self.assertEqual(self.convert({s:(r['active'],r['disabled']) for s,r in back.items()},active=active),
+                                 self.convert({20154:(0,0),21084:(1,0)},active=active))
+        for reverse,flags in ((False,(1,0)),(True,(3,))):
+            self.assertEqual(set(self.convert({20154:flags},reverse=reverse)),{20154})
+            self.assertEqual(set(self.convert({21084:flags},reverse=reverse)),{20154,21084})
+
+    def test_seal_split_keeps_flags_masks_skills_and_wrapper_boundaries(self):
+        self.fails('UNREPRESENTABLE_DISABLED_SPELL',lambda:self.convert({21084:(1,1)}))
+        self.fails('UNREPRESENTABLE_INACTIVE_SPELL',lambda:self.convert({20154:(0,0)}))
+        self.fails('UNREPRESENTABLE_INACTIVE_SPELL',lambda:self.convert({21084:(0,0)}))
+        self.fails('UNREPRESENTABLE_AC_SPELL_MASK',lambda:self.convert({21084:(1,)},reverse=True))
+        self.fails('SPELL_WOULD_ADD_SKILL',lambda:self.convert({21084:(1,0)},skills={}))
+        self.fails('UNSUPPORTED_PERSISTENT_LEARN_EFFECT',lambda:self.convert({10321:(1,0)}))
+        self.fails('INCOMPATIBLE_SEAL_RANK_SPLIT',lambda:self.convert({21084:(1,0)},cls=1))
+
+    def test_seal_split_blocks_changed_mechanics_routes_and_chain_membership(self):
+        mutations=[lambda m:m.spells[20154].__setitem__(71,118),
+                   lambda m:m.spells[21084].__setitem__(97,118),
+                   lambda m:m.spells[21084].__setitem__(116,6603),
+                   lambda m:m.spells[20154].__setitem__(4,64),
+                   lambda m:m.abilities[20154][0].__setitem__(8,6603),
+                   lambda m:m.abilities[21084][0].__setitem__(1,762),
+                   lambda m:m.requires[20154].add(6603),
+                   lambda m:m.learn_parents[20154].add(6603),
+                   lambda m:m.scripts[20154].clear(),
+                   lambda m:m.talent_learn_owners[21084].add(12282),
+                   lambda m:m.stores['SkillLine'][594].__setitem__(1,11)]
+        for index,mutation in enumerate(mutations):
+            for core in ('tc','ac','both'):
+                tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+                for metadata in (tc,ac) if core=='both' else (tc if core=='tc' else ac,):
+                    mutation(metadata)
+                with self.subTest(index=index,core=core):
+                    self.fails('INCOMPATIBLE_SEAL_RANK_SPLIT',lambda:self.convert({21084:(1,0)},tc=tc,ac=ac))
+        tc=copy.deepcopy(self.tc);tc.chains[20154]=(20154,21084,6603)
+        self.fails('INCOMPATIBLE_SEAL_RANK_SPLIT',lambda:self.convert({21084:(1,0)},tc=tc))
 
     def test_remaining_nonlearning_script_bindings_preserve_only_known_spells(self):
         for spell in (7744,37377,40081,40326):

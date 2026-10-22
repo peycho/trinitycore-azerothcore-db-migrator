@@ -1,5 +1,18 @@
 # Profile v2 review and acceptance record
 
+`spell-state-v13` adds the exact ordinary paladin `20154 -> 21084` TC-chain/
+AC-singleton contract. Both effective spell mechanics and skill-ability
+supersession links are verified. The transform preserves TC-known lower state,
+never grants the upper seal from a lower anchor, and retains existing Holy
+skill and ownership checks. Core pins, all 100 TC / 103 AC protected semantic
+files, metadata profile, control schema and v1 remain unchanged. The configured
+AC checkout and staging reference must still match protected content against
+the retained pin; no revision is substituted. Policy hashes require a fresh
+migration run and new target/control schemas. See the
+[seal contract](spell-reconstruction.md#seal-of-righteousness-split-ranks-spell-state-v13).
+Consumer mocks and disposable MySQL checks are separate from the five native
+gameplay gates; **PROFILE_APPROVAL=UNREVIEWED** remains in force.
+
 The separate selected-talent ownership preparation policy explicitly permits
 archiving conflicting enabled spell rows against existing selections in both
 specs. It inserts no spells and changes no talents/skills/flags. Correct stored

@@ -265,6 +265,21 @@ def stores(profile):
         ability[1],ability[2],ability[4]=776,spell,32
         ability[7],ability[10],ability[11]=1,510,500
         ability[9]=int(spell in (53341,53343))
+    # Seal of Righteousness: TC ranks, AC singletons, shared DBC replacement.
+    for spell,effects,auras,base,targets in (
+            (20154,[6,6,0],[4,108,0],[0xffffffff,0xffffffff,0],[1,1,0]),
+            (21084,[6,6,6],[4,108,4],[0xffffffff,0xffffffff,20186],[1,1,1])):
+        row=record('Spell',spell)
+        row[4],row[7]=327680,524288
+        row[71:74],row[74:77],row[80:83]=effects,[1,1,int(spell==21084)],base
+        row[86:89],row[95:98],row[111]=targets,auras,14
+        row[208:212]=[10,0x08000000,0x20000000,0]
+        ability=record('SkillLineAbility',spell)
+        ability[1:12]=[594,spell,0,2,0,0,1,21084 if spell==20154 else 0,2,0,0]
+    data['SkillRaceClassInfo'][594][1:7]=[594,0xffffffff,2,1040,0,0]
+    row=record('Spell',10321)
+    row[4],row[71:74],row[116:119]=262400,[36,36,0],[20271,21084,0]
+    record('Spell',20271)[71]=3
     return data
 
 
@@ -314,6 +329,14 @@ def seed_worlds(sql, tc, ac, tc_world, ac_world, profile):
     sql('INSERT INTO spell_script_names VALUES '+','.join(
         f"({spell},'spell_chapter1_runeforging_credit')" for spell in RUNEFORGING),tc_world)
     sql('INSERT INTO spell_ranks VALUES (44440,44440,1),(44440,44441,2)',ac_world)
+    sql('INSERT INTO spell_ranks VALUES (20154,20154,1),(20154,21084,2)',tc_world)
+    for world in (tc_world,ac_world):
+        sql("INSERT INTO spell_script_names VALUES (20154,'spell_pal_seal_of_righteousness'),"
+            "(21084,'spell_pal_seal_of_righteousness')",world)
+    sql("INSERT INTO spell_script_names VALUES (20154,'spell_pal_seals'),(21084,'spell_pal_seals')",tc_world)
+    # Exercise a real AC override row and its same-count mutation guard.
+    seal_ability=stores(profile)['SkillLineAbility'][20154]
+    sql('INSERT INTO skilllineability_dbc VALUES ('+','.join(map(str,seal_ability))+')',ac_world)
     sql("INSERT INTO spell_script_names VALUES (38796,'spell_murmur_sonic_boom'),"
         "(7744,'spell_wotf_shared_cd'),(37377,'spell_warl_t4_2p_bonus_shadow')",tc_world)
     sql("INSERT INTO spell_script_names VALUES (40081,'spell_black_template_free_friend'),(40326,'spell_teron_gorefiend_shadowy_construct')",ac_world)

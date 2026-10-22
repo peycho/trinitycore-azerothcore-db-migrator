@@ -87,6 +87,7 @@ both cores' chains and native runtime behavior before extending support.
 | Code | Meaning and next evidence to inspect |
 | --- | --- |
 | `INCOMPATIBLE_SPELL_CHAIN` | The reached TC/AC predecessor prefixes differ outside the reviewed runtime exception. Compare both effective chains and the anchor; never substitute a target chain blindly. |
+| `INCOMPATIBLE_SEAL_RANK_SPLIT` | The narrow paladin `20154 -> 21084` TC-chain/AC-singleton contract differs in class, ranks, mechanics, skill replacement metadata, scripts or excluded ownership/learning routes. Inspect both catalogs; never add a skill, grant an upper seal or accept arbitrary split chains. |
 | `INCOMPATIBLE_TALENT_CLASSIFICATION` | The reached ID is a direct talent in only one core. Compare effective talent catalogs. |
 | `INCOMPATIBLE_SPELL_VISIBILITY` | Passive/hidden flags differ between cores. Review their effect on native loading and availability. |
 | `INCOMPATIBLE_TALENT_LEARN_EFFECT` | A selected talent teaches different child IDs in the two cores. Compare its effective learn effects. |
@@ -150,6 +151,12 @@ Supporting a previously blocked representation requires reviewed compatibility
 rules and relevant tests, not a code rename or report edit. Passing these checks
 does not replace the [staging gameplay gates](spell-reconstruction.md#validation-and-staging-gameplay-gate).
 Release approval remains **UNREVIEWED** until its acceptance gates pass.
+
+`spell-state-v13` supports only the verified Seal of Righteousness split:
+TC knows lower `20154` from upper `21084`, while AC needs explicit lower storage.
+It retains normal mask `3` without granting an upper seal from a lower anchor or
+adding missing Holy skill `594`. Other mismatches remain blocked. See the
+[seal contract](spell-reconstruction.md#seal-of-righteousness-split-ranks-spell-state-v13).
 
 `spell-state-v8` supports Feral Swiftness's exact `17002 -> 24867` and
 `24866 -> 24864` inactive world edges through native AC selected-talent/form

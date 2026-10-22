@@ -6,6 +6,18 @@ production-sized rehearsal or native gameplay acceptance.
 
 ## CI coverage
 
+Seal split-rank regressions cover TC highest-only and complete/inactive-lower
+state, AC singleton storage, both specs, reverse conversion, lower-only no-upper
+grants, missing skill and changed chain/effect/script/ownership/skill metadata.
+MySQL verifies exact rows and committed provenance through the existing chunk
+interruption/resume/rerun and immutable-input suite in both directions. Native
+consumer harnesses exercise TC's predecessor branch, AC insertion/save/reload,
+seal exclusivity and direct/wrapped trainer checks. Catalogs, state and database
+sinks are mocked; spell casting and client layout require staging gameplay.
+The protected TC/AC skill-reward harness also proves the existing Holy-skill
+upper reward in both cores and AC's explicit omission of the superseded lower
+reward. Persistent lower-only transform output does not suppress native rewards.
+
 Selected-talent ownership tests cover enabled/disabled conflict retirement,
 both builds, native exact children, preserved TC prefixes and no higher grants.
 MySQL checks complete/custom originals, preview/count/deferred-scope drift,

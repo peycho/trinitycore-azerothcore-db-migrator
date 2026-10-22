@@ -85,6 +85,12 @@ the selected mapping registries.
   inserting missing skill `118`. Active/shared owners and stored child rows
   retain skill checks; see the
   [inactive talent contract](spell-reconstruction.md#inactive-dual-wield-talent-spell-state-v12).
+  Under `spell-state-v13`, the exact paladin Seal of Righteousness TC rank pair
+  `20154 -> 21084` may map to verified AC singletons. Known upper state restores
+  the lower seal; the transform derives no upper row from a lower anchor.
+  Both cores' existing Holy-skill upper reward remains native. Holy skill,
+  talent/spec state and unrelated chain checks remain protected. See the
+  [seal contract](spell-reconstruction.md#seal-of-righteousness-split-ranks-spell-state-v13).
 - Cooldown category/end fields are consolidated with the later expiration time.
 - Instance extension enum value `EXTENDED` becomes the target boolean.
 - Item and money loot tables merge into `item_loot_storage`; money is stored as

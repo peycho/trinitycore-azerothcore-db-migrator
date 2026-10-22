@@ -66,6 +66,8 @@ for repo,name in ((tc,'TcStack'),(ac,'AcStack')):
                  ('bool sameCaster=true;' if repo==ac else '')+rank)
     info=(repo/'src/server/game/Spells/SpellInfo.cpp').read_text()
     stack.append(function(info,'bool SpellInfo::IsMultiSlotAura() const').replace('IsMultiSlotAura()',name+'MultiSlot()'))
+    stack.append(function(info,'bool SpellInfo::IsAuraExclusiveBySpecificPerCasterWith(')
+                 .replace('IsAuraExclusiveBySpecificPerCasterWith',name+'Exclusive'))
 
 mock=r'''
 #include <algorithm>
@@ -82,6 +84,9 @@ using int32=int32_t;
 constexpr int EFFECT_0=0;
 constexpr uint32 SPELL_DRUID_NURTURING_INSTINCT_R1=47179,SPELL_DRUID_NURTURING_INSTINCT_R2=47180;
 constexpr uint32 SPELLFAMILY_HUNTER=9,SPELL_SPECIFIC_AURA=1;
+using SpellSpecificType=uint32;
+constexpr uint32 SPELL_SPECIFIC_SEAL=2,SPELL_SPECIFIC_HAND=3,SPELL_SPECIFIC_STING=4,
+    SPELL_SPECIFIC_CURSE=5,SPELL_SPECIFIC_ASPECT=6,SPELL_SPECIFIC_JUDGEMENT=7,SPELL_SPECIFIC_WARLOCK_CORRUPTION=8;
 #define UI64LIT(x) x##ULL
 enum SpellAttr2 {SPELL_ATTR2_ALLOW_WHILE_NOT_SHAPESHIFTED=1};
 using ShapeshiftForm=uint32;
@@ -110,7 +115,9 @@ struct SpellInfo {
     uint32 Id=0,flags=192,root=0,Stances=0,CasterAuraState=0,rank=1;std::array<Effect,3> Effects{};
     uint8 GetRank() const{return rank;}Effect const& GetEffect(int index) const{return Effects[index];}
     bool TcStackMultiSlot()const;bool AcStackMultiSlot()const;
-    bool IsMultiSlotAura()const{return IsPassive();}uint32 GetSpellSpecific()const{return 0;}
+    bool IsMultiSlotAura()const{return IsPassive();}
+    uint32 GetSpellSpecific()const{return Id==20154||Id==21084?SPELL_SPECIFIC_SEAL:0;}
+    bool TcStackExclusive(SpellInfo const*)const;bool AcStackExclusive(SpellInfo const*)const;
     bool IsRankOf(SpellInfo const*other)const{return root==other->root;}
     bool HasAttribute(SpellAttr2)const{return false;}
     bool HasEffect(uint32 value) const { for(auto const& e:Effects)if(e.Effect==value)return true;return false; }
@@ -225,11 +232,33 @@ methods+='\nbool Player::IsNeedCastPassiveSpellAtLearn(SpellInfo const*info)cons
 nurturing.append("void NurturingApply(Player*p,uint32 id){AcNurturing{p,manager.GetSpellInfo(id)}.AfterApply(nullptr,0);}")
 nurturing.append("void NurturingRemove(Player*p,uint32 id){AcNurturing{p,manager.GetSpellInfo(id)}.AfterRemove(nullptr,0);}")
 main=['int main(){ SkillLineAbilityEntry classAbility;']
-for spell in(63680,63644,63645,30798,674):
+for spell in(63680,63644,63645,30798,674,20154,21084):
     row=data['Spell'][spell]
     main.append(f'manager.spells[{spell}].Id={spell};manager.spells[{spell}].root={spell};manager.spells[{spell}].flags={row[4]};')
     for i in range(3):main.append(f'manager.spells[{spell}].Effects[{i}]={{{row[71+i]},{row[116+i]},{row[95+i]}}};')
 main.append(r"""
+// AC's actual insertion/saving bodies do not reconstruct a singleton prefix.
+// Persist the verified lower seal explicitly; preserve it after save/relog and
+// active-spec changes, with no aura cast, skill or profession mutation.
+for(uint8 active:{0,1}){
+    assert(manager.spells.at(20154).TcStackExclusive(&manager.spells.at(21084)));
+    assert(manager.spells.at(20154).AcStackExclusive(&manager.spells.at(21084)));
+    Player old;old.m_activeSpec=active;
+    old._addSpell(21084,3,false);
+    assert(old.m_spells.size()==1&&!old.m_spells.count(20154));
+    Player fixed;fixed.m_activeSpec=active;fixed.session.loading=false;
+    fixed._addSpell(20154,3,false);fixed._addSpell(21084,3,false);
+    assert(fixed.m_spells.size()==2&&fixed.auras.empty()&&fixed.skills.empty());
+    auto saved=std::make_shared<Transaction>();fixed._SaveSpells(saved);
+    assert((saved->saved==std::map<uint32,uint32>{{20154,3},{21084,3}}));
+    Player relog;relog.m_activeSpec=1-active;
+    for(auto row:saved->saved)relog._addSpell(row.first,row.second,false);
+    assert(relog.m_spells.size()==2&&relog.auras.empty()&&relog.skills.empty());
+    assert(relog.m_spells.at(20154)->IsInSpec(relog.m_activeSpec));
+    assert(relog.m_spells.at(21084)->IsInSpec(relog.m_activeSpec));
+    Player lowerOnly;lowerOnly._addSpell(20154,3,false);
+    assert(lowerOnly.m_spells.size()==1&&!lowerOnly.m_spells.count(21084));
+}
 for(uint8 active:{0,1}){
     Player p;p.m_activeSpec=active;
     p.LoadNativeTalent(30798,1<<(1-active));

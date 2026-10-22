@@ -41,7 +41,7 @@ using SkillLineAbilityMapBounds=std::pair<SkillLineAbilityMap::const_iterator,Sk
 struct SpellInfo {};
 struct SpellMgr {
     SpellInfo info; SkillLineAbilityMap map;
-    SpellInfo const* GetSpellInfo(uint32 id) const { return id==674 || id==53341 || id==53343 ? &info:nullptr; }
+    SpellInfo const* GetSpellInfo(uint32 id) const { return id==674 || id==53341 || id==53343 || id==20154 || id==21084 ? &info:nullptr; }
     SkillLineAbilityMapBounds GetSkillLineAbilityMapBounds(uint32 id) const { return map.equal_range(id); }
 };
 SpellMgr manager;SpellMgr* sSpellMgr=&manager;
@@ -102,7 +102,21 @@ main = r'''int main() {
     cinder.RaceMask=razor.RaceMask=0;cinder.AcquireMethod=razor.AcquireMethod=0;
     Player trained;trained.classMask=32;trained.TcRewards(776,1);trained.AcRewards(776,1);
     assert(trained.added.empty());
-    std::cout << "Protected TC/AC skill-reward consumers: ordinary Dual Wield class routes, Runeforging native dependencies, threshold/race/acquisition controls passed; spell-add sinks mocked\n";
+    // Existing Holy skill teaches the upper seal in BOTH native cores. TC
+    // also learns the lower seal; AC deliberately skips the superseded entry.
+    // Explicit lower persistence therefore changes no native upper grant.
+    SkillLineAbilityEntry lower{594,20154,0,2,2,1,21084},upper{594,21084,0,2,2,1,0};
+    manager.map.emplace(20154,&lower);manager.map.emplace(21084,&upper);
+    for(uint32 value:{35,110,400})for(bool reversed:{false,true}){
+        abilities=reversed?std::vector<SkillLineAbilityEntry const*>{&upper,&lower}:
+                           std::vector<SkillLineAbilityEntry const*>{&lower,&upper};
+        Player tc,ac;tc.classMask=ac.classMask=2;
+        tc.TcRewards(594,value);ac.AcRewards(594,value);
+        std::sort(tc.added.begin(),tc.added.end());
+        assert((tc.added==std::vector<std::pair<uint32,uint32>>{{20154,3},{21084,3}}));
+        assert((ac.added==std::vector<std::pair<uint32,uint32>>{{21084,3}}));
+    }
+    std::cout << "Protected TC/AC skill-reward consumers: ordinary Dual Wield, Runeforging and Seal of Righteousness native rewards, threshold/race/acquisition controls passed; spell-add sinks mocked\n";
 }
 '''
 with tempfile.TemporaryDirectory() as directory:

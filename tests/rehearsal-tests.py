@@ -298,6 +298,9 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     sql("UPDATE item_instance SET charges='1 2 3 4 5 ',enchantments=REPEAT('0 ',36) WHERE guid=200", CHARS)
     sql("INSERT INTO guild_bank_item (guildid,TabId,SlotId,item_guid) VALUES (940,0,0,201)", CHARS)
     print('Checking research and hidden talent-child blockers',flush=True)
+    spell_guard('INCOMPATIBLE_SEAL_RANK_SPLIT',
+        f'UPDATE `{AC_WORLD}`.skilllineability_dbc SET SupercededBySpell=6603 WHERE Spell=20154',
+        f'UPDATE `{AC_WORLD}`.skilllineability_dbc SET SupercededBySpell=21084 WHERE Spell=20154')
     spell_guard('SPELL_WOULD_CHANGE_SKILL',
         f'UPDATE `{CHARS}`.characters SET activeTalentGroup=1 WHERE guid=130',
         f'UPDATE `{CHARS}`.characters SET activeTalentGroup=0 WHERE guid=130')
@@ -450,6 +453,13 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
                         f'AND spell IN ({",".join(map(str,ids))})'))
     assert old_known < len(ids), 'Regression must fail under stored-row-only conversion'
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=114',13)
+    for guid,expected in ((132,'20154,21084'),(133,'20154'),(134,'20154,21084')):
+        equal(f'SELECT GROUP_CONCAT(spell ORDER BY spell) FROM `{AC_CHARS}`.character_spell '
+              f'WHERE guid={guid} AND specMask=3',expected)
+        equal(f"SELECT JSON_UNQUOTE(JSON_EXTRACT(provenance,'$.authorization.seal_rank_split.policy')) "
+              f"FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid={guid} AND spell=20154",'NATIVE_SEAL_RANK_SPLIT')
+    equal(f"SELECT derived FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=132 AND spell=20154",1)
+    equal(f'SELECT COUNT(*) FROM `{CHARS}`.character_spell WHERE guid=132 AND spell=20154',0)
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=115 AND spell IN (5209,5487,9634) AND specMask=3',3)
     for guid in (128,129):
         equal(f'SELECT spell,specMask FROM `{AC_CHARS}`.character_spell WHERE guid={guid}', '5209\t3')
@@ -582,6 +592,7 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     sql((ROOT / 'tests/fixtures/azerothcore-reverse-data.sql').read_text(), AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (113,674,3),(120,7744,3),(112,37377,3),(113,40081,3),(112,40326,3)',AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (128,5209,3),(129,5209,3),(126,63644,3),(126,63645,3),(127,63644,3),(127,63645,3)',AC_CHARS)
+    sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (132,21084,3),(133,20154,3),(134,20154,3),(134,21084,3)',AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES '+','.join(
         f'(119,{spell},3)' for spell in [*SPELL_FIXTURES.RUNEFORGING,53428]),AC_CHARS)
     sql('INSERT INTO character_talent (guid,spell,specMask) VALUES (115,33872,1),(115,33873,2),(125,33872,1),(125,33873,2)',AC_CHARS)
@@ -640,6 +651,9 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     phase(reverse, 'sanitize-target')
     phase(reverse, 'validate')
     assert_ready(rv)
+    for guid,expected in ((132,'20154:0:0,21084:1:0'),(133,'20154:1:0'),(134,'20154:0:0,21084:1:0')):
+        equal(f'SELECT GROUP_CONCAT(CONCAT(spell,":",active,":",disabled) ORDER BY spell) '
+              f'FROM `{TC_CHARS}`.character_spell WHERE guid={guid}',expected)
     equal(f'SELECT active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid=113 AND spell=674','1\t0')
     for guid,group in ((130,1),(131,0)):
         equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid={guid}',0)

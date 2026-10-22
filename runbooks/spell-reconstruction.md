@@ -7,6 +7,58 @@ already accepted player writes requires a separately reviewed repair with its
 own backup, ownership and rollback evidence. No core patch or CleanCharacterDB
 setting is used. The v2 profile remains **UNREVIEWED**.
 
+## Seal of Righteousness split ranks (spell-state-v13)
+
+TC links `20154 -> 21084`; the reviewed AC world keeps each as a singleton.
+Both effective skill-ability catalogs still mark `20154` as superseded by
+`21084`. TC's recursive `AddSpell` therefore knows the lower seal even when
+only `21084` is stored. AC's stored-row loader needs both persistent rows to
+retain that known state and prevent trainers offering the lower seal again.
+
+V13 permits only this exact split for paladins. It verifies the complete pair,
+ordinary class-skill category and replacement links, exact aura/effect/target/
+family mechanics, script bindings and excluded talent/requirement/learning
+routes. Other chain mismatches continue to block. Changed seal contracts report
+`INCOMPATIBLE_SEAL_RANK_SPLIT`; matching changes in both worlds are insufficient.
+Existing Holy skill `594` remains mandatory; no skill, cap or profession is added.
+
+A legitimately known upper seal restores `20154` with mask `3` and normal
+`LOWER_RANK` provenance. The transform never derives or persists `21084` from
+`20154`. Already-complete
+chains merge deterministically. Stored inactive `20154` is accepted only with
+its enabled active upper anchor; unexplained inactivity/disabled states remain
+blocked. Both seals retain native AC spellbook representation. This does not
+claim identical client spellbook layout between cores. Both pinned seal aura
+consumers enforce per-caster seal exclusivity independently of rank membership.
+
+Both native skill loaders already teach `21084` from existing Holy skill `594`.
+TC also teaches `20154`; AC explicitly skips that superseded skill reward.
+This pre-existing native upper reward is unchanged, including for a lower-only
+stored spellbook. The converter's lower-only output is not a promise that the
+native skill loader will leave the upper seal unknown. The rule grants no skill
+or upper row to cause that behavior, and never uses a trainer as authority.
+
+Reverse conversion uses TC's verified chain, restores only its lower prefix and
+marks `20154` inactive when `21084` is known; `20154` alone stays lower-only in
+the transform output, subject to the unchanged native skill rewards above.
+The reverse result is native-semantic compatibility, not restoration of an
+AC singleton-only stored-row count. No trainer or teaching wrapper is executed.
+
+Each reached seal records `authorization.seal_rank_split` in the normal expected
+state and committed reconstruction/provenance reports. The policy digest changes
+checkpoint identity. Use a fresh migration run with new target/control schemas;
+do not resume v12 checkpoints or repair an existing target in place. Keep prior
+preparation toolkits and archives for their original guarded restoration.
+Pins, protected manifests, metadata profile and approval remain unchanged.
+
+Tests cover highest-only, lower-only, overlapping/completed chains, both specs,
+forward/reverse masks, flags, changed metadata and missing skills. MySQL exercises
+the same fixtures through transactional loading, interruption/resume/reruns and
+semantic validation. Protected TC predecessor, AC insertion/save/reload, seal
+exclusivity and direct/wrapped trainer consumers run with mocked state/catalogs
+and database sinks. Full gameplay remains **NOT TESTED**. Include both seals,
+judgements, trainer-known state and aura replacement in the five staging gates.
+
 ## Why stored row counts were insufficient
 
 At reviewed TC `92127cd6252edb96fbfa36540db0eba17d0031fa`,
