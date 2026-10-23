@@ -15,7 +15,7 @@ import struct
 import subprocess
 import sys
 
-POLICY = 'spell-state-v13'
+POLICY = 'spell-state-v14'
 LEARN, SKILL, SKILL_STEP, DUAL_WIELD = 36, 118, 44, 40
 PASSIVE, HIDDEN = 0x40, 0x80
 
@@ -1316,11 +1316,18 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
                 native_superseded = (spell in source_passive_masks
                                      and passive_higher_masks[spell] & superseded_mask == superseded_mask)
                 seal_superseded = seal_split and spell == 20154 and 21084 in higher
+                # TC AddSpell's initial passive-cast branch ignores `active`;
+                # disabled already returned above. Exact reviewed hidden child
+                # ranks selected in the active build therefore retain their
+                # native aura behavior with active=0. Ordinary spells still
+                # require supersession; no parent-only child grant is inferred.
+                native_inactive = (not disabled and spell in native_passive_owners
+                                   and bool(mask & (1 << active_group)))
                 if ((tc.stackable(spell) or ac.stackable(spell)) and not seal_superseded
                         or (not higher and not native_superseded)):
                     # Direct hidden/passive talent rows are represented by
                     # AC's talent loader, not an inferred active spell.
-                    if spell not in owners or not ac.spells[spell][4] & (PASSIVE | HIDDEN):
+                    if not native_inactive and (spell not in owners or not ac.spells[spell][4] & (PASSIVE | HIDDEN)):
                         reject('UNREPRESENTABLE_INACTIVE_SPELL', str(spell))
             if not mask and spell in source_passive_masks:
                 # Approved TC-only predecessor. Its exact source row and masks
@@ -1460,6 +1467,7 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
                     for p in tc.predecessors(spell) if p in result),
                 'target_representation':'AC_NATIVE_EXACT' if direction == 'tc-to-ac' else 'TC_ACTIVE_EXACT_NATIVE_PREFIX',
                 'native_lifetime':'SELECTED_TALENT_AND_ACTIVE_SPEC',
+                'inactive_source_passive_cast': direction == 'tc-to-ac' and stored.get(spell) == (0,0),
             }
         aura_contracts = sorted(
             (metadata.core,name,metadata.aura_talent_scripts[name]['mode'],

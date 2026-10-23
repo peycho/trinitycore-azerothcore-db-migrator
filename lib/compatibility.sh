@@ -182,7 +182,7 @@ for subsystem in Entities/Item/Item Entities/Item/Container/Bag Entities/Corpse/
     Accounts/RBAC; do
     FORMAT2_GAME_INPUTS+=("src/server/game/$subsystem.cpp" "src/server/game/$subsystem.h")
 done
-FORMAT2_GAME_INPUTS+=(src/server/game/Handlers/MailHandler.cpp src/server/game/Loot/LootMgr.h)
+FORMAT2_GAME_INPUTS+=(src/server/game/Handlers/MailHandler.cpp src/server/game/Handlers/SpellHandler.cpp src/server/game/Loot/LootMgr.h)
 
 load_compatibility_profile() {
     [[ $COMPATIBILITY_PROFILE =~ ^[A-Za-z0-9._-]+$ ]] ||

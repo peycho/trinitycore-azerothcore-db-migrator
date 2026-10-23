@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -13,7 +14,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main():
+def main(aura_aliases=False):
     port = os.environ.get('REHEARSAL_MYSQL_PORT', '33317')
     if (os.environ.get('MIGRATOR_DISPOSABLE_MYSQL') != '1' or not port.isascii()
             or not port.isdigit() or not 1 <= int(port) <= 65535 or int(port) == 3306):
@@ -58,9 +59,12 @@ def main():
             CREATE TABLE `{source}`.unrelated(id INT PRIMARY KEY,note TEXT);
             INSERT INTO `{source}`.unrelated VALUES(1,'Keep Ω');
             CREATE TABLE `{auth}`.account(id INT PRIMARY KEY);INSERT INTO `{auth}`.account VALUES(1);''')
-        spec = importlib.util.spec_from_file_location('prefix_fixture', ROOT/'tests/spell-fixtures.py')
+        spec = importlib.util.spec_from_file_location('prefix_fixture', ROOT/'tests'/('aura-alias-fixtures.py' if aura_aliases else 'spell-fixtures.py'))
         assets = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(assets)
+        alias_families = assets.FAMILIES if aura_aliases else []
+        if aura_aliases:
+            assets = assets.base
         profile = json.loads((ROOT/'compatibility/tc335-acwotlk-v2/spell-metadata.json').read_text())
         assets.seed_worlds(sql, tc, ac, world, aworld, profile)
         sql('CREATE TABLE playercreateinfo_spell_custom(racemask INT UNSIGNED,classmask INT UNSIGNED,Spell INT UNSIGNED);', world)
@@ -97,6 +101,24 @@ def main():
                 expected.append([7,s,a,d])
         expected.sort()
         sql(f'INSERT INTO `{source}`.character_skills VALUES(7,770,400,400),(7,171,375,450);')
+        if aura_aliases:
+            expected = []
+            for g in range(8,14):
+                cls, login = (1 if g==12 else 2), (4 if g==10 else 32)
+                sql(f"INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,online,activeTalentGroup,talentGroupsCount,at_login,position_x,custom_note) "
+                    f"VALUES({g},1,'Alias{g}','',1,{cls},80,0,0,2,{login},0.1,'Retain Ω');")
+                for _,ranks,_ in alias_families:
+                    sql(f'INSERT INTO `{source}`.character_spell VALUES({g},{ranks[-1]},1,0,0x00ff,0.100001);')
+                    if g in (8,13):
+                        expected.append([g,ranks[-1],1,0])
+                    if g==9:
+                        sql(f'INSERT INTO `{source}`.character_talent VALUES({g},{ranks[0]},1);')
+                sql(f'INSERT INTO `{source}`.character_spell VALUES({g},6603,1,0,0x00ff,0.100001);')
+                sql(f'INSERT INTO `{source}`.character_skills VALUES({g},171,375,450);')
+            for helper in (63510,63514,63531):
+                sql(f'INSERT INTO `{source}`.character_spell VALUES(11,{helper},1,0,0x00ff,0.100001);')
+            for _,ranks,name in alias_families:
+                sql(f"INSERT INTO `{world}`.spell_script_names VALUES({-ranks[0]},'{name}');")
         for user in (writer, reader):
             sql(f"CREATE USER '{user}'@'%' IDENTIFIED BY '';")
             users.append(user)
@@ -155,20 +177,25 @@ backup_reference=dedicated-disposable-passive-prefix-fixture
             session = work/'workspace/sessions'/json.loads((work/'workspace/current.json').read_text())['session']
             report = work/'blockers.tsv'
             report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(
-                f'{g}\t*\tUNREPRESENTABLE_DISABLED_SPELL\t16952\n' for g in range(1,8)))
+                f'{g}\t*\tUNREPRESENTABLE_DISABLED_SPELL\t16952\n' for g in range(1,14 if aura_aliases else 8)))
             result = run('inspect-migration-blockers', '--report', str(report))
             inspection = Path(result.stdout.split('Reports: ', 1)[1].strip()).name
-            plan = ['plan','talent-ownership','--migration-inspection',inspection,'--native-passive-prefixes']
+            plan = ['plan','talent-ownership','--migration-inspection',inspection,
+                    '--reviewed-aura-aliases' if aura_aliases else '--native-passive-prefixes']
             old = run('plan','talent-ownership','--migration-inspection',inspection,'--preview')
             assert '"selected_rows": 0' in old.stdout
             preview = run(*plan,'--preview')
             review = json.loads(Path(preview.stdout.split('Details: ',1)[1].strip()).read_text())
             assert review['selected'] == expected, review
-            assert review['summary']['restorable_disabled_prefix_rows'] == 8
-            assert review['summary']['enabled_rows_removed'] == 4
+            if aura_aliases:
+                assert review['summary']['reviewed_aura_alias_rows'] == 8
+                assert review['summary']['enabled_rows_removed'] == 8
+            else:
+                assert review['summary']['restorable_disabled_prefix_rows'] == 8
+                assert review['summary']['enabled_rows_removed'] == 4
             assert not (session/'active-batch.json').exists() and not list((session/'batches').iterdir())
             assert checksum() == baseline
-            passed('v1 failing control, explicit v3 preview selects eight disabled prefixes and four unowned enabled higher children in both active specs; reset/missing/disabled anchors deferred; source and active batch unchanged')
+            passed('default-policy control, explicit opt-in exact selection; selected/reset/foreign/unsupported stored helper cases deferred; source and active batch unchanged')
             run(*plan,'--expect-rows','3',code=2)
             # Even a deferred character belongs to the sealed planning scope.
             sql(f'UPDATE `{source}`.characters SET level=79 WHERE guid=4;')
@@ -179,11 +206,16 @@ backup_reference=dedicated-disposable-passive-prefix-fixture
             manifest = json.loads((package/'manifest.json').read_text())
             archive = manifest['archive_schema']
             owned.append(archive)
-            assert manifest['policy'] == 'tc-selected-native-passive-prefix-repair-v3'
+            assert manifest['policy'] == ('tc-unselected-reviewed-aura-alias-retirement-v4' if aura_aliases else 'tc-selected-native-passive-prefix-repair-v3')
             assert manifest['numeric_fingerprint'] == 'EXACT_FRACTIONAL_V1'
-            assert [p['prefix_restore_anchors'] for p in manifest['native_owner_proofs'][:2]] == [
-                [[16952,[16954]],[16958,[16961]]], [[16952,[16954]],[16958,[16961]]]]
-            assert len(manifest['native_owner_proofs']) == 3
+            if aura_aliases:
+                assert len(manifest['native_owner_proofs']) == 8
+                assert all(p['contract']=='UNSELECTED_REVIEWED_AURA_ALIAS_V1' and not p['selected_spell_groups']
+                           for p in manifest['native_owner_proofs'])
+            else:
+                assert [p['prefix_restore_anchors'] for p in manifest['native_owner_proofs'][:2]] == [
+                    [[16952,[16954]],[16958,[16961]]], [[16952,[16954]],[16958,[16961]]]]
+                assert len(manifest['native_owner_proofs']) == 3
             run('prepare');run('prepare')
             assert checksum() == baseline
             run('apply',code=2)  # No implicit source write grant.
@@ -194,15 +226,20 @@ backup_reference=dedicated-disposable-passive-prefix-fixture
             def direct(extra=''):
                 return subprocess.run(['mysql',*base,'--user='+writer],input=ack+extra+f'CALL `{archive}`.apply_batch();',text=True,capture_output=True)
 
-            for extra in ('',"SET @talent_native_prefix_ack='WRONG';"):
+            ack_variable = 'talent_aura_alias_ack' if aura_aliases else 'talent_native_prefix_ack'
+            error_text = 'reviewed aura alias acknowledgement' if aura_aliases else 'native passive prefix acknowledgement'
+            for extra in ('',f"SET @{ack_variable}='WRONG';"):
                 denied = direct(extra)
-                assert denied.returncode and 'native passive prefix acknowledgement' in denied.stderr,denied.stderr
+                assert denied.returncode and error_text in denied.stderr,denied.stderr
                 assert checksum() == baseline
-            extra = "SET @talent_native_prefix_ack='RETAIN_AUTHORIZED_HIGHER_ANCHORS';"
+            ack_value = 'UNSELECTED_REVIEWED_AURA_ALIASES_ONLY' if aura_aliases else 'RETAIN_AUTHORIZED_HIGHER_ANCHORS'
+            extra = f"SET @{ack_variable}='{ack_value}';"
+            affected_guid = 8 if aura_aliases else 1
+            affected_spell = 20140 if aura_aliases else 16954
             for update, undo, error in (
-                (f'UPDATE `{source}`.characters SET position_x=0.2 WHERE guid=1',f'UPDATE `{source}`.characters SET position_x=0.1 WHERE guid=1','full-row fingerprint'),
-                (f'UPDATE `{source}`.character_spell SET custom_decimal=0.100002 WHERE guid=1 AND spell=6603',f'UPDATE `{source}`.character_spell SET custom_decimal=0.100001 WHERE guid=1 AND spell=6603','full-row fingerprint'),
-                (f'UPDATE `{source}`.character_spell SET disabled=1 WHERE guid=1 AND spell=16954',f'UPDATE `{source}`.character_spell SET disabled=0 WHERE guid=1 AND spell=16954','full-row fingerprint'),
+                (f'UPDATE `{source}`.characters SET position_x=0.2 WHERE guid={affected_guid}',f'UPDATE `{source}`.characters SET position_x=0.1 WHERE guid={affected_guid}','full-row fingerprint'),
+                (f'UPDATE `{source}`.character_spell SET custom_decimal=0.100002 WHERE guid={affected_guid} AND spell=6603',f'UPDATE `{source}`.character_spell SET custom_decimal=0.100001 WHERE guid={affected_guid} AND spell=6603','full-row fingerprint'),
+                (f'UPDATE `{source}`.character_spell SET disabled=1 WHERE guid={affected_guid} AND spell={affected_spell}',f'UPDATE `{source}`.character_spell SET disabled=0 WHERE guid={affected_guid} AND spell={affected_spell}','full-row fingerprint'),
                 (f'UPDATE `{world}`.spell_dbc SET EffectRealPointsPerLevel1=0.2 WHERE Id=900099',f'UPDATE `{world}`.spell_dbc SET EffectRealPointsPerLevel1=0.1 WHERE Id=900099','world content drift')):
                 sql(update)
                 changed = checksum()
@@ -241,22 +278,29 @@ backup_reference=dedicated-disposable-passive-prefix-fixture
             retained_tables = [t for t in tables if t != f'`{source}`.`character_spell`']
             retained = sql('CHECKSUM TABLE '+','.join(retained_tables)+' EXTENDED;')
             run('apply');run('apply');run('status')
-            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid IN(1,2) AND spell IN(16952,16958);') == '0'
-            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid IN(1,2) AND spell IN(37116,37117,16954,16961,6603);') == '10'
-            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=7 AND spell IN(50096,50108,61274,61275,50110,50111,61277,61278);') == '0'
-            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=7 AND spell IN(61156,61154,50109,61276,6603);') == '5'
+            if aura_aliases:
+                assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid IN(8,13) AND spell IN(20140,20256,31869,53648);') == '0'
+                assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid IN(9,10,11,12) AND spell IN(20140,20256,31869,53648);') == '16'
+                assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=11 AND spell IN(63510,63514,63531);') == '3'
+                assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid IN(1,2);') == '14'
+            else:
+                assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid IN(1,2) AND spell IN(16952,16958);') == '0'
+                assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid IN(1,2) AND spell IN(37116,37117,16954,16961,6603);') == '10'
+                assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=7 AND spell IN(50096,50108,61274,61275,50110,50111,61277,61278);') == '0'
+                assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=7 AND spell IN(61156,61154,50109,61276,6603);') == '5'
             assert sql('CHECKSUM TABLE '+','.join(retained_tables)+' EXTENDED;') == retained
             # Retained spell rows equal complete archived originals exactly.
             assert sql(f'''SELECT COUNT(*) FROM `{source}`.character_spell s JOIN `{archive}`.character_spell_before a
                 ON s.guid=a.guid AND s.spell=a.spell WHERE NOT(s.active<=>a.active AND s.disabled<=>a.disabled
                 AND BINARY s.custom_blob<=>BINARY a.custom_blob AND s.custom_decimal<=>a.custom_decimal);''') == '0'
-            sql(f'UPDATE `{source}`.character_spell SET custom_decimal=0.100002 WHERE guid=1 AND spell=6603;')
+            sql(f'UPDATE `{source}`.character_spell SET custom_decimal=0.100002 WHERE guid={affected_guid} AND spell=6603;')
             changed = checksum();run('restore',code=2);assert checksum() == changed
-            sql(f'UPDATE `{source}`.character_spell SET custom_decimal=0.100001 WHERE guid=1 AND spell=6603;')
+            sql(f'UPDATE `{source}`.character_spell SET custom_decimal=0.100001 WHERE guid={affected_guid} AND spell=6603;')
             run('restore');run('restore');assert checksum() == baseline
             run('apply',code=2)
             passed('committed apply/rerun, retained higher ranks and both talent builds/skills/worlds/unrelated state preserved; guarded exact full custom restore and rerun')
-        print(f'MySQL {version}: {len(checks)} native passive prefix check groups PASS; native gameplay NOT TESTED.',flush=True)
+        label = 'reviewed aura alias' if aura_aliases else 'native passive prefix'
+        print(f'MySQL {version}: {len(checks)} {label} check groups PASS; native gameplay NOT TESTED.',flush=True)
     finally:
         if worker is not None and worker.poll() is None:
             worker.terminate();worker.wait()
@@ -267,4 +311,4 @@ backup_reference=dedicated-disposable-passive-prefix-fixture
 
 
 if __name__ == '__main__':
-    main()
+    main(aura_aliases='--aura-aliases' in sys.argv[1:])

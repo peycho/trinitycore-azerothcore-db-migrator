@@ -6,6 +6,199 @@ in **both** specs as authoritative. It can archive/remove conflicting spell rows
 history policies retain their original restrictions. Use only on a stopped,
 backed-up preparation copy; no staff exemption or migration bypass is introduced.
 
+## Opt-in selected direct passive ranks
+
+`tc-selected-direct-passive-authority-v1` corrects a saved direct passive rank
+that disagrees with the character's selected lower talent. It covers only
+Improved Charge, Deflection, Divine Intellect, Improved Vampiric Embrace and
+Blade Barrier, using verified DBC rank order and matching effective TC/AC
+mechanics. For example, Divine Intellect `20209` is rank 4 and `20208` is rank 5;
+numeric spell ID order is never used as rank order.
+
+```bash
+python3 console plan talent-ownership --migration-inspection latest --selected-direct-passives --preview
+python3 console plan talent-ownership --migration-inspection INSPECTION_ID --selected-direct-passives --expect-rows SELECTED_ROWS
+```
+
+Use the current inspection and the preview's `selected_rows`, then the normal
+prepare/status/review/apply/status workflow below. Fresh imports get fresh
+sessions, inspections and calculated selections, not old GUID lists or counts.
+Review `selected-passive-review.json`, `selected-rows.tsv`,
+`selected-passive-native-proof.json` and every deferred reason.
+
+Every retired row must be an enabled higher **direct** passive rank, unselected
+in both specs. The active spec must select a verified lower rank of that same
+talent. Both saved builds and their ranks remain unchanged; any selected rank
+already stored must have consistent flags. Talent prerequisites are checked.
+Non-passive talents, learned children, scripts, independent/default/skill-reward
+routes, malformed or mismatching metadata, foreign classes, online characters,
+invalid selections and pending native resets defer. Earlier ownership policies
+keep their existing anchor requirements.
+
+This deliberately corrects the passive effect to the selected rank. TC does
+**not** recursively restore lower direct talent ranks, and its talent loader
+records ownership without casting a missing selected spell. AC's protected
+`_LoadTalents -> addTalent -> _addTalentAurasAndSpells` path casts the exact
+active selected passive, subject to native stance/state gates; it does not add
+a persistent spellbook row or a trainable higher rank. Other specs keep their
+own selected effects. No SQL spell insertion, flag rewrite, talent/skill/cap,
+profession-slot or login-flag change occurs. Keep TC stopped between this repair
+and migration: the prepared source is not a repaired running TC realm.
+
+Both read-only worlds, DBC directories and reviewed core source directories
+are required. Explicitly configure TC `PlayerStart.AllSpells=0` and AC
+`PlayerStart.CustomSpells=0` through the existing preparation configuration
+assertions. Do not assume the target setting merely from an expected default.
+The existing two-world archive transaction protects complete custom originals,
+exact fractional fingerprints, full captured scope, metadata/layout/code and
+expected results. Apply/checkpoint commit together; interruption rolls back;
+reruns verify committed state. Exact restore refuses later drift. The source
+writer needs the existing explicit `INSERT, DELETE` privileges on
+`character_spell`; no grants are added automatically. Preserve prior toolkits
+for prior archives and restore later batches first.
+
+The console supplies acknowledgements. Direct SQL additionally needs:
+
+```sql
+SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';
+SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';
+SET @direct_passive_ack='SELECTED_LOWER_DIRECT_PASSIVES_AUTHORITATIVE';
+SET @eligibility_tc_all_spells=0;
+SET @eligibility_ac_custom_spells=0;
+```
+
+Review codes are stable report values:
+
+| Code | Meaning |
+| --- | --- |
+| `DEFER_SELECTED_DIRECT_PASSIVE_CONTRACT` | Outside the five exact contracts, a retired rank is selected in either spec, its flags are unsupported, or the verified lower active selection/paired metadata is absent. Do not infer a replacement. |
+| `DEFER_SELECTED_DIRECT_PREREQUISITE` | A selected talent prerequisite is missing or insufficient in that same group. No prerequisite or talent points are granted. |
+| `DIRECT_PASSIVE_ACK_INVALID` | The console's sealed authority acknowledgement differs. Review the package rather than bypassing it. |
+| `DIRECT_PASSIVE_POLICY_DRIFT` | Selector, ownership consumer or acknowledgement changed since planning. Use the retained original toolkit for that archive, or generate a new candidate. |
+
+No core pins, protected manifests, migration policy or v1 profile change for
+this preparation policy. Protected consumer tests use mocked catalogs/state;
+full gameplay stays **NOT TESTED** and release approval **UNREVIEWED**. Staging
+must check the exact selected passive effects in each spec, native stance gates,
+save/relog/restart, points, professions and skills.
+
+## Opt-in already-known selected passive ranks (v5)
+
+`tc-selected-known-passive-rank-rekey-v5` addresses a different state: the
+active selected talent has an enabled higher passive child stored, but its
+correct lower child is absent from persistence. TC already reconstructs that
+lower rank when loading the higher row. Deleting the higher row alone would
+remove the source anchor. This policy updates its `spell` key to the exact
+selected **lower** child instead.
+
+Only the existing Primal Fury, Will of the Necropolis, On a Pale Horse and
+Blood Gorged contracts qualify. Each chain must have exactly one enabled
+`active=1, disabled=0` child anchor, an absent destination that is a verified
+strict predecessor, and the active selected parent already enabled in the
+spellbook. Parents alone never justify a missing child. Both selected builds
+remain unchanged, including a higher rank selected in the inactive spec; native
+AC activation restores that build's exact children. No direct talent rank,
+higher child, recipe or unrelated spell is inferred.
+
+```bash
+python3 console plan talent-ownership --migration-inspection latest --native-passive-rekey --preview
+python3 console plan talent-ownership --migration-inspection INSPECTION_ID --native-passive-rekey --expect-rows SELECTED_ROWS
+```
+
+These commands use the same sealed inspection and prepare/status/review/apply/
+status workflow as other ownership policies. `--expect-rows` is the preview's
+`selected_rows`; it counts **key changes**, not deletions. Review
+`spell-rekeys.tsv` and `ownership-native-proof.json`: each old anchor, known
+predecessors, active selected owner, destination, both selections and retained
+flags are recorded. Missing/disabled/inactive anchors, multiple stored children
+in a chain, destination collisions, unsupported metadata/routes, invalid builds,
+online characters and pending resets defer the entire family. Earlier modes
+retain their exclusions.
+
+The source `character_spell` table must contain exactly the stock four columns.
+Custom spell-specific columns are blocked rather than moved to a different
+spell ID without a reviewed interpretation. Custom fields on other archived
+tables remain preserved and fingerprinted. SQL updates only `spell`; row counts,
+flags, talent selections, spec count, skills/caps, profession slots, login flags
+and unrelated data remain unchanged. Unsupported higher spell availability is
+retired deliberately; the selected lower child was already known before repair.
+
+Preparation archives all affected originals. Apply and its checkpoint commit
+in one transaction. Expected mappings, complete expected rows, source/world
+content and layout, DBC/core/selector hashes and fractional values are guarded.
+Reruns verify the committed result. Restore updates each new key back to its
+original key and requires the complete affected result to remain unchanged.
+Keep the original toolkit for restoration; restore later batches first.
+
+The source writer needs only this additional column privilege for this policy;
+substitute its actual account and schema, using a database administrator:
+
+```sql
+GRANT UPDATE (`spell`) ON `preparation_characters`.`character_spell` TO 'cleanup'@'localhost';
+```
+
+No source grant is added automatically. The console supplies acknowledgements;
+direct SQL also requires:
+
+```sql
+SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';
+SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';
+SET @talent_native_rekey_ack='ONLY_ALREADY_KNOWN_SELECTED_LOWER_PASSIVES';
+```
+
+Fresh imports use new sessions and calculated selections/counts, never old
+mapping files or approvals. This policy does not change the core pins, semantic
+manifests, migration rejection rules or **UNREVIEWED** release status. Native
+consumer tests use mocked catalogs/state; gameplay remains **NOT TESTED**.
+
+## Opt-in reviewed paladin area-aura aliases (v4)
+
+`tc-unselected-reviewed-aura-alias-retirement-v4` retires isolated, unselected
+talent history for Improved Devotion Aura, Improved Concentration Aura,
+Sanctified Retribution and Swift Retribution. It explicitly permits enabled-row
+retirement under the existing selected-talents-authoritative choice. Neither
+specialization may select any rank in the family. Earlier modes keep their
+script-alias exclusions.
+
+These four stock script names are registered aliases of the protected
+`spell_pal_improved_aura` class, with specific constructor arguments. They are
+not missing script implementations. The exact registration, enum/helper ID and
+protected `ScriptMgr.h` constructor-forwarding consumer are checked. Its area
+aura helpers must match the reviewed effect/target/aura mechanics, be absent
+from the stored spellbook and have no learning, skill, script or ownership
+routes. Unknown aliases, selected families, modified mechanics, independent
+routes and the usual pending-reset/online/skill/default protections still defer.
+
+```bash
+python3 console plan talent-ownership --migration-inspection latest --reviewed-aura-aliases --preview
+python3 console plan talent-ownership --migration-inspection INSPECTION_ID --reviewed-aura-aliases --expect-rows SELECTED_ROWS
+```
+
+Use the normal prepare/status/review/apply/status sequence below. Inspect
+`ownership-native-proof.json`: `script_alias`, `implementation`,
+`constructor_argument`, `area_aura_helper`, empty selected ownership and exact
+retained flags explain every accepted family. SQL inserts no spells, rewrites
+no flags and preserves all `character_talent` rows in both specs, skills/caps,
+profession slots, character/login state and unrelated data. Complete custom
+originals, exact fractional source/world hashes, DBC/code/layout guards, atomic
+apply/checkpoint, interrupted rollback, reruns and exact restoration apply.
+
+The console supplies acknowledgements. Direct SQL additionally requires:
+
+```sql
+SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';
+SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';
+SET @talent_aura_alias_ack='UNSELECTED_REVIEWED_AURA_ALIASES_ONLY';
+```
+
+Fresh imports need new sessions and newly generated selections/counts. After
+source edits, capture fresh evidence locally before planning; offline derived
+evidence is not a substitute for the live planning guard. No exported bundle is
+required after every known batch during development. Preserve earlier toolkits
+for their exact restores. Core pins, manifests, metadata profile, migration
+policy and **UNREVIEWED** approval remain unchanged. Native factory/callback
+tests use recording sinks; full gameplay is **NOT TESTED**.
+
 ## Opt-in retained native passive prefixes (v3)
 
 `tc-selected-native-passive-prefix-repair-v3` addresses disabled lower passive

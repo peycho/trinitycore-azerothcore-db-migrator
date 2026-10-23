@@ -68,9 +68,9 @@ struct Rows{
 };
 using PreparedQueryResult=Rows;
 struct Player{
- std::set<uint32> known;std::vector<uint32> cast,added;
- bool AddSpell(uint32 spellId,bool,bool,bool,bool disabled,bool loading=false){
-  known.insert(spellId);if(disabled)return false;
+ std::set<uint32> known;std::vector<uint32> cast,added;std::map<uint32,bool> activeFlags;
+ bool AddSpell(uint32 spellId,bool active,bool,bool,bool disabled,bool loading=false){
+  activeFlags[spellId]=active;known.insert(spellId);if(disabled)return false;
   auto spellInfo=sSpellMgr->GetSpellInfo(spellId);
   @CAST_GATE@
   return true;
@@ -100,6 +100,14 @@ int main(){
   assert(activation.cast==std::vector<uint32>{parent});
   Player target;target._addTalentAurasAndSpells(parent);
   assert(target.added==std::vector<uint32>{child});
+ }
+ // Initial TC passive casts do not depend on the stored client-active flag.
+ for(uint32 child:{16952,16954,16958,16961,52284,52285,52286,51969,51970,51983,51986,
+                   50096,50108,50109,50110,50111,61274,61275,61276,61277,61278}){
+  manager.spells[child].passive=true;manager.spells[child].talent=false;
+  Player passive;Rows row;row.data.push_back({Field{child},Field{0},Field{0}});passive._LoadSpells(row);
+  assert(!passive.activeFlags.at(child)&&passive.cast==std::vector<uint32>{child});
+  Player disabled;row.index=0;row.data[0][2]={1};disabled._LoadSpells(row);assert(disabled.cast.empty());
  }
  std::cout<<"PASS: protected TC _LoadSpells uses loading=true and does not recast non-passive learn-effect talents; retained child anchors are necessary.\n";
  std::cout<<"PASS: protected normal TC talent cast gate and AC exact temporary-child consumer; catalogs/effects/state sinks mocked, gameplay NOT TESTED.\n";

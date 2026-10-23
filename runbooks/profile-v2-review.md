@@ -1,5 +1,61 @@
 # Profile v2 review and acceptance record
 
+The separate `tc-selected-direct-passive-authority-v1` preparation policy
+retires only unselected higher direct passive ranks in five verified talent
+families. Existing lower selected ranks in both specs remain authoritative.
+It explicitly relies on AC's exact selected passive restoration, not TC direct
+rank recursion. Both effective worlds/DBC, full originals and numeric hashes,
+atomic deletion/checkpoint and exact inverse are guarded. No core pin, protected
+manifest, v1 profile or spell-state-v14 change is introduced. See the
+[workflow](talent-ownership-repair.md#opt-in-selected-direct-passive-ranks).
+Native consumers use mocked state; gameplay remains NOT TESTED and approval
+UNREVIEWED.
+
+Spell-state-v14 recognizes only stored inactive/non-disabled exact hidden passive
+children selected in the active spec under the four existing native contracts:
+TC's initial passive-cast branch ignores the client active flag, while AC's exact
+temporary child preserves the authorized aura. Ordinary, disabled, unowned and
+profession states retain their blockers. Provenance retains original flags and
+the inactive-source-passive proof. Both directions and persistence representation
+remain subject to semantic validation; fresh target/control schemas are required.
+
+The separate `tc-inactive-legacy-bloodthirst-retirement-v1` preparation catalog
+archives only inactive old Bloodthirst rows while keeping an existing active
+catalog spell and every talent/skill/flag unchanged. It deliberately discards
+unavailable known history, does not infer a rank chain or grant any spell, and
+requires explicit opt-in, both-world/asset guards and an exact inverse. See the
+[workflow](inactive-legacy-spells.md). Other inactive states remain blocked.
+
+Both protected `SpellHandler.cpp` consumers are now included: 101 TC / 106 AC
+semantic inputs. Their content matches TC `92127cd...`, AC pin `1cd97629...`,
+staging `f089543d...` and the configured AC `cb3d99cd...`; references are retained,
+not substituted. The v1 profile is unchanged. Native consumer harnesses use
+mocked state/targets/packets and do not approve gameplay. Release approval stays
+**UNREVIEWED**; five staging gameplay gates remain **NOT TESTED**.
+
+The separate `tc-selected-known-passive-rank-rekey-v5` source preparation
+policy uses the existing four native passive contracts. It changes enabled
+higher child keys only to already-known selected lower ranks, with existing
+parent and predecessor evidence; it does not expand direct talent ranks or
+raise trained ranks. Stock spell-table columns, full state/metadata guards and
+an exact inverse are required. Core pins, protected manifests, migration policy
+and **UNREVIEWED** approval are unchanged. Validation used TC `92127cd...`
+and the configured AC `cb3d99cd...`; all protected content was rechecked against
+AC pin `1cd97629...` and staging reference `f089543d...`, without substituting
+revisions. See the
+[v5 workflow](talent-ownership-repair.md#opt-in-already-known-selected-passive-ranks-v5).
+
+The separate `tc-unselected-reviewed-aura-alias-retirement-v4` preparation
+contract recognizes only four exact paladin alias registrations of the protected
+area-aura handler. Specific constructor/helper metadata and absent stored helper
+rows are required; selected talents, independent/skill routes and unknown
+scripts remain protected. Complete originals, strong hashes, an extra
+acknowledgement and atomic apply/exact restore apply. The already protected
+TC `spell_paladin.cpp` and `ScriptMgr.h` cover the implementation and constructor
+forwarding; no pins, 100 TC / 105 AC manifests, metadata, v1 profile or v13
+migration changes are introduced. Full gameplay stays NOT TESTED and approval
+UNREVIEWED; see the [v4 workflow](talent-ownership-repair.md#opt-in-reviewed-paladin-area-aura-aliases-v4).
+
 The opt-in `tc-selected-native-passive-prefix-repair-v3` preparation policy
 retires disabled lower passive rows only when retained enabled authorized higher
 anchors prove TC predecessor reconstruction. Stale unowned higher children in

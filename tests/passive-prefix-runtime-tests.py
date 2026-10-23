@@ -61,7 +61,7 @@ struct Player {
 };
 int main(){
  std::vector<std::vector<uint32>> chains={{16958,16961},{16952,16954},{52284,52285,52286},
-  {51969,51983,51986},{50096,50108,50109,50110,50111},{61274,61275,61276,61277,61278}};
+  {51969,51970},{51983,51986},{50096,50108,50109,50110,50111},{61274,61275,61276,61277,61278}};
  for(auto const& chain:chains){
   manager.previous.clear();for(size_t i=1;i<chain.size();++i)manager.previous[chain[i]]=chain[i-1];
   // The reviewed repair retains exact enabled higher anchors. No child is
@@ -73,6 +73,17 @@ int main(){
    for(auto id:chain){assert(!player.known[id].disabled);assert(player.known[id].active==active);
     assert(player.known[id].dependent==(id!=chain.back()));}
    assert(!player.known.count(chain.back()+100000));
+  }
+  // v5 rekeys an enabled stale higher child to a lower selected child which
+  // was ALREADY known through this very recursion, without recasting a talent.
+  Player old;Rows before;before.data.push_back({Field{chain.back()},Field{1},Field{0}});
+  old._LoadSpells(before);
+  for(size_t selected=0;selected+1<chain.size();++selected){
+   Player repaired;Rows after;after.data.push_back({Field{chain[selected]},Field{1},Field{0}});
+   repaired._LoadSpells(after);
+   assert(repaired.known.size()==selected+1);
+   for(auto const& [id,flags]:repaired.known){assert(old.known.count(id));assert(!flags.disabled);}
+   for(size_t i=selected+1;i<chain.size();++i)assert(!repaired.known.count(chain[i]));
   }
   // Remaining explicit enabled anchors produce the same known prefix in
   // either order, including overlapping derivations.

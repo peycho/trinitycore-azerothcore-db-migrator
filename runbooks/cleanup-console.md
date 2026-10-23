@@ -203,6 +203,39 @@ not detected as a replay of the earlier audit. No profile approval changes.
 
 ## Review a saved migration blocker report
 
+[`inactive-legacy-spells`](inactive-legacy-spells.md) is a separate opt-in policy
+for unavailable old Bloodthirst book rows. It archives only exact inactive/
+non-disabled catalog members, keeps existing active members and current talent
+23881, and changes no skills or builds. No legacy rank links or new grants are
+inferred. It deliberately discards unavailable known history, so review its
+native proofs and exact selection before apply. Other inactive states defer.
+
+The separate
+[`talent-ownership --selected-direct-passives`](talent-ownership-repair.md#opt-in-selected-direct-passive-ranks)
+retires only unselected higher direct passive ranks in five verified families.
+Existing lower selected talents are authoritative; AC restores their exact
+active passive auras. TC does not reconstruct these direct lower ranks. This
+changes incorrect passive effects deliberately while preserving both builds,
+skills, professions and flags. Both effective worlds/DBC and explicit native
+custom-start-off settings are required. Pending resets remain deferred. Use
+`--preview` and its exact `selected_rows`; preparation, atomic apply and exact
+restore use the existing two-world archive workflow.
+
+[`talent-ownership --native-passive-rekey` v5 policy](talent-ownership-repair.md#opt-in-already-known-selected-passive-ranks-v5)
+updates conflicting enabled passive child keys to selected lower ranks already
+known through verified TC predecessor recursion. Both builds and skills remain
+unchanged. It requires one enabled anchor per reviewed chain, an absent lower
+destination and stock spell-table columns. Preview first; review `spell-rekeys.tsv`
+and the native proofs. This changes keys rather than deleting rows and needs
+`UPDATE(spell)` for apply and inverse restore.
+
+The opt-in
+[`talent-ownership --reviewed-aura-aliases` v4 policy](talent-ownership-repair.md#opt-in-reviewed-paladin-area-aura-aliases-v4)
+can retire isolated unselected paladin area-aura talent history under four exact
+protected alias/helper contracts, including enabled rows. Both-spec ownership,
+skills/caps and unrelated state remain preserved; unknown scripts and selected
+families still defer. Preview and review its native proofs before any apply.
+
 The opt-in
 [`talent-ownership --native-passive-prefixes` v3 policy](talent-ownership-repair.md#opt-in-retained-native-passive-prefixes-v3)
 retires disabled passive predecessors only when retained enabled higher anchors
@@ -1208,6 +1241,13 @@ archives applicable to a newly imported database. Never edit current.json or
 archive metadata to force a replay.
 
 ## Repeat after a fresh database import
+
+For the complete preparation-to-cutover sequence, see
+[Repeat the complete preparation and migration](source-preparation.md#repeat-the-complete-preparation-and-migration).
+Reuse reviewed policies against fresh findings; old counts and character-specific
+approvals are not a recipe. A combined automatic cleanup/migration orchestrator
+is not implemented yet. The current manual operations below are its building
+blocks and do not establish fresh-snapshot end-to-end acceptance.
 
 1. Preserve the earlier workspace, audits, archives and execution reports.
 2. Restore the verified untouched dump into stopped preparation schemas using

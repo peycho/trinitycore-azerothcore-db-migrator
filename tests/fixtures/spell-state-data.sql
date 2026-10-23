@@ -63,3 +63,10 @@ INSERT INTO character_spell (guid,spell,active,disabled)
 VALUES (132,21084,1,0),(133,20154,1,0),(134,20154,0,0),(134,21084,1,0);
 INSERT INTO character_skills (guid,skill,value,max)
 VALUES (132,594,400,400),(133,594,35,35),(134,594,110,110);
+
+-- Inactive client flags do not suppress initial native TC passive casts.
+INSERT INTO characters(guid,account,name,taximask,race,class,level,talentGroupsCount,activeTalentGroup)
+VALUES(135,1,'DormantDK','',5,6,80,2,0);
+INSERT INTO character_talent(guid,spell,talentGroup) VALUES(135,61154,0),(135,61158,1);
+INSERT INTO character_spell(guid,spell,active,disabled) VALUES(135,61154,1,0),(135,50096,0,0),(135,61274,0,0);
+INSERT INTO character_skills(guid,skill,value,max) VALUES(135,770,400,400),(135,171,320,450);

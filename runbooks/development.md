@@ -6,6 +6,66 @@ production-sized rehearsal or native gameplay acceptance.
 
 ## CI coverage
 
+Inactive passive v14 tests cover all reviewed native families/ranks, both active
+specs, merged ownership, source immutability, original flags/provenance, runtime
+rather than persistent children, reverse canonical state, and negative disabled/
+unowned/ordinary/metadata cases. The protected TC load/cast gate and AC exact
+child/save consumers run with mocked catalogs/state. The main bidirectional
+MySQL rehearsal includes inactive stored children and verifies their committed
+runtime provenance alongside loading interruption/resume/reruns and source/world
+immutability. Core pin/manifest verification includes both spell cast handlers.
+
+Inactive legacy retirement uses a fixed stock Bloodthirst catalog with singleton
+chains. Fast tests reject scripts, skills, trainer/default/teaching/trigger routes,
+paired metadata changes, disabled mixtures, missing active members, invalid
+builds, reset/online/foreign states and wrong counts. Protected TC/AC known/active,
+client-book and cast-gate consumers demonstrate the explicit known-history loss
+and unchanged visible/ordinary castable spells. Native override differences are
+retained, not claimed fixed. The disposable MySQL fixture runs real console
+preview/prepare/apply/status/restore, exact custom archives, full deferred-scope,
+fractional source and both-world drift, ACK/grant guards, late/disconnected
+rollback, reruns and exact inverse. Full gameplay remains NOT TESTED.
+
+```bash
+python3 tests/inactive-legacy-runtime-tests.py "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
+REHEARSAL_MYSQL_PORT=33317 MIGRATOR_DISPOSABLE_MYSQL=1 python3 tests/inactive-legacy-mysql-tests.py
+```
+
+
+Selected passive rekey v5 tests use all four reviewed families and both active
+specs, including a higher inactive selection. The old deletion-only selector is
+a rejecting control. Tests require existing enabled higher child evidence for
+all destinations, forbid higher/direct-talent grants, and defer missing parents,
+destination collisions, multiple/disabled/inactive anchors and unsafe routes.
+Protected TC loader/recursion tests show each lower destination was already
+known; separate AC native tests cover exact selected children on spec activation
+and persistence. Catalogs/state/database sinks are mocked, not full gameplay.
+
+`tests/passive-rekey-mysql-tests.py` exercises the real console on disposable
+MySQL 8.4: stock spell columns, custom-column rejection, exact fractional
+originals, sealed mappings/expected result, deferred-source/metadata drift,
+column-only write grants, direct SQL acknowledgements, destination collisions,
+late/disconnect rollback, committed reruns and guarded exact inverse. Both
+talent builds, skills, professions and unrelated state remain unchanged.
+
+```bash
+REHEARSAL_MYSQL_PORT=33317 MIGRATOR_DISPOSABLE_MYSQL=1 python3 tests/passive-rekey-mysql-tests.py
+```
+
+
+Reviewed area-aura alias ownership v4 uses synthetic stock IDs and DBC metadata.
+Fast tests retain v1 as a failing control and verify literal unique registrations,
+fixed constructor helpers, both-spec selected ownership exclusions, modified or
+stored helpers, skill/script/default/independent routes, counts and immutable
+inputs. Protected TC registration/factory and apply/remove callbacks execute
+against recording sinks, including the shared Sanctified/Swift aura exception.
+The disposable MySQL suite reuses the ownership fixture with
+`python3 tests/passive-prefix-mysql-tests.py --aura-aliases`: exact preview,
+current/deferred-source drift, fractional source/world and layout guards,
+acknowledgements, rollback/disconnect, reruns and full custom-row inverse.
+The v3 mode of that same fixture remains a compatibility regression. Full native
+gameplay, realm-wide preflight and release acceptance remain separate.
+
 Native passive-prefix ownership v3 retains v1 as a rejecting regression control.
 Unit tests cover all four reviewed families, both active specs, differing/same
 selected ranks, overlapping prefixes, disabled/missing/unauthorized anchors,
@@ -729,3 +789,21 @@ Protected loader/disabled/dependent-loop controls are in
 adds exact Spirit/Prayer and Nature's Grasp requirements with protected-source
 hash checks. Consumer mocks and disposable tests remain separate from the five
 native gameplay acceptance gates.
+
+### Selected direct passive authority tests
+
+`tests/selected-passive-tests.py` exercises all five stock talent families,
+both specs, merged/different selections, Divine Intellect DBC rank order,
+prerequisites, old blocker regression, reverse native representation and unsafe
+flags/metadata/routes. `tests/selected-passive-runtime-tests.py` compiles the
+protected AC talent loader, `addTalent` and passive consumer with mocked state.
+Exact selected auras, native stance gates and no spellbook/temporary-child
+insertion are checked; full spec dispatch/gameplay is not simulated.
+
+`tests/selected-passive-mysql-tests.py` uses the dedicated MySQL 8.4 fixture
+endpoint. It checks real console preview/plan/prepare/apply/status/restore,
+custom binary/decimal originals, deferred full-scope drift, both-world and
+trainer fingerprints, missing grants/acknowledgements, killed connections and
+late checkpoint failure, reruns and exact restoration. Retained snapshots stay
+read-only. The full preparation-on-fresh-snapshot and staging gameplay gates
+remain separate; neither these tests nor a candidate batch approve release.

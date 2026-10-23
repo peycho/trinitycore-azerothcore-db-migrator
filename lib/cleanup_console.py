@@ -55,7 +55,7 @@ def toolkit_hashes():
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
            'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','lib/cleanup_talent_relations.py','lib/cleanup_selected_rank_history.py','lib/cleanup_migration_evidence.py','lib/cleanup_trained_history.py','tools/disabled-talent-history.sql.in',
-           'lib/cleanup_native_skills.py','lib/cleanup_ordinary_history.py','lib/cleanup_death_coil.py','lib/cleanup_ownership.py','lib/cleanup_eligibility.py','lib/cleanup_pet_teaching.py','tools/pet-teaching-repair.sql.in','tools/spell-eligibility-repair.sql.in','tools/talent-ownership-repair.sql.in','tools/native-skill-repair.sql.in','tools/native-generic-repair.sql.in')
+           'lib/cleanup_native_skills.py','lib/cleanup_ordinary_history.py','lib/cleanup_death_coil.py','lib/cleanup_ownership.py','lib/cleanup_eligibility.py','lib/cleanup_pet_teaching.py','tools/pet-teaching-repair.sql.in','tools/spell-eligibility-repair.sql.in','tools/talent-ownership-repair.sql.in','tools/passive-rekey-repair.sql.in','lib/cleanup_selected_passive.py','lib/cleanup_inactive_legacy.py','tools/inactive-legacy-repair.sql.in','tools/native-skill-repair.sql.in','tools/native-generic-repair.sql.in')
     hashes={}
     for name in names:
         path=ROOT/name
@@ -607,7 +607,8 @@ def command_action(settings, work, args):
     if manifest.get('policy') == DEATH_COIL_POLICY:
         configuration_ack += 'SET @ordinary_history_native_base=47541;\n'
     from cleanup_ownership import (POLICIES as OWNERSHIP_POLICIES, ACK as OWNERSHIP_ACK,
-                                   FOREIGN_POLICY, FOREIGN_ACK, PREFIX_POLICY, PREFIX_ACK)
+                                   FOREIGN_POLICY, FOREIGN_ACK, PREFIX_POLICY, PREFIX_ACK,
+                                   AURA_ALIAS_POLICY, AURA_ALIAS_ACK, REKEY_POLICY, REKEY_ACK)
     if manifest.get('policy') in OWNERSHIP_POLICIES:
         if manifest.get('ownership_ack') != OWNERSHIP_ACK:
             fail('OWNERSHIP_ACK_INVALID','Ownership policy acknowledgement differs from the reviewed candidate')
@@ -620,6 +621,14 @@ def command_action(settings, work, args):
         if manifest.get('native_prefix_ack') != PREFIX_ACK:
             fail('OWNERSHIP_PREFIX_ACK_INVALID','Native-prefix acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @talent_native_prefix_ack='RETAIN_AUTHORIZED_HIGHER_ANCHORS';\n"
+    if manifest.get('policy') == REKEY_POLICY:
+        if manifest.get('native_rekey_ack') != REKEY_ACK:
+            fail('OWNERSHIP_REKEY_ACK_INVALID','Already-known lower passive acknowledgement differs')
+        configuration_ack += "SET @talent_native_rekey_ack='ONLY_ALREADY_KNOWN_SELECTED_LOWER_PASSIVES';\n"
+    if manifest.get('policy') == AURA_ALIAS_POLICY:
+        if manifest.get('aura_alias_ack') != AURA_ALIAS_ACK:
+            fail('OWNERSHIP_ALIAS_ACK_INVALID','Aura-alias acknowledgement differs from the reviewed candidate')
+        configuration_ack += "SET @talent_aura_alias_ack='UNSELECTED_REVIEWED_AURA_ALIASES_ONLY';\n"
     from cleanup_eligibility import POLICIES as ELIGIBILITY_POLICIES, ACK as ELIGIBILITY_ACK, ABSENT_TEACHER_POLICY, ABSENT_TEACHER_ACK
     if manifest.get('policy') in ELIGIBILITY_POLICIES:
         if manifest.get('eligibility_ack') != ELIGIBILITY_ACK:
@@ -630,6 +639,19 @@ def command_action(settings, work, args):
         if manifest.get('absent_teacher_ack') != ABSENT_TEACHER_ACK:
             fail('ABSENT_TEACHER_ACK_INVALID','Absent-teacher acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @eligibility_absent_teachers_ack='VERIFIED_TEACHERS_ABSENT';\n"
+    from cleanup_selected_passive import POLICY as DIRECT_PASSIVE_POLICY, ACK as DIRECT_PASSIVE_ACK
+    if manifest.get('policy') == DIRECT_PASSIVE_POLICY:
+        if manifest.get('direct_passive_ack') != DIRECT_PASSIVE_ACK or manifest.get('ownership_ack') != OWNERSHIP_ACK:
+            fail('DIRECT_PASSIVE_ACK_INVALID','Direct passive authority acknowledgement differs')
+        configuration_ack += "SET @direct_passive_ack='SELECTED_LOWER_DIRECT_PASSIVES_AUTHORITATIVE';\n"
+        configuration_ack += "SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';\n"
+        configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
+    from cleanup_inactive_legacy import POLICY as INACTIVE_LEGACY_POLICY, ACK as INACTIVE_LEGACY_ACK
+    if manifest.get('policy') == INACTIVE_LEGACY_POLICY:
+        if manifest.get('inactive_legacy_ack') != INACTIVE_LEGACY_ACK:
+            fail('INACTIVE_LEGACY_ACK_INVALID','Inactive legacy acknowledgement differs')
+        configuration_ack += "SET @inactive_legacy_ack='RETIRE_ONLY_INACTIVE_LEGACY_BLOODTHIRST';\n"
+        configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
     from cleanup_pet_teaching import POLICIES as PET_TEACHING_POLICIES, ACK as PET_TEACHING_ACK, COWER_POLICY, COWER_ACK
     if manifest.get('policy') in PET_TEACHING_POLICIES:
         if manifest.get('pet_teaching_ack') != PET_TEACHING_ACK:
@@ -643,7 +665,9 @@ def command_action(settings, work, args):
     try:
         result=settings.sql(f"SET @{ack}='STOPPED_PREPARATION_COPY_ONLY';\n"+configuration_ack+scripts[action],'write',headers=True)
     except CleanupError as error:
-        if manifest.get('policy') in POLICIES and any(
+        if manifest.get('policy') == REKEY_POLICY and 'UPDATE command denied' in str(error):
+            error.hint=('Passive rekey needs UPDATE(spell) on character_spell for apply and exact inverse restore. Source grants were not added automatically; see runbooks/talent-ownership-repair.md.')
+        if manifest.get('policy') in POLICIES and manifest.get('policy') != REKEY_POLICY and any(
                 text in str(error) for text in ('DELETE command denied','INSERT command denied')):
             error.hint=('This history policy needs DELETE on character_spell for apply and INSERT for exact restore. '
                 'Have the preparation administrator grant only those source privileges to the configured writer, then retry; no source grants were added automatically.')
@@ -758,6 +782,9 @@ def parser():
     ownership_policy=ownership.add_mutually_exclusive_group()
     ownership_policy.add_argument('--foreign-class-families',action='store_true',help='Separate v2: retire only isolated unselected foreign-class talent families; retain shared skill spells and selected ownership')
     ownership_policy.add_argument('--native-passive-prefixes',action='store_true',help='Separate v3: retire disabled passive predecessors only with retained enabled authorized higher anchors; no missing child grants or talent/skill changes')
+    ownership_policy.add_argument('--selected-direct-passives',action='store_true',help='Separate policy: retire unselected higher direct passive ranks; restore existing lower selected auras through native AC talent loading; both worlds required')
+    ownership_policy.add_argument('--native-passive-rekey',action='store_true',help='Separate v5: rekey conflicting enabled passive child anchors downward to already-known active selected ranks; stock spell columns only')
+    ownership_policy.add_argument('--reviewed-aura-aliases',action='store_true',help='Separate v4: retire isolated unselected paladin aura talent history under exact protected registration/helper contracts')
     ownership_review=ownership.add_mutually_exclusive_group(required=True)
     ownership_review.add_argument('--preview',action='store_true',help='Read-only complete captured-scope review; no active batch or SQL package')
     ownership_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows printed by this policy preview')
@@ -775,6 +802,12 @@ def parser():
     eligibility_review=eligibility.add_mutually_exclusive_group(required=True)
     eligibility_review.add_argument('--preview',action='store_true',help='Read-only review; no SQL package or active batch')
     eligibility_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows from this policy preview')
+    legacy=types.add_parser('inactive-legacy-spells',help='Separate opt-in retirement of uncastable inactive legacy Bloodthirst book history; no active spell or talent changes')
+    legacy.set_defaults(inactive_legacy=True,inspection=None,audit=None)
+    legacy.add_argument('--migration-inspection',required=True,help='Sealed migration-blocker inspection ID or latest')
+    legacy_review=legacy.add_mutually_exclusive_group(required=True)
+    legacy_review.add_argument('--preview',action='store_true',help='Read-only review; no SQL package or active batch')
+    legacy_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows from this policy preview')
     reset=types.add_parser('reset-talents',help='One character: archive unavailable group 1 and queue free native reset')
     reset.add_argument('--guid',type=int,required=True)
     active_reset=types.add_parser('reset-active-talents',help='Queue one native active reset; inactive builds must be empty; archive explicit foreign talent 12284')

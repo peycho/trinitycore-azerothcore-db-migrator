@@ -7,6 +7,41 @@ already accepted player writes requires a separately reviewed repair with its
 own backup, ownership and rollback evidence. No core patch or CleanCharacterDB
 setting is used. The v2 profile remains **UNREVIEWED**.
 
+## Inactive selected hidden passive children (spell-state-v14)
+
+TC's initial `AddSpell` passive-cast branch does not depend on the client
+`active` flag. A stored `active=0,disabled=0` hidden passive child can therefore
+already apply its aura during source loading. Matching stance/aura-state checks
+remain native in both cores; this does not force an aura past those checks. AC's reviewed selected-talent
+loader preserves that exact child's aura in the authorized active spec without
+a persistent spell row. V14 accepts this narrow representation for the existing
+four native passive contracts, retaining original flags in provenance and
+recording `authorization.native_passive_rank.inactive_source_passive_cast`.
+
+The child must actually be stored, match a reviewed passive/hidden contract in
+both catalogs and be an exact child of a selected talent in the active spec.
+No missing child is inferred from an inactive row, no direct talent rank is
+expanded, and no spell is persisted in an unauthorized spec. Disabled, unowned,
+ordinary, profession and unsupported inactive states keep their rejection rules.
+Source spells/talents/skills, skill values/caps and profession slots are unchanged.
+
+Reverse conversion retains its canonical active exact selected child and verified
+TC prefix. It preserves native aura/spec behavior, rather than reproducing an
+irrelevant hidden-child client flag byte for byte. Forward/reverse tests verify
+this result. Normal spellbook/casting flag semantics are tested separately; a
+non-passive inactive spell does not gain this exception.
+
+The policy digest and two protected `SpellHandler.cpp` consumers change the
+checkpoint identity. Use a fresh migration run with new target/control schemas,
+not v13 resume checkpoints. TC `92127cd...`, AC pin `1cd97629...`, staging
+`f089543d...` and the configured AC `cb3d99cd...` retain the reviewed protected
+content; pins and v1 remain unchanged. Full native gameplay is **NOT TESTED** and
+profile approval stays **UNREVIEWED**.
+
+Separate preparation may explicitly archive only reviewed unavailable legacy
+Bloodthirst history; see [its opt-in policy](inactive-legacy-spells.md). That
+retirement catalog is not a rank chain and does not weaken migration checks.
+
 ## Seal of Righteousness split ranks (spell-state-v13)
 
 TC links `20154 -> 21084`; the reviewed AC world keeps each as a singleton.

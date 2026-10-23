@@ -36,6 +36,14 @@ The source auth and characters databases must be restored production clones
 on the same MySQL server as the targets. Keep the restored sources unchanged
 throughout the run. Stop every core, website job, and other writer using them.
 
+If the clone needs preparation cleanup, complete the
+[fresh-snapshot preparation workflow](source-preparation.md#repeat-the-complete-preparation-and-migration)
+first, then freeze the prepared source for this migration. Reuse reviewed rules,
+not old snapshot-specific batches. The cleanup console and migrator currently
+remain separate tools; a combined automatic end-to-end runner is not yet
+implemented. Final cutover requires a new consistent snapshot after source
+writers stop; progress written to TC after that snapshot is not synchronized.
+
 For `tc-to-ac`, this guide uses the following names:
 
 | Database | Role and starting state |

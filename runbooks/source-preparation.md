@@ -110,7 +110,89 @@ both-spec selections and every enabled row; ambiguous routes and pending resets
 remain deferred. See the [repeatable preview procedure](cleanup-console.md#review-orphaned-disabled-talent-children).
 This is a separately chosen preparation policy, not an automatic migration cleanup.
 
+The separate [selected direct passive authority policy](talent-ownership-repair.md#opt-in-selected-direct-passive-ranks)
+handles reviewed wrong higher passive ranks against lower saved selections.
+It retires only unselected enabled direct ranks, changes no selected ownership,
+and delegates exact effects to AC native talent loading. It never infers TC
+lower direct ranks or restores a missing learned child. Both-world metadata,
+custom-start-off assertions, complete archives, transaction guards and exact
+restoration apply. Fresh snapshots calculate their own selections; pending
+resets and unsupported cases stay deferred.
+
+## Repeat the complete preparation and migration
+
+The deliverable is a repeatable process on a **fresh production snapshot**.
+An old diagnostic snapshot is used to develop and test policies; it is not the
+source for the eventual cutover while production characters keep progressing.
+Reuse reviewed policy rules and their order, not old GUID selections, row
+counts, batch SQL, archive IDs, approvals or migration checkpoints.
+
+For each complete rehearsal:
+
+1. Restore a fresh consistent auth/characters snapshot into separate stopped
+   preparation schemas, with matching read-only TC/AC world and DBC inputs.
+   Retain an untouched baseline and identify its backup in a new cleanup session.
+2. Audit the whole source and derive current cleanup candidates from that
+   snapshot. Apply only the reviewed policy choices, generating and archiving
+   new exact batches with counts calculated from the current data. Previously
+   reviewed individual character resets are exceptions to revalidate, not
+   permission to reset changed characters or newly encountered cases.
+3. Refresh local evidence after each accepted change and continue through the
+   policy sequence until no further approved changes apply. Recalculate later
+   candidates from the updated state. Do not silently accept a deferred category
+   or limit the final run to GUIDs from an old first-failure report. New or changed
+   unsupported states stop the run with a report for review.
+4. Run the final full audit, retain the prepared snapshot and freeze it against
+   further writes. Use that prepared source for a new migration run with fresh
+   target/control schemas. Follow the migration guide's phase order, including
+   `preflight` -> `archive-unsupported` -> `assemble`, then loading, approved target
+   cleanup, semantic validation and reports. If preparation changes the source
+   again, start another migration run rather than resuming old checkpoints.
+5. Validate native gameplay on the private target, including ranks/trainers,
+   casts, both specs, talents/professions/recipes/riding/skills, and persistence
+   after save, relog and restart. Retain the run's complete evidence and rollback
+   material. Database `READY` alone does not complete these acceptance gates.
+
+Production can continue during development and rehearsals. For the **final
+cutover**, stop source writers before taking the final consistent snapshot and
+keep them stopped through preparation, migration and acceptance/cutover. This
+includes auth/account and character writers. Continuing to play on TC after the
+final snapshot would leave that new progress outside the migrated target; this
+toolkit does not implement live delta synchronization. See
+[production cutover](migration-guide.md#production-cutover).
+
+The reviewed ownership policies include a separate
+[already-known passive rekey](talent-ownership-repair.md#opt-in-already-known-selected-passive-ranks-v5)
+for higher passive children that need a selected lower source anchor. Use its
+current preview mappings and inverse, not old GUID lists. Unsupported custom
+spell columns or changed native contracts stop this policy.
+
+The [inactive legacy spell policy](inactive-legacy-spells.md) is a separate
+opt-in step, not a generic inactive-flag reset. Recalculate its exact unavailable
+Bloodthirst history after earlier approved repairs. It keeps active spells and
+builds, records discarded known history and never invents a missing rank chain.
+Ordinary profession states remain blocked for their own review.
+
+Current implementation: the console provides the individual reviewed
+inspection, plan, archive, apply/status and restore operations. The migrator
+provides its separate phased loader and validation. **A single orchestrator
+that applies a reviewed recipe to all current source characters and then runs
+the migration is not implemented yet.** Individual policy tests and offline
+replays are not evidence that this complete fresh-snapshot process has passed.
+The remaining blockers, repeatable orchestration and complete rehearsal remain
+required work; release approval stays **UNREVIEWED**.
+
+During policy development, a verified captured state plus exact confirmed batch
+results can be replayed locally. Label that state as derived evidence rather
+than a fresh server capture. A new operator export is not required after every
+known batch; obtain fresh evidence for unexplained changes and verify the whole
+actual source before the final migration. This development convenience does not
+make the original old dump current or authorize changes on production.
+
 ## Run a standalone read-only audit
+
+For the final fresh-snapshot workflow and its current implementation limits,
+see [Repeat the complete preparation and migration](#repeat-the-complete-preparation-and-migration).
 
 For private reproduction outside your environment, use the separate
 [character snapshot redaction script](sharing-character-snapshot.md).

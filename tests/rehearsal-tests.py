@@ -532,6 +532,10 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     equal(f"SELECT disposition,spec_mask FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=118 AND spell=44440",'RUNTIME\t1')
     equal(f"SELECT disposition,spec_mask FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=118 AND spell=44441",'RUNTIME\t2')
     equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid=110 AND spell=53407',3)
+    equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=135',0)
+    for child in (50096,61274):
+        equal(f"SELECT disposition,spec_mask,JSON_EXTRACT(provenance,'$.original'),JSON_EXTRACT(provenance,'$.authorization.native_passive_rank.inactive_source_passive_cast') FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=135 AND spell={child}",'RUNTIME\t1\t[0, 0]\ttrue')
+    equal(f'SELECT GROUP_CONCAT(CONCAT(spell,":",specMask) ORDER BY spell) FROM `{AC_CHARS}`.character_talent WHERE guid=135','61154:1,61158:2')
     for guid in (123,124):
         equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid={guid}',0)
     for child,mask in [(16958,2),(16952,2),(16961,1),(16954,1)]:
