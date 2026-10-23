@@ -1401,3 +1401,15 @@ casting; both specs/relog; talent/profession/recipe/riding/skill state; and
 save/relog/restart/logs. Gameplay remains **NOT TESTED** and approval **UNREVIEWED**
 until accepted. Core pins, global manifests, metadata and migration reconstruction
 are unchanged.
+
+### Coupled unselected Shaman Dual Wield retirement
+
+`plan talent-ownership --unselected-shaman-dual-wield` is a separate explicit
+skill-changing preparation policy. It retires enabled `674` **and** skill `118`
+only when neither spec selects `30798`, no stored parent or alternate grant route
+exists and the live off-hand slot is empty. Keeping `118` would restore `674`
+at login. Preview with `--migration-inspection latest --preview`; use the returned
+selected pair count for `--expect-rows`, then review the new archived batch.
+Both starting-skill world tables are required. All occupied slots defer; no items
+are moved. Earlier policies still preserve skills. See the [full contract,
+privileges, exact restore and fresh-import sequence](talent-ownership-repair.md#opt-in-unselected-shaman-dual-wield-spell-and-skill).

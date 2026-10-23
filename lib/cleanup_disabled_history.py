@@ -21,10 +21,11 @@ import cleanup_eligibility as eligibility
 import cleanup_pet_teaching as pet_teaching
 import cleanup_inactive_legacy as inactive_legacy
 import cleanup_selected_passive as direct_passive
+import cleanup_shaman_dual_wield as shaman
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
-POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, ordinary_history.TRAINING_POLICY, death_coil.POLICY, *ownership.POLICIES, *eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES)
+POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, ordinary_history.TRAINING_POLICY, death_coil.POLICY, *ownership.POLICIES, *eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -148,7 +149,7 @@ def check_metadata(settings, manifest):
                 or sha(ROOT/'lib/cleanup_active_reset.py') != manifest.get('numeric_reader_sha256')
                 or ordinary_history.configuration_contract(settings,training_prerequisites=True) != manifest.get('configuration_contract')):
             fail('ORDINARY_TRAINING_POLICY_DRIFT','Ordinary training policy, guards, metadata reader or configuration differs; retain original toolkit')
-    if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES):
+    if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES):
         if (manifest.get('numeric_fingerprint') != 'EXACT_FRACTIONAL_V1'
                 or sha(ROOT/'lib/cleanup_active_reset.py') != manifest.get('numeric_reader_sha256')):
             fail('ELIGIBILITY_POLICY_DRIFT','Exact numeric fingerprint contract differs from this candidate')
@@ -160,6 +161,12 @@ def check_metadata(settings, manifest):
         fail('ABSENT_TEACHER_ACK_INVALID','Absent-teacher contract differs from the reviewed batch')
     if manifest.get('policy') in pet_teaching.POLICIES and sha(ROOT/'lib/cleanup_pet_teaching.py') != manifest.get('pet_teaching_reader_sha256'):
         fail('PET_TEACHING_POLICY_DRIFT','Pet-teaching selector differs; retain the original toolkit for restoration')
+    if manifest.get('policy') == shaman.POLICY:
+        if (manifest.get('shaman_ack') != shaman.ACK
+                or sha(ROOT/'lib/cleanup_shaman_dual_wield.py') != manifest.get('shaman_reader_sha256')):
+            fail('SHAMAN_POLICY_DRIFT','Shaman coupled repair contract differs; retain original toolkit')
+        if shaman.defaults(settings) != manifest.get('shaman_default_skills'):
+            fail('SHAMAN_DEFAULT_DRIFT','Native starting-skill metadata changed')
     if manifest.get('policy') == direct_passive.POLICY:
         if (manifest.get('direct_passive_ack') != direct_passive.ACK
                 or sha(ROOT/'lib/cleanup_selected_passive.py') != manifest.get('direct_passive_reader_sha256')
@@ -211,10 +218,10 @@ def check_metadata(settings, manifest):
     for key,entry in manifest.get('core_compatibility',{}).items():
         if settings.compatibility.get(key,{}).get('manifest_sha256') != entry.get('manifest_sha256'):
             fail('CORE_PROFILE_MISMATCH','Core compatibility manifests differ from the reviewed history batch')
-    effective, world = read_world(settings,exact_numeric=manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, ordinary_history.TRAINING_POLICY, ownership.FOREIGN_POLICY, ownership.PREFIX_POLICY, ownership.AURA_ALIAS_POLICY, ownership.REKEY_POLICY, SWITCH_POLICY))
+    effective, world = read_world(settings,exact_numeric=manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, ordinary_history.TRAINING_POLICY, ownership.FOREIGN_POLICY, ownership.PREFIX_POLICY, ownership.AURA_ALIAS_POLICY, ownership.REKEY_POLICY, SWITCH_POLICY))
     if sha_json(world) != manifest.get('world_sha256') or effective.hashes != manifest.get('semantic_dbc_sha256'):
         fail('HISTORY_METADATA_DRIFT','Effective TC world/DBC metadata differs from this reviewed history batch')
-    if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES):
+    if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES):
         target, captured = eligibility.read_target(settings)
         if sha_json(captured) != manifest.get('target_world_sha256') or target.hashes != manifest.get('target_dbc_sha256'):
             fail('ELIGIBILITY_TARGET_DRIFT','Effective AC world/DBC metadata differs from the reviewed candidate')
@@ -341,7 +348,7 @@ def check_sets(meta, source, archive, counts, changed_table='character_spell', *
             if phase == 'archive':
                 query = query.replace(f'`{db}`.`{table}`',f'`{db}`.`{actual_table}`')
             expected = 'expected_snapshot'
-            if phase == 'applied' and table == changed_table:
+            if phase == 'applied' and table in ((changed_table,) if isinstance(changed_table,str) else changed_table):
                 expected = 'expected_after'
             lines.append(f''' IF (SELECT COUNT(*) FROM `{db}`.`{actual_table}` s WHERE s.guid IN (SELECT guid FROM affected))<>
      (SELECT COALESCE(SUM(row_count),0) FROM {expected} WHERE table_name='{table}')
@@ -357,25 +364,29 @@ def check_sets(meta, source, archive, counts, changed_table='character_spell', *
 
 
 def plan_history(settings, work, args, output):
+    shaman_mode = getattr(args,'unselected_shaman_dual_wield',False)
+    shaman_reader = sha(ROOT/'lib/cleanup_shaman_dual_wield.py') if shaman_mode else None
     direct_mode = getattr(args,'selected_direct_passives',False)
     direct_reader = sha(ROOT/'lib/cleanup_selected_passive.py') if direct_mode else None
     direct_ownership_reader = sha(ROOT/'lib/cleanup_ownership.py') if direct_mode else None
     pet_mode = getattr(args,'pet_teaching',False)
     legacy_mode = getattr(args,'inactive_legacy',False)
-    two_world_mode = getattr(args,'spell_eligibility',False) or pet_mode or legacy_mode or direct_mode
+    two_world_mode = getattr(args,'spell_eligibility',False) or pet_mode or legacy_mode or direct_mode or shaman_mode
     legacy_reader = sha(ROOT/'lib/cleanup_inactive_legacy.py') if legacy_mode else None
     pet_reader = sha(ROOT/'lib/cleanup_pet_teaching.py') if pet_mode else None
     reviewed_cower = pet_mode and getattr(args,'reviewed_cower',False)
     absent_teachers = getattr(args,'spell_eligibility',False) and getattr(args,'absent_teachers',False)
     cower_proof = pet_teaching.cower_sources(settings.paths) if reviewed_cower else None
-    native_selector = direct_passive if direct_mode else inactive_legacy if legacy_mode else pet_teaching if pet_mode else eligibility
+    native_selector = shaman if shaman_mode else direct_passive if direct_mode else inactive_legacy if legacy_mode else pet_teaching if pet_mode else eligibility
     eligibility_reader = sha(ROOT/'lib/cleanup_eligibility.py') if two_world_mode else None
-    ownership_mode = getattr(args,'talent_ownership',False) and not direct_mode
+    ownership_mode = getattr(args,'talent_ownership',False) and not (direct_mode or shaman_mode)
     ownership_reader = sha(ROOT/'lib/cleanup_ownership.py') if ownership_mode else None
     foreign_mode = ownership_mode and getattr(args,'foreign_class_families',False)
     prefix_mode = ownership_mode and getattr(args,'native_passive_prefixes',False)
     alias_mode = ownership_mode and getattr(args,'reviewed_aura_aliases',False)
     rekey_mode = ownership_mode and getattr(args,'native_passive_rekey',False)
+    if shaman_mode and not getattr(args,'migration_inspection',None):
+        fail('SHAMAN_INSPECTION_REQUIRED','Coupled Shaman repair requires --migration-inspection')
     if direct_mode and any(getattr(args,key,False)for key in ('foreign_class_families','native_passive_prefixes','reviewed_aura_aliases','native_passive_rekey')):
         fail('HISTORY_POLICY_CONFLICT','Direct passive authority is a separate ownership policy')
     if sum((prefix_mode,foreign_mode,alias_mode,rekey_mode)) > 1:
@@ -455,13 +466,16 @@ def plan_history(settings, work, args, output):
     training_proofs = []
     ownership_native_proofs = []
     rekeys = []
+    if shaman_mode:
+        inventory_meta, offhand_rows = shaman.inventory(settings,context)
+        default_skills = shaman.defaults(settings)
     if trained_mode:
         check_retained_scripts(state,effective)
         relation_rows=context['character_spell']
         if two_world_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=native_selector.select(
                 context,effective,target_effective,args.expect_review_rows,preview=preview,
-                **({'reviewed_cower':True} if reviewed_cower else {'absent_teachers':True} if absent_teachers else {}))
+                **({'offhand':{r[0] for r in offhand_rows},'default_skills':default_skills} if shaman_mode else {'reviewed_cower':True} if reviewed_cower else {'absent_teachers':True} if absent_teachers else {}))
             eligibility_proofs = relation_summary.pop('eligibility_proofs')
         elif ownership_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ownership.select(
@@ -481,8 +495,8 @@ def plan_history(settings, work, args, output):
             selected,excluded,relation_proof,relation_summary,relation_edges=trained_history.select(
                 context,effective,args.expect_review_rows,orphan_children=child_mode,preview=preview)
         if child_mode or ordinary_mode or ownership_mode or two_world_mode:
-            review_name = 'selected-passive-review.json' if direct_mode else 'inactive-legacy-review.json' if legacy_mode else 'pet-teaching-review.json' if pet_mode else 'spell-eligibility-review.json' if two_world_mode else 'talent-ownership-review.json' if ownership_mode else 'ordinary-spell-review.json' if ordinary_mode else 'talent-child-review.json'
-            review_label = 'Selected direct passive' if direct_mode else 'Inactive legacy' if legacy_mode else 'Pet-teaching' if pet_mode else 'Spell-eligibility' if two_world_mode else 'Talent-ownership' if ownership_mode else 'Ordinary-spell' if ordinary_mode else 'Talent-child'
+            review_name = 'shaman-dual-wield-review.json' if shaman_mode else 'selected-passive-review.json' if direct_mode else 'inactive-legacy-review.json' if legacy_mode else 'pet-teaching-review.json' if pet_mode else 'spell-eligibility-review.json' if two_world_mode else 'talent-ownership-review.json' if ownership_mode else 'ordinary-spell-review.json' if ordinary_mode else 'talent-child-review.json'
+            review_label = 'Coupled Shaman spell/skill' if shaman_mode else 'Selected direct passive' if direct_mode else 'Inactive legacy' if legacy_mode else 'Pet-teaching' if pet_mode else 'Spell-eligibility' if two_world_mode else 'Talent-ownership' if ownership_mode else 'Ordinary-spell' if ordinary_mode else 'Talent-child'
             review={'policy':policy,'migration_inspection':path.name,'scope_characters':len(context['characters']),
                     'summary':relation_summary,'selected':selected,'excluded':excluded,
                     'deferred':dict(Counter(row[2] for row in excluded)),
@@ -594,6 +608,9 @@ def plan_history(settings, work, args, output):
         query = aggregate(meta,'character_spell',source,f's.guid IN ({selector})',exact_numeric=True,join=join)
         query = query.replace('s.`spell`',mapped)
     queries.append(('after',f"SELECT JSON_ARRAY('character_spell',guid,n,h) row_value FROM ({query}) a ORDER BY guid"))
+    if shaman_mode:
+        query=aggregate(meta,'character_skills',source,f's.guid IN ({selector}) AND s.skill<>118',exact_numeric=True)
+        queries.append(('after',f"SELECT JSON_ARRAY('character_skills',guid,n,h) row_value FROM ({query}) a ORDER BY guid"))
     # Each digest is bounded per character, not one concatenation of millions
     # of source rows. Counts are checked before any executable package exists.
     original_sql = settings.sql
@@ -620,7 +637,7 @@ def plan_history(settings, work, args, output):
     counts = {table:sum(row[2] for row in cells if row[0]==table) for table in TABLES}
     if counts['characters'] != len(guids) or sum(counts.values())>5_000_000:
         fail('HISTORY_SNAPSHOT_BOUND','Missing affected characters or more than 5000000 archived rows')
-    template = ROOT/('tools/inactive-legacy-repair.sql.in' if legacy_mode else 'tools/pet-teaching-repair.sql.in' if pet_mode else 'tools/spell-eligibility-repair.sql.in' if two_world_mode else
+    template = ROOT/('tools/shaman-dual-wield-repair.sql.in' if shaman_mode else 'tools/inactive-legacy-repair.sql.in' if legacy_mode else 'tools/pet-teaching-repair.sql.in' if pet_mode else 'tools/spell-eligibility-repair.sql.in' if two_world_mode else
                     'tools/passive-rekey-repair.sql.in' if rekey_mode else 'tools/talent-ownership-repair.sql.in' if ownership_mode else 'tools/disabled-talent-history.sql.in')
     batch_inputs = {'policy':policy,'inspection':sha(path/'SHA256SUMS'),'snapshot':cells,'after':after,
                     'selection':selected,'world':world,'meta':meta,'template':sha(template),'id':output.name}
@@ -641,6 +658,8 @@ def plan_history(settings, work, args, output):
         batch_inputs['configuration_contract'] = config_contract
     if native_death_coil:
         batch_inputs['native_base_proofs'] = native_base_proofs
+    if shaman_mode:
+        batch_inputs.update(shaman_reader_sha256=shaman_reader,inventory_metadata=inventory_meta,shaman_default_skills=default_skills)
     if direct_mode:
         batch_inputs.update(direct_passive_reader_sha256=direct_reader,ownership_reader_sha256=direct_ownership_reader)
     if legacy_mode:
@@ -652,8 +671,8 @@ def plan_history(settings, work, args, output):
     if rekey_mode:
         batch_inputs['rekeys'] = rekeys
     batch = sha_json(batch_inputs)
-    archive = ('tc_direct_passive_' if direct_mode else 'tc_inactive_legacy_' if legacy_mode else 'tc_pet_teaching_' if pet_mode else 'tc_eligibility_' if two_world_mode else 'tc_ownership_' if ownership_mode else 'tc_disabled_history_')+uuid.uuid4().hex[:20]
-    blocks = check_sets(meta,source,archive,counts,exact_numeric=exact_mode)
+    archive = ('tc_shaman_dual_' if shaman_mode else 'tc_direct_passive_' if direct_mode else 'tc_inactive_legacy_' if legacy_mode else 'tc_pet_teaching_' if pet_mode else 'tc_eligibility_' if two_world_mode else 'tc_ownership_' if ownership_mode else 'tc_disabled_history_')+uuid.uuid4().hex[:20]
+    blocks = check_sets(meta,source,archive,counts,changed_table=('character_spell','character_skills') if shaman_mode else 'character_spell',exact_numeric=exact_mode)
     values = {'SOURCE':source,'ARCHIVE':archive,'UUID':work.current()['identity']['uuid'],
         'BATCH':batch,'AUDIT':audit['audited_results_sha256'],'COUNT':len(selected),'GUID_COUNT':len(guids),
         'EXPECTED_HASH':planner.key_hash(selected),'SNAPSHOT_COUNT':len(cells),'SNAPSHOT_HASH':planner.key_hash(cells),
@@ -723,13 +742,16 @@ def plan_history(settings, work, args, output):
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit native Death Coil rank 1 availability assertion required'; END IF;
 """ + values['WORLD_CHECKS']
     if two_world_mode:
-        ack_var = 'direct_passive_ack' if direct_mode else 'inactive_legacy_ack' if legacy_mode else 'pet_teaching_ack' if pet_mode else 'spell_eligibility_ack'
+        ack_var = 'shaman_dual_wield_ack' if shaman_mode else 'direct_passive_ack' if direct_mode else 'inactive_legacy_ack' if legacy_mode else 'pet_teaching_ack' if pet_mode else 'spell_eligibility_ack'
         config_prefix = 'pet_teaching' if pet_mode else 'eligibility'
         values['WORLD_CHECKS'] = f"""IF NOT (BINARY @{ack_var} <=> BINARY '{native_selector.ACK}')
  OR NOT (BINARY @{config_prefix}_tc_all_spells <=> BINARY '0')
  OR NOT (BINARY @{config_prefix}_ac_custom_spells <=> BINARY '0') THEN
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit {"pet-teaching" if pet_mode else "eligibility"} repair and native custom-start-off assertions required'; END IF;
 """ + eligibility.world_checks(settings.schemas['world'],world) + '\n' + eligibility.world_checks(config_contract['target_world'],target_world)
+    if shaman_mode:
+        values['WORLD_CHECKS'] = shaman.inventory_guard(source,inventory_meta) + values['WORLD_CHECKS']
+        values['WORLD_CHECKS'] += '\n' + '\n'.join(eligibility.world_checks(w['schema'],w) for w in default_skills.values())
     if direct_mode:
         values['WORLD_CHECKS'] = """IF NOT (BINARY @talent_ownership_ack <=> BINARY 'SELECTED_TALENTS_AUTHORITATIVE') THEN
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit selected-talent ownership repair acknowledgement required'; END IF;
@@ -763,6 +785,9 @@ def plan_history(settings, work, args, output):
                 or sha(ROOT/'lib/cleanup_eligibility.py') != eligibility_reader
                 or pet_mode and sha(ROOT/'lib/cleanup_pet_teaching.py') != pet_reader
                 or legacy_mode and sha(ROOT/'lib/cleanup_inactive_legacy.py') != legacy_reader
+                or shaman_mode and (sha(ROOT/'lib/cleanup_shaman_dual_wield.py') != shaman_reader
+                                    or shaman.inventory(settings,context) != (inventory_meta,offhand_rows)
+                                    or shaman.defaults(settings) != default_skills)
                 or direct_mode and (sha(ROOT/'lib/cleanup_selected_passive.py') != direct_reader
                                     or sha(ROOT/'lib/cleanup_ownership.py') != direct_ownership_reader)):
             fail('ELIGIBILITY_TARGET_DRIFT','Eligibility reader or AC inputs changed during planning')
@@ -832,6 +857,10 @@ def plan_history(settings, work, args, output):
                         numeric_fingerprint='EXACT_FRACTIONAL_V1',
                         numeric_reader_sha256=sha(ROOT/'lib/cleanup_active_reset.py'),
                         script_contract='No removed family script or dependency; both native skill catalogs agree')
+    if shaman_mode:
+        manifest.update(shaman_ack=shaman.ACK,shaman_reader_sha256=shaman_reader,inventory_metadata=inventory_meta,shaman_default_skills=default_skills,
+                        native_policy=relation_summary['native_policy'],
+                        script_contract='Paired unselected Shaman 674/118 retirement; no alternate native routes; empty off-hand required')
     if direct_mode:
         manifest.update(direct_passive_ack=direct_passive.ACK,direct_passive_reader_sha256=direct_reader,
                         ownership_reader_sha256=direct_ownership_reader,ownership_ack=ownership.ACK,
@@ -864,6 +893,11 @@ FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.g
 SELECT e.guid,e.spell,e.active,e.disabled,s.spell IS NOT NULL AS still_stored
 FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.guid=e.guid AND s.spell=e.spell ORDER BY e.guid,e.spell LIMIT 100;
 '''
+    if shaman_mode:
+        status += f'''SELECT a.guid,a.skill,a.value,a.max AS archived_cap,s.skill IS NOT NULL AS still_stored
+FROM `{archive}`.character_skills_before a JOIN `{archive}`.affected g ON g.guid=a.guid
+LEFT JOIN `{source}`.character_skills s ON s.guid=a.guid AND s.skill=a.skill WHERE a.skill=118 ORDER BY a.guid LIMIT 100;
+'''
     if rekey_mode:
         status += f'''SELECT e.guid,e.from_spell,e.to_spell,s.active,s.disabled
 FROM `{archive}`.expected_rekeys e LEFT JOIN `{source}`.character_spell s
@@ -883,7 +917,7 @@ ON s.guid=e.guid AND s.spell=e.to_spell ORDER BY e.guid,e.from_spell LIMIT 100;
     if ownership_mode:
         write_json(output/'ownership-native-proof.json', ownership_native_proofs)
     if two_world_mode:
-        write_json(output/('selected-passive-native-proof.json' if direct_mode else 'inactive-legacy-native-proof.json' if legacy_mode else 'pet-teaching-native-proof.json' if pet_mode else 'eligibility-native-proof.json'), eligibility_proofs)
+        write_json(output/('shaman-native-proof.json' if shaman_mode else 'selected-passive-native-proof.json' if direct_mode else 'inactive-legacy-native-proof.json' if legacy_mode else 'pet-teaching-native-proof.json' if pet_mode else 'eligibility-native-proof.json'), eligibility_proofs)
         write_json(output/'target-metadata.json',target_world)
     if reviewed_cower:
         write_json(output/'cower-native-contract.json',cower_proof)

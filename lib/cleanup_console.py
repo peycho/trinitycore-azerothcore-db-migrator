@@ -50,7 +50,7 @@ def sha(path):
 
 
 def toolkit_hashes():
-    names=('console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
+    names=('lib/cleanup_shaman_dual_wield.py','tools/shaman-dual-wield-repair.sql.in','console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
@@ -639,6 +639,12 @@ def command_action(settings, work, args):
         if manifest.get('absent_teacher_ack') != ABSENT_TEACHER_ACK:
             fail('ABSENT_TEACHER_ACK_INVALID','Absent-teacher acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @eligibility_absent_teachers_ack='VERIFIED_TEACHERS_ABSENT';\n"
+    from cleanup_shaman_dual_wield import POLICY as SHAMAN_POLICY, ACK as SHAMAN_ACK
+    if manifest.get('policy') == SHAMAN_POLICY:
+        if manifest.get('shaman_ack') != SHAMAN_ACK:
+            fail('SHAMAN_ACK_INVALID','Coupled Shaman acknowledgement differs')
+        configuration_ack += f"SET @shaman_dual_wield_ack='{SHAMAN_ACK}';\n"
+        configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
     from cleanup_selected_passive import POLICY as DIRECT_PASSIVE_POLICY, ACK as DIRECT_PASSIVE_ACK
     if manifest.get('policy') == DIRECT_PASSIVE_POLICY:
         if manifest.get('direct_passive_ack') != DIRECT_PASSIVE_ACK or manifest.get('ownership_ack') != OWNERSHIP_ACK:
@@ -671,6 +677,8 @@ def command_action(settings, work, args):
                 text in str(error) for text in ('DELETE command denied','INSERT command denied')):
             error.hint=('This history policy needs DELETE on character_spell for apply and INSERT for exact restore. '
                 'Have the preparation administrator grant only those source privileges to the configured writer, then retry; no source grants were added automatically.')
+        if manifest.get('policy') == SHAMAN_POLICY and any(text in str(error) for text in ('DELETE command denied','INSERT command denied')):
+            error.hint=('Coupled repair requires DELETE/INSERT on character_spell AND character_skills for apply/exact restore. No source grants were added automatically.')
         if manifest.get('policy')=='tc-active-build-native-reset-v1' and any(
                 text in str(error) for text in ('DELETE command denied','INSERT command denied','UPDATE command denied')):
             error.hint=('This reviewed reset needs DELETE/INSERT on character_spell and UPDATE(at_login) on characters. '
@@ -783,6 +791,7 @@ def parser():
     ownership_policy.add_argument('--foreign-class-families',action='store_true',help='Separate v2: retire only isolated unselected foreign-class talent families; retain shared skill spells and selected ownership')
     ownership_policy.add_argument('--native-passive-prefixes',action='store_true',help='Separate v3: retire disabled passive predecessors only with retained enabled authorized higher anchors; no missing child grants or talent/skill changes')
     ownership_policy.add_argument('--selected-direct-passives',action='store_true',help='Separate policy: retire unselected higher direct passive ranks; restore existing lower selected auras through native AC talent loading; both worlds required')
+    ownership_policy.add_argument('--unselected-shaman-dual-wield',action='store_true',help='Separate coupled repair: retire unselected Shaman spell 674 AND skill 118 only with an empty off-hand; --expect-rows counts pairs')
     ownership_policy.add_argument('--native-passive-rekey',action='store_true',help='Separate v5: rekey conflicting enabled passive child anchors downward to already-known active selected ranks; stock spell columns only')
     ownership_policy.add_argument('--reviewed-aura-aliases',action='store_true',help='Separate v4: retire isolated unselected paladin aura talent history under exact protected registration/helper contracts')
     ownership_review=ownership.add_mutually_exclusive_group(required=True)

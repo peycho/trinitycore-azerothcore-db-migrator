@@ -79,6 +79,19 @@ class OwnershipTests(unittest.TestCase):
         self.assertEqual(set(reconstruct((1,5,0,2),retained,{}, {},self.meta,fixture.SpellTests.ac,'tc-to-ac')),{6603})
         self.assertEqual(result,select(self.state,self.meta,preview=True,foreign_class_families=True))
 
+    def test_unowned_shaman_dual_wield_keeps_its_native_skill_reward_blocker(self):
+        self.state['characters'][0][1:3]=[11,7]
+        self.state['character_talent']=[]
+        self.state['character_spell']=[[1,674,1,0],[1,6603,1,0]]
+        self.state['character_skills'].append([1,118,1,400])
+        before=copy.deepcopy(self.state)
+        self.assertEqual(self.meta.abilities[674][0][4],109)
+        self.assertEqual(109 & (1 << (7-1)),64)
+        rows,excluded,_,_,_=self.review()
+        self.assertEqual(rows,[])
+        self.assertIn((1,674,'DEFER_SKILL_REWARD_ROUTE'),excluded)
+        self.assertEqual(self.state,before)
+
     def test_foreign_mode_preserves_same_class_owned_and_unowned_families_both_specs(self):
         for active in (0,1):
             self.state['characters'][0][4]=active

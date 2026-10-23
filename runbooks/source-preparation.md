@@ -119,6 +119,12 @@ custom-start-off assertions, complete archives, transaction guards and exact
 restoration apply. Fresh snapshots calculate their own selections; pending
 resets and unsupported cases stay deferred.
 
+The separate [unselected Shaman Dual Wield repair](talent-ownership-repair.md#opt-in-unselected-shaman-dual-wield-spell-and-skill)
+retires a verified spell/skill pair only with an empty live off-hand and neither
+spec selecting its talent. Recompute its selection and counts on every fresh
+snapshot; it deliberately changes skill ownership and is never an implicit part
+of the skill-preserving history policies.
+
 ## Repeat the complete preparation and migration
 
 The deliverable is a repeatable process on a **fresh production snapshot**.

@@ -280,6 +280,23 @@ example, Dual Wield (`674`) is independently available to warriors and rogues
 and is also taught by a shaman talent. V2 retains the skill/reward exclusions
 and cannot remove that shared spell through its foreign shaman relationship.
 
+The same-class Shaman case also needs care: skill `118` already stored on a
+Shaman restores spell `674` through both native skill-reward loaders, even when
+neither spec selects talent `30798`. Ability class mask `109` includes the Shaman
+bit `64`; the skill's `NOT_TRAINABLE` flag does not stop this loader path. A
+spell-only retirement would be undone at login. Existing policies keep this
+case deferred while preserving skills. Retiring both spell and skill requires a
+separate reviewed preparation policy; selecting the missing talent is not a repair.
+
+Off-hand equipment is an independent constraint. Both cores can move an off-hand
+weapon into bags or recovery mail after Dual Wield is lost. A skill/spell repair
+must check current equipment and defer occupied off-hand slots unless item
+relocation has its own reviewed policy. A read-only old snapshot is useful for
+development, but an operator package must check the slot again during planning
+and every transaction. No custom item is discarded or identified by guessing its
+template. See `tests/shaman-dual-wield-runtime-tests.py` for isolated protected
+skill-reward, skill-range and empty-slot gates; these are not full gameplay tests.
+
 `ownership-native-proof.json` records the character class, exclusive foreign
 class mask, complete family talent ranks, empty selected ownership and exact
 retained source state. Both selected builds, skills/caps, profession slots,
@@ -438,3 +455,90 @@ ranks/trainers, casts, action buttons, professions/recipes/riding and skills/cap
 Repeat after save, relog and AC restart; inspect deletion/correction logs.
 Gameplay remains **NOT TESTED** and release approval **UNREVIEWED** until the
 existing acceptance gates actually pass.
+
+## Opt-in unselected Shaman Dual Wield spell and skill
+
+`tc-unselected-shaman-dual-wield-skill-retirement-v1` deliberately retires **both**
+enabled spell `674` and existing skill `118`. Both native skill-reward loaders
+restore `674` from `118`; a spell-only deletion would be undone at login. This
+is a separate exception to skill preservation, never a change to migration grants
+or earlier cleanup policies.
+
+```bash
+python3 console plan talent-ownership \
+  --migration-inspection latest \
+  --unselected-shaman-dual-wield \
+  --preview
+```
+
+Preview reads current inventory and both worlds' `playercreateinfo_skills`, in
+addition to the usual effective world/DBC inputs. It creates no executable SQL
+package or active batch. Missing tables/grants fail closed. The effective TC
+`PlayerStart.AllSpells` and AC `PlayerStart.CustomSpells` must both be `0`, recorded
+in `[source] player_start_all_spells` and `[target] player_start_custom_spells`.
+These are operator assertions about the effective server configurations.
+
+Only offline, valid Shamans with native skill `118` value `1`, cap `level * 5`,
+spell `674` flags `(active=1, disabled=0)`, neither spec selecting talent `30798`,
+and no stored `30798` qualify. Exact reviewed metadata and no alternate native
+learning/skill anchor are required. Starting-skill entries that could restore
+`118`, unknown relationships, invalid talent ownership, pending resets and
+unsupported states defer. Other classes keep their Dual Wield state.
+
+Every occupied off-hand slot defers, including shields and unknown/custom items.
+The tool does not move, delete or reinterpret equipment. Planning and every
+prepare/apply/restore transaction require an empty slot; SERIALIZABLE reads keep
+that predicate locked through the transaction. Unrelated inventory stays intact.
+
+Use the preview's **selected_rows** as `N`: it counts spell/skill **pairs**.
+`N=2` means two spell rows plus two skill rows, not two total SQL deletions.
+Generate a new batch against the same fresh inspection:
+
+```bash
+python3 console plan talent-ownership \
+  --migration-inspection latest \
+  --unselected-shaman-dual-wield \
+  --expect-rows N
+```
+
+Then use the candidate's exact batch ID with the normal
+`prepare -> status -> review -> apply -> status` sequence. Review
+`shaman-native-proof.json`, `selected-rows.tsv`, `excluded-rows.tsv`, the manifest,
+and full archived spell/skill originals. Status reports the retired skill rows
+separately. Source privileges require `DELETE, INSERT` on **both**
+`character_spell` and `character_skills`, plus the existing read privileges;
+no source privileges are granted automatically. Direct SQL additionally needs:
+
+```sql
+SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';
+SET @shaman_dual_wield_ack='RETIRE_UNSELECTED_SHAMAN_SPELL_AND_SKILL_EMPTY_OFFHAND';
+SET @eligibility_tc_all_spells=0;
+SET @eligibility_ac_custom_spells=0;
+```
+
+Apply deletes only the paired rows atomically with its checkpoint. All other
+skills/caps, both talent builds, profession slots, inventory/items, login flags
+and unrelated data are preserved. No spells are inserted and no talents are
+purchased. Restore inserts the exact archived spell **and skill** rows, including
+custom fields; affected-state, metadata or equipment drift refuses restoration.
+Restore before gameplay and in reverse batch order using the original toolkit.
+
+For a freshly imported snapshot, initialize a new cleanup session, capture a new
+audit/inspection and rerun this selector. Never reuse old GUID lists, counts,
+archive schemas or SQL packages. A fresh preflight is not needed just to preview
+this policy against a current blocker inspection.
+
+Validation includes protected TC/AC skill-reward and off-hand consumer harnesses,
+semantic forward/reverse checks and disposable MySQL console transactions,
+including rollback after either paired mutation, disconnects, reruns, drift and
+exact restoration. These are behavioral tests with mocked native state, not full
+staging gameplay. Release approval remains **UNREVIEWED**. Record each staging
+acceptance item separately:
+
+| Staging check | Status |
+| --- | --- |
+| Reconstructed paladin/priest/warlock ranks and trainer learned/available state | NOT TESTED |
+| Highest and supported lower rank casts | NOT TESTED |
+| Both specs, relog and authorized talent spells | NOT TESTED |
+| Talent points, professions/recipes, riding, skill values/caps; repaired Shaman off-hand behavior | NOT TESTED |
+| Save/relog/restart and repeat spell/trainer/spec checks; inspect correction/deletion logs | NOT TESTED |
