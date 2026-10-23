@@ -50,7 +50,7 @@ def sha(path):
 
 
 def toolkit_hashes():
-    names=('lib/cleanup_specializations.py','lib/cleanup_specialization_catalog.json','lib/cleanup_professions.py','lib/cleanup_profession_catalog.json','tools/profession-activation-repair.sql.in','lib/cleanup_skill_teaching.py','lib/cleanup_skill_teaching_catalog.json','lib/cleanup_shaman_dual_wield.py','tools/shaman-dual-wield-repair.sql.in','console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
+    names=('lib/cleanup_racial_catalog.json','lib/cleanup_specializations.py','lib/cleanup_specialization_catalog.json','lib/cleanup_professions.py','lib/cleanup_profession_catalog.json','tools/profession-activation-repair.sql.in','lib/cleanup_skill_teaching.py','lib/cleanup_skill_teaching_catalog.json','lib/cleanup_shaman_dual_wield.py','tools/shaman-dual-wield-repair.sql.in','console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
@@ -629,12 +629,16 @@ def command_action(settings, work, args):
         if manifest.get('aura_alias_ack') != AURA_ALIAS_ACK:
             fail('OWNERSHIP_ALIAS_ACK_INVALID','Aura-alias acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @talent_aura_alias_ack='UNSELECTED_REVIEWED_AURA_ALIASES_ONLY';\n"
-    from cleanup_eligibility import POLICIES as ELIGIBILITY_POLICIES, ACK as ELIGIBILITY_ACK, ABSENT_TEACHER_POLICY, ABSENT_TEACHER_ACK
+    from cleanup_eligibility import POLICIES as ELIGIBILITY_POLICIES, ACK as ELIGIBILITY_ACK, ABSENT_TEACHER_POLICY, ABSENT_TEACHER_ACK, RACIAL_POLICY, RACIAL_ACK
     if manifest.get('policy') in ELIGIBILITY_POLICIES:
         if manifest.get('eligibility_ack') != ELIGIBILITY_ACK:
             fail('ELIGIBILITY_ACK_INVALID','Eligibility acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS';\n"
         configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
+    if manifest.get('policy') == RACIAL_POLICY:
+        if manifest.get('racial_ack') != RACIAL_ACK:
+            fail('RACIAL_ACK_INVALID','Reviewed racial acknowledgement differs from the candidate')
+        configuration_ack += f"SET @eligibility_racials_ack='{RACIAL_ACK}';\n"
     if manifest.get('policy') == ABSENT_TEACHER_POLICY:
         if manifest.get('absent_teacher_ack') != ABSENT_TEACHER_ACK:
             fail('ABSENT_TEACHER_ACK_INVALID','Absent-teacher acknowledgement differs from the reviewed candidate')
@@ -843,7 +847,9 @@ def parser():
     eligibility=types.add_parser('spell-eligibility',help='Separate archived repair of ordinary rank families rejected by AC race/class validation')
     eligibility.set_defaults(spell_eligibility=True,inspection=None,audit=None)
     eligibility.add_argument('--migration-inspection',required=True,help='Sealed migration-blocker inspection ID or latest')
-    eligibility.add_argument('--absent-teachers',action='store_true',help='Separate v2 contract for exact reviewed absent single-child teachers; other dependencies still defer')
+    eligibility_mode=eligibility.add_mutually_exclusive_group()
+    eligibility_mode.add_argument('--reviewed-racials',action='store_true',help='Separate v3 fixed-catalog wrong-race racial retirement; no languages, riding or replacement racials')
+    eligibility_mode.add_argument('--absent-teachers',action='store_true',help='Separate v2 contract for exact reviewed absent single-child teachers; other dependencies still defer')
     eligibility_review=eligibility.add_mutually_exclusive_group(required=True)
     eligibility_review.add_argument('--preview',action='store_true',help='Read-only review; no SQL package or active batch')
     eligibility_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows from this policy preview')

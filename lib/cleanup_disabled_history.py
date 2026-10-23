@@ -160,6 +160,10 @@ def check_metadata(settings, manifest):
             fail('ELIGIBILITY_POLICY_DRIFT','Eligibility selector differs; retain the original toolkit for restoration')
         if eligibility.configuration_contract(settings) != manifest.get('configuration_contract'):
             fail('ELIGIBILITY_CONFIG_DRIFT','Eligibility configuration differs from the reviewed candidate')
+    if manifest.get('policy') == eligibility.RACIAL_POLICY:
+        if (manifest.get('racial_ack') != eligibility.RACIAL_ACK
+                or sha(eligibility.RACIAL_CATALOG) != manifest.get('racial_catalog_sha256')):
+            fail('RACIAL_POLICY_DRIFT','Reviewed racial acknowledgement or catalog changed; retain original toolkit')
     if manifest.get('policy') == eligibility.ABSENT_TEACHER_POLICY and manifest.get('absent_teacher_ack') != eligibility.ABSENT_TEACHER_ACK:
         fail('ABSENT_TEACHER_ACK_INVALID','Absent-teacher contract differs from the reviewed batch')
     if manifest.get('policy') in pet_teaching.POLICIES and sha(ROOT/'lib/cleanup_pet_teaching.py') != manifest.get('pet_teaching_reader_sha256'):
@@ -409,6 +413,8 @@ def plan_history(settings, work, args, output):
     pet_reader = sha(ROOT/'lib/cleanup_pet_teaching.py') if pet_mode else None
     reviewed_cower = pet_mode and getattr(args,'reviewed_cower',False)
     absent_teachers = getattr(args,'spell_eligibility',False) and getattr(args,'absent_teachers',False)
+    racial_mode = getattr(args,'spell_eligibility',False) and getattr(args,'reviewed_racials',False)
+    racial_catalog = sha(eligibility.RACIAL_CATALOG) if racial_mode else None
     cower_proof = pet_teaching.cower_sources(settings.paths) if reviewed_cower else None
     native_selector = specializations if specialization_mode else professions if profession_mode else skill_teaching if skill_teaching_mode else shaman if shaman_mode else direct_passive if direct_mode else inactive_legacy if legacy_mode else pet_teaching if pet_mode else eligibility
     eligibility_reader = sha(ROOT/'lib/cleanup_eligibility.py') if two_world_mode else None
@@ -490,7 +496,8 @@ def plan_history(settings, work, args, output):
         policy = ownership.REKEY_POLICY if rekey_mode else ownership.AURA_ALIAS_POLICY if alias_mode else ownership.PREFIX_POLICY if prefix_mode else ownership.FOREIGN_POLICY if foreign_mode else ownership.POLICY
     if two_world_mode:
         policy = (pet_teaching.COWER_POLICY if reviewed_cower else
-                  eligibility.ABSENT_TEACHER_POLICY if absent_teachers else native_selector.POLICY)
+                  eligibility.ABSENT_TEACHER_POLICY if absent_teachers else
+                  eligibility.RACIAL_POLICY if racial_mode else native_selector.POLICY)
         print('Capturing effective AC world/DBC eligibility inputs (read-only)',flush=True)
         target_effective, target_world = eligibility.read_target(settings)
     relation_rows,relation_proof,relation_summary,relation_edges = [],[],{},[]
@@ -511,7 +518,7 @@ def plan_history(settings, work, args, output):
         if two_world_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=native_selector.select(
                 context,effective,target_effective,args.expect_review_rows,preview=preview,
-                **({'equipment':equipment['rows']} if specialization_mode else {'offhand':{r[0] for r in offhand_rows},'default_skills':default_skills} if shaman_mode else {'reviewed_cower':True} if reviewed_cower else {'absent_teachers':True} if absent_teachers else {}))
+                **({'equipment':equipment['rows']} if specialization_mode else {'offhand':{r[0] for r in offhand_rows},'default_skills':default_skills} if shaman_mode else {'reviewed_cower':True} if reviewed_cower else {'absent_teachers':True} if absent_teachers else {'reviewed_racials':True} if racial_mode else {}))
             eligibility_proofs = relation_summary.pop('eligibility_proofs')
         elif ownership_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ownership.select(
@@ -699,6 +706,8 @@ def plan_history(settings, work, args, output):
         batch_inputs.update(eligibility_reader_sha256=eligibility_reader,eligibility_proofs=eligibility_proofs,
                             target_world=target_world,target_dbc_sha256=target_effective.hashes,
                             numeric_reader_sha256=sha(ROOT/'lib/cleanup_active_reset.py'))
+    if racial_mode:
+        batch_inputs.update(racial_catalog_sha256=racial_catalog,racial_ack=eligibility.RACIAL_ACK)
     if config_contract is not None:
         batch_inputs['configuration_contract'] = config_contract
     if native_death_coil:
@@ -811,6 +820,10 @@ def plan_history(settings, work, args, output):
         values['WORLD_CHECKS'] = """IF NOT (BINARY @talent_ownership_ack <=> BINARY 'SELECTED_TALENTS_AUTHORITATIVE') THEN
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit selected-talent ownership repair acknowledgement required'; END IF;
 """ + values['WORLD_CHECKS']
+    if racial_mode:
+        values['WORLD_CHECKS'] = """IF NOT (BINARY @eligibility_racials_ack <=> BINARY 'RETIRE_ONLY_REVIEWED_WRONG_RACE_RACIALS') THEN
+ SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit reviewed racial retirement acknowledgement required'; END IF;
+""" + values['WORLD_CHECKS']
     if absent_teachers:
         values['WORLD_CHECKS'] = """IF NOT (BINARY @eligibility_absent_teachers_ack <=> BINARY 'VERIFIED_TEACHERS_ABSENT') THEN
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit absent-teacher eligibility acknowledgement required'; END IF;
@@ -838,6 +851,7 @@ def plan_history(settings, work, args, output):
         final_target, final_target_world = eligibility.read_target(settings)
         if (final_target_world != target_world or final_target.hashes != target_effective.hashes
                 or sha(ROOT/'lib/cleanup_eligibility.py') != eligibility_reader
+                or racial_mode and sha(eligibility.RACIAL_CATALOG) != racial_catalog
                 or pet_mode and sha(ROOT/'lib/cleanup_pet_teaching.py') != pet_reader
                 or legacy_mode and sha(ROOT/'lib/cleanup_inactive_legacy.py') != legacy_reader
                 or specialization_mode and (sha(ROOT/'lib/cleanup_specializations.py') != specialization_reader
@@ -947,6 +961,10 @@ def plan_history(settings, work, args, output):
     if legacy_mode:
         manifest.update(inactive_legacy_ack=inactive_legacy.ACK,inactive_legacy_reader_sha256=legacy_reader,
                         script_contract='Exact scriptless singleton legacy catalog; only inactive/non-disabled removals; retained active spells and all native talent/skill data unchanged; no inferred ranks')
+    if racial_mode:
+        manifest.update(racial_ack=eligibility.RACIAL_ACK,racial_catalog_sha256=racial_catalog,
+                        native_policy=relation_summary['native_policy'],
+                        script_contract='Four fixed singleton stock racials; verified wrong race; no scripts, dependencies, stored racial skills or grants')
     if absent_teachers:
         manifest.update(absent_teacher_ack=eligibility.ABSENT_TEACHER_ACK,
                         script_contract='No removed family scripts; exact single-child teachers absent in full books; no other dependency')

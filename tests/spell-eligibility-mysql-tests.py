@@ -14,7 +14,8 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main(pet_teaching=False,reviewed_cower=False,absent_teachers=False,ordinary_training=False):
+def main(pet_teaching=False,reviewed_cower=False,absent_teachers=False,ordinary_training=False,reviewed_racials=False):
+    assert not reviewed_racials or not(pet_teaching or absent_teachers or ordinary_training)
     assert not ordinary_training or not (pet_teaching or absent_teachers)
     assert not absent_teachers or not pet_teaching
     assert not reviewed_cower or pet_teaching
@@ -38,7 +39,7 @@ def main(pet_teaching=False,reviewed_cower=False,absent_teachers=False,ordinary_
     version = sql('SELECT @@version;')
     assert version.startswith('8.4.'), version
     kind = 'disabled-spell-history' if ordinary_training else 'pet-teaching' if pet_teaching else 'spell-eligibility'
-    label = 'training-prerequisites' if ordinary_training else 'absent-teachers' if absent_teachers else 'reviewed-cower' if reviewed_cower else 'pet-teaching' if pet_teaching else 'eligibility'
+    label = 'reviewed-racials' if reviewed_racials else 'training-prerequisites' if ordinary_training else 'absent-teachers' if absent_teachers else 'reviewed-cower' if reviewed_cower else 'pet-teaching' if pet_teaching else 'eligibility'
     prefix = 'eligibility_'+uuid.uuid4().hex[:10]
     source, auth, tcworld, acworld = [prefix+s for s in ('_chars','_auth','_tc','_ac')]
     writer, reader = prefix+'_w', prefix+'_r'
@@ -84,6 +85,13 @@ def main(pet_teaching=False,reviewed_cower=False,absent_teachers=False,ordinary_
             UPDATE `{source}`.character_spell SET custom_decimal=0.100001 WHERE guid=1 AND spell=6603;
             INSERT INTO `{tcworld}`.spell_dbc(Id,EffectRealPointsPerLevel1) VALUES(900099,0.1);
             INSERT INTO `{acworld}`.spell_dbc(ID,Speed) VALUES(900099,0.1);''')
+        if reviewed_racials:
+            sql(f"UPDATE `{source}`.characters SET race=3 WHERE guid=2")
+            sql(f"UPDATE `{source}`.characters SET race=2 WHERE guid=5")
+            sql(f"UPDATE `{source}`.character_spell SET spell=28875 WHERE spell=465")
+            sql(f"UPDATE `{source}`.character_spell SET spell=59224 WHERE spell=48942")
+            sql(f"UPDATE `{source}`.character_spell SET spell=20597 WHERE guid=5 AND spell=59224")
+            sql(f"UPDATE `{source}`.character_skills SET skill=101 WHERE guid=4")
         if ordinary_training:
             sql(f"UPDATE `{source}`.characters SET class=5 WHERE guid IN(1,2,3,4)")
             sql(f"UPDATE `{source}`.characters SET class=11 WHERE guid=5")
@@ -116,6 +124,11 @@ def main(pet_teaching=False,reviewed_cower=False,absent_teachers=False,ordinary_
             training_assets=importlib.util.module_from_spec(training_spec);training_spec.loader.exec_module(training_assets)
             original_training=assets.stores
             assets.stores=lambda p:training_assets.extend(original_training(p),p)
+        if reviewed_racials:
+            racial_spec=importlib.util.spec_from_file_location('racial_assets',ROOT/'tests/racial-eligibility-fixtures.py')
+            racial_assets=importlib.util.module_from_spec(racial_spec);racial_spec.loader.exec_module(racial_assets)
+            original_racials=assets.stores
+            assets.stores=lambda p:racial_assets.extend(original_racials(p),p)
         if absent_teachers:
             sys.path.insert(0,str(ROOT/'lib'))
             teacher_spec=importlib.util.spec_from_file_location('teacher_assets',ROOT/'tests/eligibility-teacher-fixtures.py')
@@ -206,7 +219,7 @@ backup_reference=disposable-synthetic-fixture
             report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(
                 f'{g}\t*\tAC_WOULD_DELETE_SPELL\t48942: captured fixture scope\n' for g in range(1,6)))
             run('inspect-migration-blockers', '--report', str(report))
-            plan = ('plan',kind,'--migration-inspection','latest') + (('--training-prerequisites',) if ordinary_training else ('--reviewed-cower',) if reviewed_cower else ('--absent-teachers',) if absent_teachers else ())
+            plan = ('plan',kind,'--migration-inspection','latest') + (('--reviewed-racials',) if reviewed_racials else ('--training-prerequisites',) if ordinary_training else ('--reviewed-cower',) if reviewed_cower else ('--absent-teachers',) if absent_teachers else ())
             if ordinary_training:
                 for setting in ('','1'):
                     config.write_text(text.replace('player_start_all_spells=0','player_start_all_spells='+setting))
@@ -220,6 +233,9 @@ backup_reference=disposable-synthetic-fixture
             config.write_text(text)
             if ordinary_training:
                 control=run('plan','disabled-spell-history','--migration-inspection','latest','--preview')
+                assert '"selected_rows": 0' in control.stdout
+            if reviewed_racials:
+                control=run('plan','spell-eligibility','--migration-inspection','latest','--preview')
                 assert '"selected_rows": 0' in control.stdout
             if absent_teachers:
                 control=run('plan','spell-eligibility','--migration-inspection','latest','--preview')
@@ -253,6 +269,10 @@ backup_reference=disposable-synthetic-fixture
                 assert manifest['selected_custom_default_rows']==3
                 assert all(p['inactive_custom_default_spells'] for p in manifest['training_prerequisite_proofs'])
                 assert json.loads((package/'ordinary-training-proof.json').read_text())==manifest['training_prerequisite_proofs']
+            if reviewed_racials:
+                assert manifest['policy']=='tc-ineligible-reviewed-racial-spell-repair-v3'
+                assert manifest['racial_ack']=='RETIRE_ONLY_REVIEWED_WRONG_RACE_RACIALS'
+                assert manifest['racial_catalog_sha256']
             if absent_teachers:
                 assert manifest['policy']=='tc-ineligible-ordinary-absent-teacher-repair-v2'
                 assert manifest['absent_teacher_ack']=='VERIFIED_TEACHERS_ABSENT'
@@ -277,6 +297,20 @@ backup_reference=disposable-synthetic-fixture
                     assert 'Explicit reviewed ordinary training prerequisites' in error
                     assert checksum()==baseline
                 ack+="SET @ordinary_training_ack='REVIEWED_TRAINING_PREREQUISITES_ONLY';"
+            if reviewed_racials:
+                without_racial_ack=ack
+                ack+="SET @eligibility_racials_ack='RETIRE_ONLY_REVIEWED_WRONG_RACE_RACIALS';"
+                for wrong in ('',"SET @eligibility_racials_ack='UNKNOWN';"):
+                    error=sql(without_racial_ack+wrong+f'CALL `{archive}`.apply_batch();',writer,False)
+                    assert 'Explicit reviewed racial retirement' in error
+                    assert checksum()==baseline
+                catalog=ROOT/'lib/cleanup_racial_catalog.json'
+                original_catalog=catalog.read_bytes()
+                try:
+                    catalog.write_bytes(original_catalog+b' ')
+                    assert 'RACIAL_POLICY_DRIFT' in run('apply',code=2).stderr
+                    assert checksum()==baseline
+                finally:catalog.write_bytes(original_catalog)
             if absent_teachers:
                 without_teacher_ack=ack
                 ack+="SET @eligibility_absent_teachers_ack='VERIFIED_TEACHERS_ABSENT';"
@@ -296,7 +330,7 @@ backup_reference=disposable-synthetic-fixture
                 assert 'Explicit reviewed Cower child' in error
             ack_label='Explicit reviewed ordinary training prerequisites' if ordinary_training else 'Explicit pet-teaching repair' if pet_teaching else 'Explicit eligibility repair'
             error=sql(f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';CALL `{archive}`.apply_batch();",writer,False)
-            assert ('Explicit reviewed Cower child' if reviewed_cower else 'Explicit absent-teacher eligibility' if absent_teachers else ack_label) in error
+            assert ('Explicit reviewed racial retirement' if reviewed_racials else 'Explicit reviewed Cower child' if reviewed_cower else 'Explicit absent-teacher eligibility' if absent_teachers else ack_label) in error
             for variable in (('ordinary_history_all_spells',) if ordinary_training else ('pet_teaching_tc_all_spells','pet_teaching_ac_custom_spells') if pet_teaching else ('eligibility_tc_all_spells','eligibility_ac_custom_spells')):
                 error=sql(ack+f"SET @{variable}='UNKNOWN'; CALL `{archive}`.apply_batch();",writer,False)
                 assert ('Explicit PlayerStart.AllSpells=0' if ordinary_training else ack_label) in error
@@ -408,5 +442,5 @@ backup_reference=disposable-synthetic-fixture
 
 
 if __name__ == '__main__':
-    assert sys.argv[1:] in ([],['--absent-teachers'],['--training-prerequisites'])
-    main(absent_teachers=sys.argv[1:]==['--absent-teachers'],ordinary_training=sys.argv[1:]==['--training-prerequisites'])
+    assert sys.argv[1:] in ([],['--absent-teachers'],['--training-prerequisites'],['--reviewed-racials'])
+    main(absent_teachers=sys.argv[1:]==['--absent-teachers'],ordinary_training=sys.argv[1:]==['--training-prerequisites'],reviewed_racials=sys.argv[1:]==['--reviewed-racials'])

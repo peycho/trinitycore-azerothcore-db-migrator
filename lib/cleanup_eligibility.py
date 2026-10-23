@@ -7,15 +7,37 @@ from collections import Counter, defaultdict
 import json
 import re
 
-from cleanup_console import PROFILE, fail, identifier
+from cleanup_console import PROFILE, ROOT, fail, identifier
 from cleanup_talent_relations import Relations, MAX_ROWS, validate_stored
 from spells import Metadata, Unsupported
 
 POLICY = 'tc-ineligible-ordinary-spell-repair-v1'
 ABSENT_TEACHER_POLICY = 'tc-ineligible-ordinary-absent-teacher-repair-v2'
-POLICIES = (POLICY, ABSENT_TEACHER_POLICY)
+RACIAL_POLICY = 'tc-ineligible-reviewed-racial-spell-repair-v3'
+POLICIES = (POLICY, ABSENT_TEACHER_POLICY, RACIAL_POLICY)
 ACK = 'RETIRE_VERIFIED_INELIGIBLE_SPELLS'
 ABSENT_TEACHER_ACK = 'VERIFIED_TEACHERS_ABSENT'
+RACIAL_ACK = 'RETIRE_ONLY_REVIEWED_WRONG_RACE_RACIALS'
+RACIAL_CATALOG = ROOT/'lib/cleanup_racial_catalog.json'
+
+
+def racial_contract(meta, spell, rules):
+    """Fixed singleton racial catalog, never a blanket category-9 exception."""
+    expected = rules[meta.core][str(spell)]
+    skill = rules['spells'][str(spell)]
+    row = meta.spells.get(spell, [])
+    infos = sorted(r for r in meta.stores['SkillRaceClassInfo'].values() if r[1] == skill)
+    reviewed = rules['skill_metadata'][meta.core][str(skill)]
+    return (len(row) >= 212 and list(meta.chain(spell)) == expected['chain'] == [spell]
+            and all(row[i] == expected['mechanics'].get(str(i), 0) for i in (*range(4,131), *range(208,212)))
+            and meta.abilities[spell] == expected['abilities']
+            and [list(r) for r in meta.learns[spell]] == expected['learns'] == []
+            and [list(r) for r in meta.effect_learns[spell]] == expected['effect_learns'] == []
+            and sorted(meta.requires[spell]) == expected['requires'] == []
+            and sorted(meta.prerequisite_users[spell]) == expected['prerequisite_users'] == []
+            and sorted(meta.learn_parents[spell]) == expected['learn_parents'] == []
+            and meta.stores['SkillLine'].get(skill, [0,0])[1] == reviewed['category'] == 9
+            and infos == reviewed['infos'] and bool(infos) and all(r[2] for r in infos))
 
 # Only pure, single-child stock teaching actions. Multi-child stance teachers,
 # skill teachers and arbitrary world learn links are deliberately not included.
@@ -181,7 +203,12 @@ def eligibility(meta, spell, race, cls, *, infos_by_skill=None):
     return {'passes': not skills or bool(matches), 'skills': skills, 'skill_info': infos}
 
 
-def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False):
+def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False, reviewed_racials=False):
+    if reviewed_racials and absent_teachers:
+        fail('ELIGIBILITY_MODE_CONFLICT', 'Choose one reviewed eligibility extension')
+    rules = json.loads(RACIAL_CATALOG.read_text()) if reviewed_racials else None
+    racial_safe = {int(s): all(racial_contract(m, int(s), rules) for m in (tc, ac))
+                   for s in rules['spells']} if rules else {}
     stored = state['character_spell']
     validate_stored(stored)
     if not 1 <= len(state['characters']) <= 40000 or sum(map(len, state.values())) > MAX_ROWS:
@@ -233,6 +260,8 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
                 excluded.append((g, s, 'DEFER_ELIGIBILITY_CHARACTER_STATE'))
             continue
         roots = sorted({tc.first(s) for s in book if not check(ac, s, c)['passes']})
+        if reviewed_racials:
+            roots = sorted(s for s in book if s in racial_safe and not check(ac,s,c)['passes'])
         for root in roots:
             nodes = tc.chain(root)
             present = sorted(set(nodes) & book.keys())
@@ -257,6 +286,11 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
                 reason = 'DEFER_INVALID_TALENT_SELECTION'
             elif any(a not in (0,1) or d not in (0,1) for a,d in (book[s] for s in present)):
                 reason = 'DEFER_INVALID_RELATED_FLAGS'
+            elif reviewed_racials and not racial_safe[root]:
+                reason = 'DEFER_REVIEWED_RACIAL_METADATA'
+            elif reviewed_racials and any(r[2] & (1 << (c[1]-1))
+                    for m in (tc,ac) for r in check(m,root,c)['skill_info']):
+                reason = 'DEFER_RACIALLY_ELIGIBLE'
             elif any(ac.chain(s) != nodes for s in nodes):
                 reason = 'DEFER_INCOMPATIBLE_RANK_CHAIN'
             elif any(check(m, s, c)['passes'] for m in (tc, ac) for s in nodes):
@@ -273,11 +307,12 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
                 reason = 'DEFER_UNSUPPORTED_RELATION_METADATA'
             elif any(a[1] in skills[g] for m in (tc, ac) for s in nodes for a in m.abilities[s]):
                 reason = 'DEFER_EXISTING_ASSOCIATED_SKILL'
-            elif any(m.stores['SkillLine'][a[1]][1] not in (6,7)
+            elif not reviewed_racials and any(m.stores['SkillLine'][a[1]][1] not in (6,7)
                      for m in (tc, ac) for s in nodes for a in m.abilities[s]):
                 reason = 'DEFER_PROFESSION_RIDING_OR_NONPLAYER_SKILL'
             elif any(set(m.spells[s][71:74]) & {36,40,44,47,118}
-                     or set(m.spells[s][95:98]) & {30,98} for m in (tc, ac) for s in nodes):
+                     or set(m.spells[s][95:98]) & ({30} if reviewed_racials and s == 28875 else {30,98})
+                     for m in (tc, ac) for s in nodes):
                 reason = 'DEFER_LEARN_OR_SKILL_EFFECT'
             elif any(m.scripts[s] for m in (tc, ac) for s in nodes):
                 reason = 'DEFER_SCRIPTED_SPELL_FAMILY'
@@ -301,6 +336,9 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
             selected.extend((g, s, *book[s]) for s in present)
             native.append({'guid': g, 'rank_root': root, 'race': c[1], 'class': c[2],
                            'stored_spells': present, 'native_skill_grants': False,
+                           **({'racial_contract':rules['contract'], 'wrong_race_verified':True,
+                               'retired_skill_bonus':{'skill':755,'bonus':5} if root == 28875 else None}
+                              if reviewed_racials else {}),
                            **({'absent_teacher_contract':teacher_proof} if teacher_proof else {}),
                            'ranks': [{'spell': s, **check(ac, s, c)} for s in nodes]})
             proof.extend((g, root, s, 'INELIGIBLE_ORDINARY_RANK',
@@ -329,4 +367,10 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
     if absent_teachers:
         summary['reviewed_absent_teacher_rows'] = sum(len(p['stored_spells']) for p in native if 'absent_teacher_contract' in p)
         summary['native_policy'] += '; only exact reviewed absent single-child teachers may supply inert incoming routes'
+    if reviewed_racials:
+        summary['reviewed_racial_rows'] = len(selected)
+        summary['native_policy'] = ('Retire only four fixed stock singleton racial spells on verified wrong races; '
+            'no associated stored skill, talent/aura/dependency/script route or pending reset; '
+            'retire the wrong racial bonus including reviewed Gemcutting +5; preserve both builds, stored skill '
+            'values/caps, items, profession slots and login flags; no replacement racial or grant')
     return selected, excluded, proof, summary, sorted(graphs[0].edges | graphs[1].edges)

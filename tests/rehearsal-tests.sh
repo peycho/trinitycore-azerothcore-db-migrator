@@ -29,6 +29,7 @@ python3 "$ROOT/tests/inactive-legacy-runtime-tests.py" "$TRINITYCORE_DIR" "$AZER
 python3 "$ROOT/tests/passive-prefix-runtime-tests.py" "$TRINITYCORE_DIR"
 python3 "$ROOT/tests/aura-alias-runtime-tests.py" "$TRINITYCORE_DIR"
 python3 "$ROOT/tests/spell-eligibility-runtime-tests.py" "$AZEROTHCORE_DIR"
+python3 "$ROOT/tests/racial-skill-bonus-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/absent-teacher-runtime-tests.py" "$TRINITYCORE_DIR"
 python3 "$ROOT/tests/eligibility-custom-runtime-tests.py" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/talent-route-runtime-tests.py" "$TRINITYCORE_DIR"
@@ -68,6 +69,7 @@ python3 "$ROOT/tests/profession-activation-mysql-tests.py"
 python3 "$ROOT/tests/specialization-mysql-tests.py"
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py"
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --absent-teachers
+python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --reviewed-racials
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --training-prerequisites
 python3 "$ROOT/tests/pet-teaching-mysql-tests.py"
 python3 "$ROOT/tests/pet-teaching-mysql-tests.py" --reviewed-cower

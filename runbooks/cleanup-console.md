@@ -18,6 +18,11 @@ It deliberately permits reviewed enabled-row retirement when both catalogs
 reject the complete ordinary rank family, while protecting skills and talents.
 It does not change existing history policies or migration rejection rules.
 
+The opt-in `plan spell-eligibility --reviewed-racials` v3 mode reviews four fixed
+stock racial spells on verified wrong races. It grants no replacement racial and
+preserves stored skills, talents and items. See the
+[fixed racial preview and archive procedure](spell-eligibility-repair.md#opt-in-fixed-wrong-race-racials-v3).
+
 The separate opt-in `--absent-teachers` eligibility v2 mode reviews exact stock
 Conjure Water/Doomguard incoming teachers only when all are absent. Known,
 skill, multi-child, scripted and modified teachers still defer. Use the

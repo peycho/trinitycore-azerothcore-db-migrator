@@ -43,6 +43,10 @@ enabled-row retirement only when both effective catalogs agree. It protects
 talents, associated skills, professions/riding, dependencies/scripts and pending
 resets. Both custom-start settings must be explicitly verified off; source and
 AC world/DBC evidence and exact archived restoration are required.
+The separate [fixed racial extension](spell-eligibility-repair.md#opt-in-fixed-wrong-race-racials-v3)
+retires only four reviewed stock racial spells on verified wrong races. It removes
+the unsupported racial bonus without changing stored skill values/caps and grants
+no replacement racial. Languages and old riding skills remain outside its scope.
 
 For ordinary disabled spells, use the separate opt-in
 [isolated ordinary-history policy](cleanup-console.md#review-isolated-disabled-ordinary-spells).

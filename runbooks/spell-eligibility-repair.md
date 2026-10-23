@@ -228,3 +228,63 @@ acknowledgement controls to the existing interruption/rerun/exact-restore suite.
 These are isolated consumer tests, not gameplay. Core pins, global manifests,
 spell reconstruction and UNREVIEWED approval remain unchanged. All five staging
 gameplay gates still require individual results.
+
+## Opt-in fixed wrong-race racials v3
+
+`--reviewed-racials` uses the separate
+`tc-ineligible-reviewed-racial-spell-repair-v3` policy. It covers only these stock
+singleton spells, using exact reviewed mechanics and race/class skill metadata
+in both effective catalogs:
+
+| Spell | Racial | Eligible race |
+| --- | --- | --- |
+| 20597 | Sword Specialization | Human |
+| 28875 | Gemcutting | Draenei |
+| 59224 | Mace Specialization | Dwarf |
+| 59539 | Shadow Resistance | Draenei |
+
+This explicitly retires a wrong racial, including its bonus. Gemcutting's +5
+Jewelcrafting bonus is separate from the stored skill value and cap: protected
+TC/AC aura and skill-bonus consumer tests verify that distinction. The repair
+preserves stored skills; it does not compensate for the removed bonus.
+
+The character must fail the **race** mask in both catalogs. A class-only mismatch
+is insufficient. Every existing eligibility guard remains: associated stored
+racial skills, pending resets, invalid character/talent state, scripts, learning,
+requirements and talent/aura ownership defer. A changed fixed catalog also defers.
+Languages, shields, old riding skills and other racial spells are outside this
+mode. No replacement racial is granted and no race field is changed.
+
+After pulling the complete toolkit, use the latest unchanged inspection, or
+capture current source state using the existing saved blocker TSV:
+
+```bash
+python3 console plan spell-eligibility \
+  --migration-inspection latest --reviewed-racials --preview
+
+# Copy INSPECTION_ID and selected_rows from that preview; do not reuse old counts.
+python3 console plan spell-eligibility \
+  --migration-inspection INSPECTION_ID --reviewed-racials --expect-rows SELECTED_ROWS
+```
+
+Review the generated README, exact rows and `eligibility-native-proof.json`, then
+use the existing explicit `prepare --batch BATCH_ID`, `apply --batch BATCH_ID`,
+`status --batch BATCH_ID` and `restore --batch BATCH_ID` procedure. Preview and
+planning do not change source rows. The v1 and v2 defaults remain unchanged;
+`--reviewed-racials` cannot be combined with `--absent-teachers`.
+
+The console supplies the additional direct-SQL acknowledgement
+`@eligibility_racials_ack='RETIRE_ONLY_REVIEWED_WRONG_RACE_RACIALS'`. Missing or wrong
+acknowledgements reject the operation. Catalog, source, both worlds, DBCs and
+protected reader fingerprints remain guarded at every action. Keep the original
+complete toolkit for restoring an earlier batch.
+
+Tests cover native AC eligibility/loading and exact character-scoped deletion,
+TC/AC Gemcutting bonus consumers with recording state, opt-in selection and
+negative controls, and isolated MySQL archive/apply/restore with custom fields,
+metadata drift, late failure and disconnect rollback. Full gameplay remains
+**NOT TESTED** and migration approval remains **UNREVIEWED**.
+
+On a fresh import, create a new session and regenerate inspections, selections,
+counts and archives using this policy. Old batch IDs and SQL packages belong to
+their original source snapshot.

@@ -122,6 +122,16 @@ int main(){
  check(13,1,8,2567,{176},{{176,0}},{{176,0,8}},true); // Config control only; never a workaround.
  world.validate=true;
 ''']
+# Fixed reviewed racial masks also run through the protected native reader.
+rules = json.loads((root/'lib/cleanup_racial_catalog.json').read_text())
+for spell, valid_race in ((20597,1),(59224,3),(28875,11),(59539,11)):
+    entry=rules['ac'][str(spell)];skill=rules['spells'][str(spell)]
+    infos=rules['skill_metadata']['ac'][str(skill)]['infos']
+    for race, expected in ((10,False),(valid_race,True)):
+        literal=lambda values:'{'+','.join(map(str,values))+'}'
+        main.append('check('+','.join(('100',str(race),'6',str(spell),literal([skill]),
+            '{'+','.join(literal((a[1],a[4]))for a in entry['abilities'])+'}',
+            '{'+','.join(literal(r[1:4])for r in infos)+'}',str(expected).lower()))+');')
 cases = []
 if len(sys.argv) > 2:
     private = Path(sys.argv[2])
@@ -149,7 +159,7 @@ if len(sys.argv) > 2:
             str(row['spell']), literal(skills),
             '{'+','.join(literal((a[1], a[4])) for a in abilities)+'}',
             '{'+','.join(literal(r[1:4]) for r in info)+'}', 'false'))+');')
-main.append('std::cout<<"Protected AC spell eligibility/load/delete: 13 synthetic controls and '+str(len(cases))+' captured cases PASS; gameplay NOT TESTED\\n";}')
+main.append('std::cout<<"Protected AC spell eligibility/load/delete: 13 synthetic controls, 8 fixed racial controls and '+str(len(cases))+' captured cases PASS; gameplay NOT TESTED\\n";}')
 with tempfile.TemporaryDirectory() as directory:
     cpp, binary = Path(directory)/'eligibility.cpp', Path(directory)/'eligibility'
     cpp.write_text(mock+'\n'+'\n'.join(sources)+'\n'+'\n'.join(main))
