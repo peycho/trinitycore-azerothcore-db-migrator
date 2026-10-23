@@ -24,6 +24,7 @@ python3 "$ROOT/tests/selected-passive-runtime-tests.py" "$TRINITYCORE_DIR" "$AZE
 python3 "$ROOT/tests/shaman-dual-wield-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/skill-teaching-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/profession-activation-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
+python3 "$ROOT/tests/specialization-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/inactive-legacy-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/passive-prefix-runtime-tests.py" "$TRINITYCORE_DIR"
 python3 "$ROOT/tests/aura-alias-runtime-tests.py" "$TRINITYCORE_DIR"
@@ -64,6 +65,7 @@ python3 "$ROOT/tests/selected-passive-mysql-tests.py"
 python3 "$ROOT/tests/shaman-dual-wield-mysql-tests.py"
 python3 "$ROOT/tests/skill-teaching-mysql-tests.py"
 python3 "$ROOT/tests/profession-activation-mysql-tests.py"
+python3 "$ROOT/tests/specialization-mysql-tests.py"
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py"
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --absent-teachers
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --training-prerequisites

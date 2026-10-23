@@ -137,6 +137,13 @@ under fixed metadata and preserved skill/cap guards. It never chooses a
 specialization or infers a missing higher rank from the skill cap. Recompute its
 preview on each fresh snapshot; use its own reviewed batch and exact inverse.
 
+The separate [inactive specialization retirement](specialization-retirement.md)
+policy treats one verified active specialty as authoritative, archives inactive
+competitors and preserves stored recipes/skills. It changes known-specialization
+eligibility and checks both worlds' equipped-item requirements. Ambiguous choices,
+missing prerequisites and affected/unknown equipment defer. Recompute its live
+preview and equipment evidence on every fresh snapshot.
+
 ## Repeat the complete preparation and migration
 
 The deliverable is a repeatable process on a **fresh production snapshot**.

@@ -1437,3 +1437,14 @@ field verification. See the [profession activation guide](profession-activation-
 for current-snapshot commands, availability implications, privileges, restoration
 and fresh-import repeatability. This policy does not weaken migration rejection
 of inactive spells.
+
+### Inactive competing specializations
+
+`plan specialization-retirement --migration-inspection latest --preview` reviews
+inactive/non-disabled competitors to one verified active profession specialty.
+It requires fixed catalogs, skill/prerequisite proof and live equipment checks
+against both worlds' RequiredSpell fields. Ambiguous choices, missing parents,
+unknown/affected equipped items and pending resets defer. Recipes and skills are
+not purged, but known-specialization eligibility deliberately changes. See the
+[specialization retirement guide](specialization-retirement.md) for preview,
+reviewed batch creation, privileges, exact restoration and fresh-import steps.

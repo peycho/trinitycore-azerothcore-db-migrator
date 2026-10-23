@@ -50,7 +50,7 @@ def sha(path):
 
 
 def toolkit_hashes():
-    names=('lib/cleanup_professions.py','lib/cleanup_profession_catalog.json','tools/profession-activation-repair.sql.in','lib/cleanup_skill_teaching.py','lib/cleanup_skill_teaching_catalog.json','lib/cleanup_shaman_dual_wield.py','tools/shaman-dual-wield-repair.sql.in','console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
+    names=('lib/cleanup_specializations.py','lib/cleanup_specialization_catalog.json','lib/cleanup_professions.py','lib/cleanup_profession_catalog.json','tools/profession-activation-repair.sql.in','lib/cleanup_skill_teaching.py','lib/cleanup_skill_teaching_catalog.json','lib/cleanup_shaman_dual_wield.py','tools/shaman-dual-wield-repair.sql.in','console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
@@ -639,6 +639,12 @@ def command_action(settings, work, args):
         if manifest.get('absent_teacher_ack') != ABSENT_TEACHER_ACK:
             fail('ABSENT_TEACHER_ACK_INVALID','Absent-teacher acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @eligibility_absent_teachers_ack='VERIFIED_TEACHERS_ABSENT';\n"
+    from cleanup_specializations import POLICY as SPECIALIZATION_POLICY, ACK as SPECIALIZATION_ACK
+    if manifest.get('policy') == SPECIALIZATION_POLICY:
+        if manifest.get('specialization_ack') != SPECIALIZATION_ACK:
+            fail('SPECIALIZATION_ACK_INVALID','Specialization retirement acknowledgement differs')
+        configuration_ack += f"SET @specialization_retirement_ack='{SPECIALIZATION_ACK}';\n"
+        configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
     from cleanup_professions import POLICY as PROFESSION_POLICY, ACK as PROFESSION_ACK
     if manifest.get('policy') == PROFESSION_POLICY:
         if manifest.get('profession_activation_ack') != PROFESSION_ACK:
@@ -809,6 +815,12 @@ def parser():
     ownership_review=ownership.add_mutually_exclusive_group(required=True)
     ownership_review.add_argument('--preview',action='store_true',help='Read-only complete captured-scope review; no active batch or SQL package')
     ownership_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows printed by this policy preview')
+    specialties=types.add_parser('specialization-retirement',help='Separate archived retirement of inactive competitors to one verified active profession specialization')
+    specialties.set_defaults(specialization_retirement=True,inspection=None,audit=None)
+    specialties.add_argument('--migration-inspection',required=True,help='Current sealed migration-blocker inspection ID or latest')
+    specialty_review=specialties.add_mutually_exclusive_group(required=True)
+    specialty_review.add_argument('--preview',action='store_true',help='Read-only specialization/equipped-item review; no SQL package')
+    specialty_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows from the current preview')
     professions=types.add_parser('profession-activation',help='Separate archived activation of existing ordinary profession ranks; preserve skills and recipes')
     professions.set_defaults(profession_activation=True,inspection=None,audit=None)
     professions.add_argument('--migration-inspection',required=True,help='Current sealed migration-blocker inspection ID or latest')
