@@ -66,8 +66,11 @@ There is no GM/staff exemption and no two-profession assumption.
 ## Equipped-item checks
 
 Preview reads `character_inventory` and `item_instance`, and both worlds'
-`item_template.entry, RequiredSpell`. The tables must use InnoDB and native
-integer identifier/requirement fields. Custom columns remain present and their
+`item_template.entry, requiredspell`. The tables must use InnoDB and native
+integer identifier/requirement fields. Column names are resolved case
+insensitively, as MySQL does; stock DDL uses lowercase `requiredspell`. The
+original spelling and complete layout remain sealed and must not change after
+planning. Custom columns remain present and their
 layouts are sealed; no table or item is rewritten.
 
 Equipment slots `0..18`, equipped bag slots `19..22` and bank bag slots

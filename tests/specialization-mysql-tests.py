@@ -78,14 +78,20 @@ def main():
                 if g in (1,2,8) and a==0:expected.append([g,spell,a,d])
             for sk,v,cap in skills:sql(f'INSERT INTO `{source}`.character_skills VALUES({g},{sk},{v},{cap});')
         expected.sort()
-        for schema in (world,aworld):
-            sql('CREATE TABLE item_template(entry MEDIUMINT UNSIGNED PRIMARY KEY,RequiredSpell MEDIUMINT UNSIGNED NOT NULL,custom_decimal DECIMAL(18,6) NULL);',schema)
+        # Use each real stock CREATE TABLE, not a synthetic C++ member name.
+        # Native DDL spells the database column `requiredspell` in lowercase.
+        for schema,definition in ((world,tc/'sql/base/dev/world_database.sql'),
+                                  (aworld,ac/'data/sql/base/db_world/item_template.sql')):
+            native=re.search(r'CREATE TABLE `item_template` \(.*?\) ENGINE=[^;]+;',definition.read_text(),re.S)[0]
+            assert '`requiredspell`'in native and '`RequiredSpell`'not in native
+            sql(native,schema)
+            sql('ALTER TABLE item_template ADD custom_decimal DECIMAL(18,6) NULL;',schema)
         for g,slot,tc_req,ac_req in ((1,15,17041,17041),(5,15,10656,0),(6,15,0,20219),(7,15,0,None),(8,30,10656,10656)):
             item,entry=100+g,10000+g
             sql(f"INSERT INTO `{source}`.item_instance(guid,itemEntry,owner_guid,enchantments) VALUES({item},{entry},{g},'');")
             sql(f'INSERT INTO `{source}`.character_inventory(guid,bag,slot,item) VALUES({g},0,{slot},{item});')
-            sql(f'INSERT INTO `{world}`.item_template VALUES({entry},{tc_req},0.100001);')
-            if ac_req is not None:sql(f'INSERT INTO `{aworld}`.item_template VALUES({entry},{ac_req},0.100001);')
+            sql(f'INSERT INTO `{world}`.item_template(entry,requiredspell,custom_decimal) VALUES({entry},{tc_req},0.100001);')
+            if ac_req is not None:sql(f'INSERT INTO `{aworld}`.item_template(entry,requiredspell,custom_decimal) VALUES({entry},{ac_req},0.100001);')
         for user in (writer,reader):
             sql(f"CREATE USER '{user}'@'%' IDENTIFIED BY '';");users.append(user)
             for schema in (source,auth,world,aworld):sql(f"GRANT SELECT ON `{schema}`.* TO '{user}'@'%';")
@@ -191,8 +197,8 @@ backup_reference=dedicated-disposable-specialization-fixture
             for update,undo in (
                 (f"INSERT INTO `{source}`.item_instance(guid,itemEntry,owner_guid,enchantments) VALUES(102,10001,2,''); INSERT INTO `{source}`.character_inventory(guid,bag,slot,item) VALUES(2,0,20,102)",
                  f'DELETE FROM `{source}`.character_inventory WHERE item=102; DELETE FROM `{source}`.item_instance WHERE guid=102'),
-                (f'UPDATE `{world}`.item_template SET RequiredSpell=17039 WHERE entry=10001',f'UPDATE `{world}`.item_template SET RequiredSpell=17041 WHERE entry=10001'),
-                (f'UPDATE `{aworld}`.item_template SET RequiredSpell=17040 WHERE entry=10001',f'UPDATE `{aworld}`.item_template SET RequiredSpell=17041 WHERE entry=10001'),
+                (f'UPDATE `{world}`.item_template SET requiredspell=17039 WHERE entry=10001',f'UPDATE `{world}`.item_template SET requiredspell=17041 WHERE entry=10001'),
+                (f'UPDATE `{aworld}`.item_template SET requiredspell=17040 WHERE entry=10001',f'UPDATE `{aworld}`.item_template SET requiredspell=17041 WHERE entry=10001'),
                 (f'UPDATE `{source}`.character_inventory SET slot=16 WHERE guid=1 AND item=101',f'UPDATE `{source}`.character_inventory SET slot=15 WHERE guid=1 AND item=101'),
                 (f'UPDATE `{source}`.character_inventory SET slot=67 WHERE guid=1 AND item=101',f'UPDATE `{source}`.character_inventory SET slot=15 WHERE guid=1 AND item=101'),
                 (f'UPDATE `{source}`.item_instance SET itemEntry=10005 WHERE guid=101',f'UPDATE `{source}`.item_instance SET itemEntry=10001 WHERE guid=101')):
@@ -201,6 +207,12 @@ backup_reference=dedicated-disposable-specialization-fixture
                 assert checksum()==changed
                 assert 'SPECIALIZATION_EQUIPMENT_DRIFT' in run('apply',code=2).stderr
                 sql(undo)
+            # Resolution is case insensitive at planning, but a prepared batch
+            # must still reject ANY change to its exact recorded column names.
+            sql(f'ALTER TABLE `{world}`.item_template CHANGE COLUMN requiredspell RequiredSpell INT UNSIGNED NOT NULL DEFAULT 0;')
+            denied=direct(extra);assert denied.returncode and 'Specialization equipment/item layout' in denied.stderr
+            assert 'SPECIALIZATION_EQUIPMENT_DRIFT' in run('apply',code=2).stderr
+            sql(f'ALTER TABLE `{world}`.item_template CHANGE COLUMN RequiredSpell requiredspell INT UNSIGNED NOT NULL DEFAULT 0;')
             sql(f'ALTER TABLE `{world}`.item_template ADD extra INT NOT NULL DEFAULT 0;')
             denied=direct(extra);assert denied.returncode and 'Specialization equipment/item layout' in denied.stderr
             sql(f'ALTER TABLE `{world}`.item_template DROP COLUMN extra;')
@@ -248,9 +260,9 @@ backup_reference=dedicated-disposable-specialization-fixture
             sql(f'UPDATE `{source}`.character_spell SET custom_decimal=0.100002 WHERE guid=1 AND spell=6603;')
             changed=checksum();run('restore',code=2);assert checksum()==changed
             sql(f'UPDATE `{source}`.character_spell SET custom_decimal=0.100001 WHERE guid=1 AND spell=6603;')
-            sql(f'UPDATE `{aworld}`.item_template SET RequiredSpell=17039 WHERE entry=10001;')
+            sql(f'UPDATE `{aworld}`.item_template SET requiredspell=17039 WHERE entry=10001;')
             changed=checksum();run('restore',code=2);assert checksum()==changed
-            sql(f'UPDATE `{aworld}`.item_template SET RequiredSpell=17041 WHERE entry=10001;')
+            sql(f'UPDATE `{aworld}`.item_template SET requiredspell=17041 WHERE entry=10001;')
             run('restore');run('restore');assert checksum()==baseline
             run('apply',code=2)
             passed('committed rerun, only inactive competitors removed; active choices, ranks/recipes, both builds, every skill/cap, professions, worlds and unrelated state preserved; guarded full custom inverse and restore rerun')

@@ -153,15 +153,29 @@ def select(state,tc,ac,expected=None,*,preview=False,equipment):
 
 def equipment_query(settings,scope):
     source=settings.schemas['characters'];tc=settings.schemas['world'];ac=settings.get('target','world')
-    expressions=['i.guid','i.slot','i.item','x.guid','x.itemEntry','t.entry','t.RequiredSpell','a.entry','a.RequiredSpell']
+    expressions=['i.guid','i.slot','i.item','x.guid','x.itemEntry','t.entry','t.requiredspell','a.entry','a.requiredspell']
     query=(f'FROM `{source}`.character_inventory i LEFT JOIN `{source}`.item_instance x ON x.guid=i.item '
            f'LEFT JOIN `{tc}`.item_template t ON t.entry=x.itemEntry LEFT JOIN `{ac}`.item_template a ON a.entry=x.itemEntry '
            f'WHERE {scope} AND i.bag=0 AND (i.slot<23 OR i.slot BETWEEN 67 AND 73)')
     return expressions,query
 
 
+def equipment_shape(meta,table,fields):
+    # MySQL column identifiers are case insensitive. Resolve their semantic
+    # names here only; keep the original metadata untouched for exact sealing.
+    rows=[r for r in meta['columns']if r[0]==table]
+    actual={r[1].lower():r for r in rows}
+    missing=set(fields)-actual.keys()
+    if missing or len(actual)!=len(rows):
+        message=(table+' missing required columns: '+', '.join(sorted(missing)))if missing else table+' has ambiguous column names'
+        fail('SPECIALIZATION_EQUIPMENT_LAYOUT',message,
+             'Expected native inventory/item identifiers and item_template.entry, requiredspell in both worlds; compare the actual table definitions.')
+    if any(not re.match(r'^(?:tiny|small|medium|big)?int(?:\(|\b)',actual[f][2])for f in fields):
+        fail('SPECIALIZATION_EQUIPMENT_LAYOUT','Native integer equipment/item identifiers and requirements required: '+table)
+
+
 def read_equipment(settings,guids):
-    from cleanup_plans import metadata,require_shape,snapshot
+    from cleanup_plans import metadata,snapshot
     names=[('source',settings.schemas['characters'],['character_inventory','item_instance']),
            ('tc',settings.schemas['world'],['item_template']),('ac',settings.get('target','world'),['item_template'])]
     layouts={}
@@ -169,10 +183,8 @@ def read_equipment(settings,guids):
         view=copy(settings);view.schemas={**settings.schemas,'characters':schema}
         meta=metadata(view,tables)
         for table in tables:
-            fields={'guid','bag','slot','item'}if table=='character_inventory'else {'guid','itemEntry'}if table=='item_instance'else {'entry','RequiredSpell'}
-            shape=require_shape(meta,table,fields)
-            if any(not re.match(r'^(?:tiny|small|medium|big)?int(?:\(|\b)',shape[f][0])for f in fields):
-                fail('SPECIALIZATION_EQUIPMENT_LAYOUT','Native integer equipment/item identifiers and requirements required')
+            fields={'guid','bag','slot','item'}if table=='character_inventory'else {'guid','itementry'}if table=='item_instance'else {'entry','requiredspell'}
+            equipment_shape(meta,table,fields)
         layouts[key]={'schema':schema,'meta':dict(meta)}
     ids=','.join(map(str,sorted(guids)))or '0';fields,query=equipment_query(settings,f'i.guid IN ({ids})')
     rows=snapshot(settings,[('equipment',f"SELECT JSON_ARRAY({','.join(fields)}) row_value {query} ORDER BY i.guid,i.slot,i.item LIMIT 1200001")])['equipment']

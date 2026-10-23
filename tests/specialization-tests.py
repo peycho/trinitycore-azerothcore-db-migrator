@@ -3,7 +3,7 @@
 import copy,importlib.util,json,sys,tempfile,unittest
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'lib'))
-from cleanup_specializations import select,contract,FAMILIES
+from cleanup_specializations import select,contract,FAMILIES,equipment_shape
 from cleanup_console import CleanupError,parser
 from spells import Metadata,reconstruct,Unsupported
 spec=importlib.util.spec_from_file_location('specialty_assets',ROOT/'tests/specialization-fixtures.py');assets=importlib.util.module_from_spec(spec);spec.loader.exec_module(assets)
@@ -96,6 +96,24 @@ class SpecializationTests(unittest.TestCase):
         after['character_spell']=[r for r in after['character_spell']if tuple(r[:2])not in pairs]
         for table in ('characters','character_talent','character_skills'):self.assertEqual(after[table],original[table])
         self.assertIn([1,17041,1,0],after['character_spell']);self.assertIn([1,3275,1,0],after['character_spell'])
+    def test_equipment_column_case_matches_mysql_and_preserves_exact_metadata(self):
+        for field in ('requiredspell','RequiredSpell','REQUIREDSPELL'):
+            meta={'columns':[['item_template','entry','int unsigned','NO','PRI','','',1],
+                             ['item_template',field,'int unsigned','NO','','','',2]]}
+            original=copy.deepcopy(meta);equipment_shape(meta,'item_template',{'entry','requiredspell'})
+            self.assertEqual(meta,original)
+        meta={'columns':[['item_instance','guid','int unsigned','NO','PRI','','',1],
+                         ['item_instance','itemEntry','mediumint unsigned','NO','','','',2]]}
+        equipment_shape(meta,'item_instance',{'guid','itementry'})
+    def test_missing_or_nonnumeric_item_requirement_still_rejects(self):
+        base={'columns':[['item_template','entry','int unsigned','NO','PRI','','',1],
+                         ['item_template','requiredspell','int unsigned','NO','','','',2]]}
+        for name,kind in (('required_spell','int unsigned'),('requiredspell','varchar(20)')):
+            meta=copy.deepcopy(base);meta['columns'][1][1]=name;meta['columns'][1][2]=kind
+            with self.assertRaises(CleanupError)as error:equipment_shape(meta,'item_template',{'entry','requiredspell'})
+            self.assertEqual(error.exception.code,'SPECIALIZATION_EQUIPMENT_LAYOUT')
+        meta=copy.deepcopy(base);row=meta['columns'][1].copy();row[1]='RequiredSpell';meta['columns'].append(row)
+        with self.assertRaises(CleanupError):equipment_shape(meta,'item_template',{'entry','requiredspell'})
     def test_character_pending_reset_and_count_guards(self):
         base=copy.deepcopy(self.state)
         for field,val in ((1,9),(2,10),(3,49),(3,81),(4,2),(5,3),(6,1),(7,4)):
