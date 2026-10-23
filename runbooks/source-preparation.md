@@ -131,6 +131,12 @@ It discards their cap-reset effect while retaining every stored skill/cap, recip
 talent build and item. Recompute candidates from the current inspection after
 other preparation batches; do not replay old wrapper counts on a fresh import.
 
+The separate [ordinary profession activation](profession-activation-repair.md)
+policy deliberately enables existing inactive/non-disabled profession actions
+under fixed metadata and preserved skill/cap guards. It never chooses a
+specialization or infers a missing higher rank from the skill cap. Recompute its
+preview on each fresh snapshot; use its own reviewed batch and exact inverse.
+
 ## Repeat the complete preparation and migration
 
 The deliverable is a repeatable process on a **fresh production snapshot**.

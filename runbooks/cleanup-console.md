@@ -1424,3 +1424,16 @@ recipes, talents, items or flags. It deliberately discards the old teaching
 wrapper, including any cap-reset effect. Use the returned selected wrapper-row
 count for `--expect-rows`, then review the new archived batch. See the [full
 contract, privileges, exact restore and fresh-import workflow](skill-teaching-repair.md).
+
+### Activate existing ordinary profession ranks
+
+`plan profession-activation --migration-inspection latest --preview` reviews a
+separate opt-in availability correction: existing inactive/non-disabled ordinary
+crafting ranks become active. Fixed four-family metadata, a sole stored rank and
+an existing compatible skill are required. No missing higher rank is granted;
+specializations and pending resets defer. Preparation archives complete originals;
+apply/restore use only `UPDATE(active)`, with atomic checkpoints and exact custom
+field verification. See the [profession activation guide](profession-activation-repair.md)
+for current-snapshot commands, availability implications, privileges, restoration
+and fresh-import repeatability. This policy does not weaken migration rejection
+of inactive spells.
