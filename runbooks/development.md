@@ -821,3 +821,23 @@ checks committed teacher provenance/report regeneration, exact per-wrapper SQL
 validation (wrong child/mask controls), interruption/rollback/resume, reruns,
 reverse state and unrelated source/world/index preservation. Native gameplay
 remains NOT TESTED; approval remains UNREVIEWED.
+
+### Ordinary known-spell teacher regression
+
+V16 fixtures cover Judgement `10321`, Healing Stream Totem `5396` and Gnomish
+Engineering `20220`, with source wrapper rows and no stored child rows. Unit
+checks cover exact known children, seal prefixes, missing training prerequisites,
+no higher totem grant, single/dual specs, overlap, canonical forward/reverse
+state, unchanged inputs, unsupported flags/classes/skills and matching changes
+in both worlds. Literal mechanic/relationship contracts are mandatory; matching
+mutated catalogs alone never approve conversion.
+
+The protected TC dependency loader and AC persistent-LEARN refusal execute with
+recording mock sinks. Direct and wrapped native AC trainer checks use migrated
+rows; missing children remain unknown and an unlearned higher totem stays
+available. These are isolated consumer checks, not complete gameplay tests.
+The MySQL rehearsal covers exact child/skill provenance and rejects wrong child
+sets, masks and skill drift, alongside transaction rollback, interrupted/resumed
+chunks, reruns, reverse conversion, source/world immutability and index recovery.
+No source preparation policy is added. Full gameplay remains NOT TESTED; profile
+approval remains UNREVIEWED.

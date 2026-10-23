@@ -161,6 +161,33 @@ for wrapper,button in ((63706,63645),(63707,63644)):
             str(button):dict(REVIEWED_CONSUMED_TEACHERS['63680']['mechanics'][str(button)]),
         },
     }
+# Ordinary stored TC teaching wrappers derive these children at load without
+# casting. Explicit contracts, not a general permission to consume LEARN rows.
+REVIEWED_ORDINARY_TEACHERS = {
+    '10321': {'class':2, 'children':[20271,21084], 'skills':[184,594],
+        'mechanics': {
+            '10321':{'4':262400,'16':256,'28':1,'35':101,'46':6,'68':4294967295,'71':36,'72':36,'116':20271,'117':21084},
+            '20271':{'4':327680,'6':1048576,'7':196608,'20':5,'28':1,'29':10000,'30':10000,'38':4,'39':4,'46':7,'68':4294967295,'71':77,'74':1,'80':1,'86':6,'208':10,'209':8388608},
+            '21084':{'4':327680,'7':524288,'28':1,'34':20,'35':100,'37':7,'38':1,'39':1,'40':30,'46':1,'68':4294967295,'71':6,'72':6,'73':6,'74':1,'75':1,'76':1,'80':4294967295,'81':4294967295,'82':20186,'86':1,'87':1,'88':1,'95':4,'96':108,'97':4,'111':14,'125':8388608,'127':8,'208':10,'209':134217728,'210':536870912}},
+        'abilities':{'20271':[184,20271,0,2,0,0,1,0,0,0,0,0,0], '21084':[594,21084,0,2,0,0,1,0,2,0,0,0,0]},
+        'chains':{'tc':{'20271':[20271],'21084':[20154,21084]},'ac':{'20271':[20271],'21084':[21084]}},
+        'scripts':{'tc':{'20271':['spell_pal_judgement_of_light'],'21084':['spell_pal_seal_of_righteousness','spell_pal_seals']},'ac':{'20271':['spell_pal_judgement_of_light'],'21084':['spell_pal_seal_of_righteousness']}},
+        'requirements':{'tc':{},'ac':{}}},
+    '5396': {'class':7, 'children':[5394], 'skills':[374],
+        'mechanics':{
+            '5396':{'4':262400,'28':1,'35':101,'46':6,'68':4294967295,'71':36,'116':5394},
+            '5394':{'4':65536,'11':32,'28':1,'35':101,'38':20,'39':20,'40':5,'46':1,'68':4294967295,'71':28,'74':1,'80':4,'86':42,'110':3527,'113':82,'208':11,'209':524288}},
+        'abilities':{'5394':[374,5394,0,64,0,0,1,0,0,0,0,0,0]},
+        'chains':{core:{'5394':[5394,6375,6377,10462,10463,25567,58755,58756,58757]} for core in ('tc','ac')},
+        'scripts':{'tc':{},'ac':{}}, 'requirements':{'tc':{},'ac':{}}},
+    '20220': {'class':0, 'children':[20219], 'skills':[202],
+        'mechanics':{
+            '20220':{'4':256,'16':256,'28':1,'35':101,'46':6,'68':4294967295,'71':36,'74':1,'80':24,'116':20219},
+            '20219':{'4':16842768,'10':4096,'28':1,'35':101,'46':1,'68':4294967295,'71':47}},
+        'abilities':{'20219':[202,20219,0,0,0,0,1,0,0,0,0,0,0]},
+        'chains':{core:{'20219':[20219]} for core in ('tc','ac')},
+        'scripts':{'tc':{},'ac':{}}, 'requirements':{'tc':{'20219':[12656]},'ac':{}}},
+}
 CORRECTION_DEFINITIONS = (
     'src/server/shared/SharedDefines.h',
     'src/server/game/Spells/SpellDefines.h',
@@ -272,6 +299,7 @@ def generate(tc, ac):
     result['world_talent_auras'] = REVIEWED_WORLD_TALENT_AURAS
     result['world_ranked_talent_auras'] = REVIEWED_WORLD_RANKED_TALENT_AURAS
     result['consumed_teachers'] = REVIEWED_CONSUMED_TEACHERS
+    result['ordinary_teachers'] = REVIEWED_ORDINARY_TEACHERS
     result['native_passive_ranks'] = REVIEWED_NATIVE_PASSIVE_RANKS
     for name, (table, fmt_name) in STORES.items():
         sql = (ac / f'data/sql/base/db_world/{table}.sql').read_text()

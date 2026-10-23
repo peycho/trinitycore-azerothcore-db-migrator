@@ -280,9 +280,22 @@ def stores(profile):
         ability=record('SkillLineAbility',spell)
         ability[1:12]=[594,spell,0,2,0,0,1,21084 if spell==20154 else 0,2,0,0]
     data['SkillRaceClassInfo'][594][1:7]=[594,0xffffffff,2,1040,0,0]
-    row=record('Spell',10321)
-    row[4],row[71:74],row[116:119]=262400,[36,36,0],[20271,21084,0]
-    record('Spell',20271)[71]=3
+    # Ordinary teaching wrappers restore known children during TC loading.
+    for teacher in profile.get('ordinary_teachers',{}).values():
+        for spell,shape in teacher['mechanics'].items():
+            row=record('Spell',int(spell))
+            for field,value in shape.items():row[int(field)]=value
+        for spell,ability in teacher['abilities'].items():
+            record('SkillLineAbility',int(spell))[1:]=ability
+        for skill in teacher['skills']:
+            record('SkillLine',skill)[1]=11 if skill==202 else 7
+            info=record('SkillRaceClassInfo',skill)
+            info[1:7]=[skill,0xffffffff if skill==594 else 0,(1<<(teacher['class']-1)) if teacher['class'] else 0,1040 if skill!=202 else 0,0,0]
+    record('Spell',12656)[71]=47
+    for core_rules in profile.get('ordinary_teachers',{}).values():
+        for chain in core_rules['chains']['tc'].values():
+            for spell in chain:
+                if spell not in data['Spell']:record('Spell',spell)[71]=10
     return data
 
 
@@ -333,6 +346,12 @@ def seed_worlds(sql, tc, ac, tc_world, ac_world, profile):
         f"({spell},'spell_chapter1_runeforging_credit')" for spell in RUNEFORGING),tc_world)
     sql('INSERT INTO spell_ranks VALUES (44440,44440,1),(44440,44441,2)',ac_world)
     sql('INSERT INTO spell_ranks VALUES (20154,20154,1),(20154,21084,2)',tc_world)
+    sql('INSERT INTO spell_required VALUES (20219,12656)',tc_world)
+    for world in (tc_world,ac_world):
+        chain=[5394,6375,6377,10462,10463,25567,58755,58756,58757]
+        sql('INSERT INTO spell_ranks VALUES '+','.join(f'(5394,{spell},{rank})' for rank,spell in enumerate(chain,1)),world)
+        sql("INSERT INTO spell_script_names VALUES (20271,'spell_pal_judgement_of_light')",world)
+
     for world in (tc_world,ac_world):
         sql("INSERT INTO spell_script_names VALUES (20154,'spell_pal_seal_of_righteousness'),"
             "(21084,'spell_pal_seal_of_righteousness')",world)

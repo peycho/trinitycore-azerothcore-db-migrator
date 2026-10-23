@@ -43,6 +43,10 @@ class World:
                                       ['40326','spell_teron_gorefiend_shadowy_construct']])
         if world=='ac' and table=='spell_ranks':
             rows += [['44440','44440','1'],['44440','44441','2']]
+        if table=='spell_ranks':
+            rows += [['5394',str(spell),str(rank)] for rank,spell in enumerate([5394,6375,6377,10462,10463,25567,58755,58756,58757],1)]
+        if table=='spell_required' and world=='tc':rows += [['20219','12656']]
+        if table=='spell_script_names':rows += [['20271','spell_pal_judgement_of_light']]
         if world=='tc' and table=='spell_learn_spell':
             rows += [['17002','24867','0'],['24866','24864','0']]
         if world=='tc' and table=='spell_ranks':
@@ -227,6 +231,62 @@ class SpellTests(unittest.TestCase):
             call()
         self.assertEqual(error.exception.reason,reason)
 
+    def test_ordinary_teachers_preserve_tc_known_children_without_casting_or_higher_grants(self):
+        cases=[(10321,2,{184:(1,400),594:(1,400)},{20271,21084,20154}),
+               (5396,7,{374:(400,400)},{5394}),
+               (20220,3,{202:(450,450)},{20219})]
+        for teacher,cls,skills,children in cases:
+            for active in (0,1):
+                book={teacher:(1,0)};before=copy.deepcopy((book,skills))
+                result=self.convert(book,skills=skills,cls=cls,active=active)
+                self.assertEqual(set(result),{teacher,*children})
+                self.assertEqual((result[teacher]['disposition'],result[teacher]['mask']),('TEACHER',3))
+                self.assertFalse(result[teacher]['authorization']['consumed_teacher']['effects_executed'])
+                self.assertTrue(all(result[s]['disposition']=='PERSISTENT' and result[s]['mask']==3 for s in children))
+                self.assertNotIn(6375,result);self.assertNotIn(12656,result)
+                backward=self.convert({s:(3,) for s in children},skills=skills,cls=cls,active=active,reverse=True)
+                self.assertEqual(set(backward),children);self.assertNotIn(teacher,backward)
+                again=self.convert({s:(r['active'],r['disabled']) for s,r in backward.items()},skills=skills,cls=cls,active=active)
+                self.assertEqual({s:r['mask'] for s,r in again.items()},{s:3 for s in children})
+                self.assertEqual((book,skills),before)
+                overlap=self.convert({teacher:(1,0),**{s:(1,0) for s in children}},skills=skills,cls=cls,active=active)
+                self.assertEqual(set(overlap),set(result))
+                one=reconstruct((1,cls,0,1),book,{},skills,self.tc,self.ac,'tc-to-ac',level=80)
+                self.assertEqual(set(one),set(result))
+        # Source-only training prerequisite is recorded and never invented.
+        result=self.convert({20220:(1,0)},skills={202:(450,450)},cls=3)
+        self.assertEqual(result[20219]['authorization']['training_prerequisites']['missing_from_known_state'],[12656])
+
+    def test_ordinary_teacher_unsafe_flags_missing_skills_and_foreign_classes_remain_blocked(self):
+        for teacher,cls,skills in [(10321,2,{184:(1,400),594:(1,400)}),(5396,7,{374:(400,400)}),(20220,3,{202:(450,450)})]:
+            self.fails('UNREPRESENTABLE_TEACHER_STATE',lambda:self.convert({teacher:(3,)},skills=skills,cls=cls,reverse=True))
+            self.fails('UNREPRESENTABLE_DISABLED_SPELL',lambda:self.convert({teacher:(1,1)},skills=skills,cls=cls))
+            self.fails('UNREPRESENTABLE_INACTIVE_SPELL',lambda:self.convert({teacher:(0,0)},skills=skills,cls=cls))
+            for missing in skills:
+                reduced={s:v for s,v in skills.items() if s!=missing}
+                self.fails('SPELL_WOULD_ADD_SKILL',lambda:self.convert({teacher:(1,0)},skills=reduced,cls=cls))
+            tc=copy.deepcopy(self.tc);tc.ordinary_teachers.pop(str(teacher))
+            self.fails('UNSUPPORTED_PERSISTENT_LEARN_EFFECT',lambda:self.convert({teacher:(1,0)},skills=skills,cls=cls,tc=tc))
+        self.fails('UNREPRESENTABLE_TEACHER_STATE',lambda:self.convert({5396:(1,0)},skills={374:(400,400)},cls=8))
+
+    def test_ordinary_teacher_matching_world_mutations_do_not_authorize_new_routes(self):
+        for field in (4,12,71,74,80,86,110,116,208,211):
+            for cores in ('tc','ac','both'):
+                tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+                for m in ([tc,ac] if cores=='both' else [tc if cores=='tc' else ac]):m.spells[5396][field]^=1
+                self.fails('INCOMPATIBLE_CONSUMED_TEACHER',lambda:self.convert({5396:(1,0)},skills={374:(400,400)},cls=7,tc=tc,ac=ac))
+        for change in ('auto','extra','incoming','child_ability','child_mechanic','requirement','aura','chain'):
+            tc=copy.deepcopy(self.tc)
+            if change=='auto':tc.learns[5396][0]=(5394,1,True)
+            elif change=='extra':tc.learns[5396].append((6603,1,False))
+            elif change=='incoming':tc.learn_parents[5396].add(6603)
+            elif change=='child_ability':tc.abilities[5394][0][9]=2
+            elif change=='child_mechanic':tc.spells[5394][71]=118
+            elif change=='requirement':tc.requires[5394].add(12282)
+            elif change=='aura':tc.aura_owners[5394].add(12282)
+            elif change=='chain':tc.chains[5394]=(5394,6375)
+            self.fails('INCOMPATIBLE_CONSUMED_TEACHER',lambda:self.convert({5396:(1,0)},skills={374:(400,400)},cls=7,tc=tc))
+
     def test_seal_split_restores_only_verified_lower_rank_and_round_trips(self):
         for active in (0,1):
             for book in ({21084:(1,0)}, {20154:(0,0),21084:(1,0)},
@@ -253,7 +313,7 @@ class SpellTests(unittest.TestCase):
         self.fails('UNREPRESENTABLE_INACTIVE_SPELL',lambda:self.convert({21084:(0,0)}))
         self.fails('UNREPRESENTABLE_AC_SPELL_MASK',lambda:self.convert({21084:(1,)},reverse=True))
         self.fails('SPELL_WOULD_ADD_SKILL',lambda:self.convert({21084:(1,0)},skills={}))
-        self.fails('UNSUPPORTED_PERSISTENT_LEARN_EFFECT',lambda:self.convert({10321:(1,0)}))
+        self.fails('SPELL_WOULD_ADD_SKILL',lambda:self.convert({10321:(1,0)}))
         self.fails('INCOMPATIBLE_SEAL_RANK_SPLIT',lambda:self.convert({21084:(1,0)},cls=1))
 
     def test_seal_split_blocks_changed_mechanics_routes_and_chain_membership(self):

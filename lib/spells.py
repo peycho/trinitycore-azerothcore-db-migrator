@@ -15,7 +15,7 @@ import struct
 import subprocess
 import sys
 
-POLICY = 'spell-state-v15'
+POLICY = 'spell-state-v16'
 LEARN, SKILL, SKILL_STEP, DUAL_WIELD = 36, 118, 44, 40
 PASSIVE, HIDDEN = 0x40, 0x80
 
@@ -294,6 +294,7 @@ class Metadata:
         self.world_talent_auras = profile.get('world_talent_auras', {})
         self.world_ranked_talent_auras = profile.get('world_ranked_talent_auras', {})
         self.consumed_teachers = profile.get('consumed_teachers', {})
+        self.ordinary_teachers = profile.get('ordinary_teachers', {})
         self.world_aura_owners = {child: owner for rule in (*self.world_talent_auras.values(),
                                                           *self.world_ranked_talent_auras.values())
                                   for owner,child in zip(rule['owners'],rule['children'])}
@@ -651,6 +652,57 @@ def ranked_world_talent_aura_rule(owner, tc, ac, cls):
     return rule
 
 
+def ordinary_teacher_rule(spell, character, flags, skills, tc, ac, direction):
+    """Persist verified TC load-derived ordinary children without executing LEARN.
+
+    Class skills/professions must already exist. Child skill effects and native
+    eligibility still go through the normal reconstruction checks.
+    """
+    rule = tc.ordinary_teachers[str(spell)]
+    if direction != 'tc-to-ac' or flags != (1,0) or (rule['class'] and character[1] != rule['class']):
+        reject('UNREPRESENTABLE_TEACHER_STATE', f'{spell}: enabled TC anchor and reviewed class required')
+    def blocked(detail):
+        reject('INCOMPATIBLE_CONSUMED_TEACHER', f'{spell}: {detail}')
+    if rule != ac.ordinary_teachers.get(str(spell)):
+        blocked('ordinary teacher profiles differ')
+    for metadata in (tc,ac):
+        expected = [(child,1,False) for child in rule['children']]
+        if (metadata.learns[spell] != expected or metadata.effect_learns[spell] != expected
+                or metadata.chain(spell) != (spell,) or metadata.abilities[spell]
+                or metadata.learn_parents[spell] or metadata.scripts[spell]
+                or metadata.requires[spell] or metadata.prerequisite_users[spell]):
+            blocked(f'{metadata.core}: wrapper routes differ')
+        for member in [spell,*rule['children']]:
+            metadata.check_spell(member)
+            record = metadata.spells[member]
+            shape = rule['mechanics'][str(member)]
+            if any(record[field] != shape.get(str(field),0) for field in (*range(4,131),*range(208,212))):
+                blocked(f'{metadata.core}: spell={member}: mechanics differ')
+            if (member in metadata.talents or member in metadata.additional
+                    or metadata.talent_learn_owners.get(member) or metadata.aura_owners.get(member)
+                    or member in metadata.world_aura_owners):
+                blocked(f'{metadata.core}: spell={member}: unexpected talent/aura route')
+        for child in rule['children']:
+            if (list(metadata.chain(child)) != rule['chains'][metadata.core][str(child)]
+                    or metadata.scripts[child] != set(rule['scripts'][metadata.core].get(str(child),[]))
+                    or metadata.requires[child] != set(rule['requirements'][metadata.core].get(str(child),[]))
+                    or metadata.learn_parents[child] != {spell} or metadata.learns[child]
+                    or metadata.effect_learns[child] or metadata.prerequisite_users[child]
+                    or [row[1:] for row in metadata.abilities[child]] != [rule['abilities'][str(child)]]):
+                blocked(f'{metadata.core}: child={child}: relationships differ')
+        for skill in rule['skills']:
+            if skill not in skills:
+                reject('SPELL_WOULD_ADD_SKILL', f'{spell}: skill={skill}; existing teacher child skill required')
+            if not 0 < skills[skill][0] <= skills[skill][1]:
+                reject('SPELL_WOULD_CHANGE_SKILL', f'{spell}: skill={skill}; invalid stored range')
+            if metadata.stores['SkillLine'].get(skill,[0,0])[1] != (11 if skill == 202 else 7):
+                blocked(f'{metadata.core}: skill={skill}: category differs')
+    return {'policy':'TC_KNOWN_ORDINARY_TEACHER','children':rule['children'],
+            'class':rule['class'], 'skills':[[skill,*skills[skill]] for skill in rule['skills']],
+            'source_flags':list(flags),'effects_executed':False,
+            'target_representation':'PERSISTENT_CHILDREN_WITH_RECORDED_WRAPPER'}
+
+
 def consumed_teacher_rule(spell, character, flags, skills, tc, ac, direction, level):
     """A verified TC wrapper becomes its load-derived buttons, without casting.
 
@@ -872,9 +924,12 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
     # Every reached relationship must agree on rank ordering. Comparing the
     # predecessor prefix allows additional *unlearned* higher target ranks.
     def compatible(spell):
+        nonlocal seal_split
         tc.check_spell(spell)
         ac.check_spell(spell)
         source_prefix, target_prefix = tc.predecessors(spell), ac.predecessors(spell)
+        if spell in (20154,21084) and source_prefix != target_prefix and seal_split is None:
+            seal_split = seal_rank_split_rule(tc,ac,cls)
         # An AC-only rank prefix is harmless for a hidden/passive child that
         # native talents own temporarily, provided TC knows no preceding rank.
         # No persistent row or target predecessor is granted by this exception.
@@ -1175,6 +1230,9 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
         if str(spell) in tc.consumed_teachers and spell not in consumed_teachers:
             consumed_teachers[spell] = consumed_teacher_rule(
                 spell,character,stored.get(spell,()),skills,tc,ac,direction,level)
+        if str(spell) in tc.ordinary_teachers and spell not in consumed_teachers:
+            consumed_teachers[spell] = ordinary_teacher_rule(
+                spell,character,stored.get(spell,()),skills,tc,ac,direction)
         allowed = eligible(spell)
         # All sources of provenance may be unioned, but no source can widen
         # the verified specialization authorization.
@@ -1447,7 +1505,8 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
             row['authorization']['policy'] = 'TC_WORLD_NATIVE_RANKED_TALENT_AURA'
             row['authorization']['ranked_world_talent_aura'] = ranked_aura_helpers[spell]
         if spell in consumed_teachers:
-            row['authorization']['policy'] = 'CONSUMED_DUAL_SPEC_TEACHER'
+            row['authorization']['policy'] = ('CONSUMED_ORDINARY_TEACHER'
+                if str(spell) in tc.ordinary_teachers else 'CONSUMED_DUAL_SPEC_TEACHER')
             row['authorization']['consumed_teacher'] = consumed_teachers[spell]
         teacher_sources = [parent for parent,proof in consumed_teachers.items() if spell in proof['children']]
         if teacher_sources:

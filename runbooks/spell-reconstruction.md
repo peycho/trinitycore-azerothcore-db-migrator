@@ -7,6 +7,41 @@ already accepted player writes requires a separately reviewed repair with its
 own backup, ownership and rollback evidence. No core patch or CleanCharacterDB
 setting is used. The v2 profile remains **UNREVIEWED**.
 
+## Ordinary known-spell teachers (spell-state-v16)
+
+TC restores children of these exact active/enabled stored wrappers through its
+non-autolearned load map, without casting the teacher. AC refuses persistent
+learn-effect rows. V16 records the original wrapper as control `TEACHER`
+provenance and persists only its verified TC-known children, with ordinary mask 3:
+
+| Wrapper | Children | Existing skill requirement |
+| --- | --- | --- |
+| Judgement `10321` | `20271`, `21084`, and the verified lower seal `20154` | Paladin; Retribution `184` and Holy `594` |
+| Healing Stream Totem `5396` | Rank 1 `5394` | Shaman; Restoration `374` |
+| Gnomish Engineering `20220` | Specialization `20219` | Existing Engineering `202` |
+
+Both catalogs must match literal mechanic, rank, script, skill-ability and
+requirement contracts. Ordinary children keep the existing eligibility and
+skill-preservation checks. Judgement uses the previously reviewed seal split;
+the totem never supplies higher ranks. Gnomish Engineering records TC's ordinary
+training prerequisite `12656` without granting it, following the existing
+source-known ordinary spell policy. This does not execute a profession teaching
+effect or acquire another profession. Skills, values/caps, profession slots,
+selected talents, active group and spec count remain unchanged.
+
+Unlike spec-button teachers, these ordinary wrappers do not require dual specs
+or Generic skill. Unsupported flags, missing skills, foreign classes, changed
+relationships and stored AC wrappers remain blocked. Reverse conversion keeps
+the known children and never invents the original wrapper. Committed provenance,
+`spell-consumed-teachers.tsv` and semantic validation verify exact children,
+masks/classes and existing skill state.
+
+Use a fresh migration run with new target/control schemas; v15 checkpoints are
+incompatible. No preparation cleanup batch is required. Retain original toolkits
+for restoring older sealed preparation archives. Pins, protected manifests, v1
+and approval **UNREVIEWED** stay unchanged. Loader/trainer behavior is checked in
+isolated harnesses with mocked state; full gameplay remains **NOT TESTED**.
+
 ## Individual spec-button teachers (spell-state-v15)
 
 TC may store teaching spells `63706` (primary button `63645`) and `63707`

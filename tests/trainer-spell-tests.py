@@ -81,6 +81,27 @@ for chain in fixtures.CHAINS:
         # migrated character data or the reconstruction's grant set.
         main.append(f'manager.spells[{1000000+spell}].effects.push_back({{36,{spell}}});')
 main.append('''
+manager.spells[10321].effects={{36,20271},{36,21084}};
+manager.spells[5396].effects={{36,5394}};
+manager.spells[20220].effects={{36,20219}};
+manager.spells[6375];manager.previous[6375]=5394;
+for(uint32 spec:{0,1}){
+ for(auto pair:{std::pair<uint32,uint32>{139,10321},{140,5396},{141,20220}}){
+  Player migrated=players[pair.first];migrated.spec=spec;
+  Trainer::Spell teacher{pair.second};
+  assert(trainer.GetDefaultSpellState(&migrated,&teacher)==SpellState::Known);
+  for(auto effect:manager.spells[pair.second].effects){
+   Trainer::Spell child{effect.TriggerSpell};
+   assert(trainer.GetDefaultSpellState(&migrated,&child)==SpellState::Known);
+  }
+  Player oldCopy;oldCopy.spec=spec;
+  assert(trainer.GetDefaultSpellState(&oldCopy,&teacher)!=SpellState::Known);
+ }
+ Player shaman=players[140];shaman.spec=spec;
+ Trainer::Spell higher{6375};
+ assert(!shaman.HasSpell(6375));
+ assert(trainer.GetDefaultSpellState(&shaman,&higher)==SpellState::Available);
+}
 manager.spells[20154];manager.spells[21084];
 manager.spells[1020154].effects={{36,20154}};
 for(uint32 guid:{132,134})for(uint32 spec:{0,1}){

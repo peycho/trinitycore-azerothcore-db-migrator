@@ -22,6 +22,14 @@ are protected because the spell-profile generator uses their ordered layouts.
 Live spell metadata is separately fingerprinted for each run. There is no
 production approval override.
 
+V16 adds exact ordinary teaching-wrapper metadata for `10321`, `5396` and
+`20220`, using existing protected player, spell, trainer, skill and profession
+readers. Current semantic counts remain **101 TC / 106 AC**. The configured
+checkouts and retained pinned/staging refs match all protected content. Pins,
+manifests and v1 stay unchanged; release approval stays UNREVIEWED. New metadata
+and policy hashes require a fresh migration run and target/control schemas.
+See the [ordinary teacher contract](spell-reconstruction.md#ordinary-known-spell-teachers-spell-state-v16).
+
 The unapproved v2 spell metadata also contains a narrow persistent-world
 dependency contract for Flight Form and existing Expert Riding. It requires
 the actual TC learn edge, reviewed spell/rank/skill metadata and preserved riding
@@ -41,7 +49,7 @@ policy change also invalidates earlier run/checkpoint identities.
 
 The separate [ordinary eligibility repair](spell-eligibility-repair.md) protects
 AC `WorldConfig.cpp` and `WorldConfig.h` in addition to the existing player
-consumers. Current v2 semantic counts are **100 TC / 105 AC**. The two added files
+consumers. At that addition, v2 semantic counts were **100 TC / 105 AC**. The two added files
 match AC pin `1cd97629...`, staging `f089543d...` and the configured checkout byte
 for byte; no revision is substituted. They verify AC's actual
 `PlayerStart.CustomSpells` gate, distinct from TC `PlayerStart.AllSpells`.

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Execute protected loader casting branches with recording cast sinks.
+"""Execute protected loader and profession readers with recording cast sinks.
 
-This tests only the reviewed auto-cast decision, not complete player loading or
-research execution. Synthetic MySQL checks cover the stored rows and skills.
+This checks dependency replay, auto-cast decisions, persistent-LEARN refusal and
+first-profession classification, not complete loading or gameplay. Synthetic
+MySQL checks cover the stored rows and skills.
 """
 from pathlib import Path
 import subprocess
@@ -18,6 +19,42 @@ ac_start=ac_source.index('// xinef: do not add spells with effect learn spell')
 ac_branch=ac_source[ac_start:ac_source.index('// xinef: unapply aura stats',ac_start)]
 start=tc_source.index('// learn dependent spells',tc_source.index('bool Player::AddSpell('))
 tc_dependencies=tc_source[start:tc_source.index('if (!GetSession()->PlayerLoading())',start)]
+def method(source, name):
+    start=source.index('bool SpellInfo::'+name+'() const')
+    opening=source.index('{',start);end=opening+1;depth=1
+    while depth:
+        depth+=(source[end]=='{')-(source[end]=='}');end+=1
+    return source[start:end]
+
+profession_cpp=''
+for namespace,path in [('TcProfession',tc),('AcProfession',ac)]:
+    source=(path/'src/server/game/Spells/SpellInfo.cpp').read_text()
+    profession_cpp+='namespace '+namespace+r""" {
+using uint32=uint32_t;using uint8=uint8_t;
+constexpr int SPELL_EFFECT_SKILL=118,MAX_SPELL_EFFECTS=3;
+bool IsPrimaryProfessionSkill(uint32 skill){return skill==202;}
+struct SpellEffectInfo{int Effect=0;uint32 MiscValue=0;};
+struct SpellInfo{
+ std::array<SpellEffectInfo,3> Effects{};
+ auto const& GetEffects() const{return Effects;}
+ int GetRank()const{return 1;}
+ bool IsPrimaryProfession()const;
+ bool IsPrimaryProfessionFirstRank()const;
+};
+"""+method(source,'IsPrimaryProfession')+method(source,'IsPrimaryProfessionFirstRank')+r"""
+void Check(){
+ // Known specialization 20219 is effect 47, not a first profession rank.
+ SpellInfo specialization;specialization.Effects[0].Effect=47;
+ specialization.Effects[0].MiscValue=202;
+ assert(!specialization.IsPrimaryProfessionFirstRank());
+ SpellInfo teacher;teacher.Effects[0].Effect=36;
+ assert(!teacher.IsPrimaryProfessionFirstRank());
+ SpellInfo firstRank;firstRank.Effects[0].Effect=118;firstRank.Effects[0].MiscValue=202;
+ assert(firstRank.IsPrimaryProfessionFirstRank());
+}
+}
+"""
+
 mock=r'''
 #include <array>
 #include <cassert>
@@ -95,6 +132,25 @@ int main() {
         assert(!oldAc.AcLoad(&teacher));assert(tc.casts==0&&oldAc.casts==0);
         assert(tc.groups==2&&tc.active==active&&oldAc.groups==2&&oldAc.active==active);
     }
+    // Ordinary teachers use the same protected non-autolearned load branch.
+    manager.rows.emplace(10321,SpellLearnSpellNode{20271,true,false});
+    manager.rows.emplace(10321,SpellLearnSpellNode{21084,true,false});
+    manager.rows.emplace(5396,SpellLearnSpellNode{5394,true,false});
+    manager.rows.emplace(20220,SpellLearnSpellNode{20219,true,false});
+    for(uint32 id:{10321,5396,20220})for(uint32 active:{0,1}){
+        Player tc,oldAc;tc.active=oldAc.active=active;
+        SpellInfo teacher;teacher.Id=id;teacher.flags=id==20220?256:262400;
+        teacher.effects={36,id==10321?36:0,0};
+        assert(tc.TcLoad(&teacher,true));tc.RestoreTcDependencies(id);
+        assert((tc.restored==(id==10321?std::vector<uint32>{20271,21084}:std::vector<uint32>{id==5396?5394u:20219u})));
+        assert(!oldAc.AcLoad(&teacher));assert(tc.casts==0&&oldAc.casts==0);
+        for(uint32 child:tc.restored){
+            SpellInfo known;known.Id=child;known.flags=child==20219?16842768:child==5394?65536:327680;
+            known.effects={child==20219?47:child==5394?28:child==20271?77:6,0,0};
+            Player normalized;assert(normalized.TcLoad(&known,true)&&normalized.AcLoad(&known));
+            assert(normalized.casts==0);
+        }
+    }
     for (uint32 id:{60893,61177,61288}) {
         SpellInfo research; research.Id=id;
         Player tc,ac;
@@ -118,12 +174,14 @@ int main() {
     Player tcStep,acStep;
     assert(!tcStep.TcLoad(&step,true) && !acStep.AcLoad(&step));
     assert(tcStep.casts==1 && acStep.casts==1);
-    std::cout << "Protected TC/AC loader auto-cast branches: dual-spec teacher dependencies and uncast buttons, research and Runeforging uncast; passive/stance/skill-step controls passed\n";
+    std::cout << "Protected TC/AC loader auto-cast branches: ordinary and dual-spec teacher dependencies and uncast children, research and Runeforging uncast; passive/stance/skill-step controls passed\n";
 }
 '''
 with tempfile.TemporaryDirectory() as directory:
     cpp=Path(directory)/'research.cpp'
     binary=Path(directory)/'research-tests'
-    cpp.write_text(mock+tc_branch+middle+ac_branch+main)
+    generated=mock+tc_branch+middle+ac_branch+main
+    generated=generated.replace('int main() {',profession_cpp+'\nint main() { TcProfession::Check(); AcProfession::Check();')
+    cpp.write_text(generated)
     subprocess.run(['g++','-std=c++17','-Wall','-Wextra','-Werror',str(cpp),'-o',str(binary)],check=True)
     subprocess.run([str(binary)],check=True)

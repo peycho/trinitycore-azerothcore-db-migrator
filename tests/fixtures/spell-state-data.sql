@@ -76,3 +76,9 @@ INSERT INTO characters(guid,account,name,taximask,race,class,level,talentGroupsC
 VALUES(136,1,'PrimaryPal','',1,2,80,2,0),(137,1,'PrimaryRogue','',4,4,80,2,1),(138,1,'SecondWar','',1,1,80,2,1);
 INSERT INTO character_spell(guid,spell,active,disabled) VALUES(136,63706,1,0),(137,63706,1,0),(137,63707,1,0),(138,63707,1,0);
 INSERT INTO character_skills(guid,skill,value,max) VALUES(136,183,400,400),(137,183,400,400),(136,171,320,450),(138,183,400,400);
+
+-- Ordinary teachers must persist only TC load-derived children in both specs.
+INSERT INTO characters(guid,account,name,taximask,race,class,level,talentGroupsCount,activeTalentGroup)
+VALUES(139,1,'JudgePal','',1,2,80,2,1),(140,1,'StreamSham','',2,7,80,2,0),(141,1,'GnomeEng','',3,3,80,1,0);
+INSERT INTO character_spell(guid,spell,active,disabled) VALUES(139,10321,1,0),(140,5396,1,0),(141,20220,1,0);
+INSERT INTO character_skills(guid,skill,value,max) VALUES(139,184,1,400),(139,594,1,400),(140,374,400,400),(141,202,450,450);

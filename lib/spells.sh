@@ -289,11 +289,49 @@ validate_character_spells() {
             AND expected_button.guid=e.guid AND expected_button.spell=child.spell
           LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_spell button ON button.guid=e.guid AND button.spell=child.spell
           WHERE e.run_id='$(sql_escape "$RUN_ID")' AND e.disposition='TEACHER'
+            AND e.spell NOT IN (10321,5396,20220)
           GROUP BY e.guid,e.spell,e.spec_mask,c.talentGroupsCount,c.level,generic.value,generic.max
         ) contract WHERE '$MIGRATION_DIRECTION'<>'tc-to-ac' OR spell NOT IN (63680,63706,63707) OR spec_mask<>3
             OR talentGroupsCount<>2 OR children<>IF(spell=63680,2,1) OR child_rows<>children OR invalid_buttons<>0
             OR generic_value IS NULL OR generic_value<>level*5 OR generic_cap<>level*5;" \
         "Consumed spec wrappers require their exact persistent buttons and unchanged existing two-spec ownership"
+    check_zero character_spell_ordinary_teacher_mismatch "
+        SELECT COUNT(*) FROM (
+          SELECT e.guid,e.spell,e.spec_mask,c.class,
+            COUNT(DISTINCT child.spell) children,COUNT(child.spell) child_rows,
+            SUM(IF(child.spell IS NULL
+              OR NOT ((e.spell=10321 AND child.spell IN (20271,21084))
+                OR (e.spell=5396 AND child.spell=5394) OR (e.spell=20220 AND child.spell=20219))
+              OR expected_button.spell IS NULL OR expected_button.spec_mask<>3
+              OR expected_button.disposition<>'PERSISTENT' OR button.spell IS NULL
+              OR $teacher_button_state,1,0)) invalid_children
+          FROM \`$CONTROL_SCHEMA\`.spell_expected e
+          JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=e.guid
+          LEFT JOIN JSON_TABLE(e.provenance,'$.authorization.consumed_teacher.children[*]'
+            COLUMNS (spell INT UNSIGNED PATH '$')) child ON TRUE
+          LEFT JOIN \`$CONTROL_SCHEMA\`.spell_expected expected_button ON expected_button.run_id=e.run_id
+            AND expected_button.guid=e.guid AND expected_button.spell=child.spell
+          LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_spell button ON button.guid=e.guid AND button.spell=child.spell
+          WHERE e.run_id='$(sql_escape "$RUN_ID")' AND e.disposition='TEACHER' AND e.spell IN (10321,5396,20220)
+          GROUP BY e.guid,e.spell,e.spec_mask,c.class
+        ) contract WHERE '$MIGRATION_DIRECTION'<>'tc-to-ac' OR spec_mask<>3
+          OR (spell=10321 AND class<>2) OR (spell=5396 AND class<>7)
+          OR children<>IF(spell=10321,2,1) OR child_rows<>children OR invalid_children<>0;" \
+        "Ordinary teachers require their exact TC-known children, persistent masks and reviewed classes"
+    check_zero character_spell_ordinary_teacher_skill_mismatch "
+        SELECT COUNT(*) FROM (
+          SELECT e.guid,e.spell,COUNT(reward.skill) skill_rows,COUNT(DISTINCT reward.skill) skills,
+            SUM(IF(reward.skill IS NULL OR NOT ((e.spell=10321 AND reward.skill IN (184,594))
+              OR (e.spell=5396 AND reward.skill=374) OR (e.spell=20220 AND reward.skill=202))
+              OR s.skill IS NULL OR s.value<>reward.value_expected OR s.max<>reward.max_expected,1,0)) invalid_skills
+          FROM \`$CONTROL_SCHEMA\`.spell_expected e
+          LEFT JOIN JSON_TABLE(e.provenance,'$.authorization.consumed_teacher.skills[*]'
+            COLUMNS (skill INT PATH '\$[0]',value_expected INT PATH '\$[1]',max_expected INT PATH '\$[2]')) reward ON TRUE
+          LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_skills s ON s.guid=e.guid AND s.skill=reward.skill
+          WHERE e.run_id='$(sql_escape "$RUN_ID")' AND e.disposition='TEACHER' AND e.spell IN (10321,5396,20220)
+          GROUP BY e.guid,e.spell
+        ) contract WHERE skills<>IF(spell=10321,2,1) OR skill_rows<>skills OR invalid_skills<>0;" \
+        "Ordinary teacher conversion requires its unchanged existing class or profession skills"
     check_zero character_skill_semantic_mismatch "
         SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_skills s
         JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=s.guid

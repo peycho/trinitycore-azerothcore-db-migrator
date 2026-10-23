@@ -1,5 +1,16 @@
 # Profile v2 review and acceptance record
 
+Spell-state-v16 adds exact ordinary TC load-derived teacher contracts for
+`10321`, `5396` and `20220`. It persists only already-known children, verifies
+both effective catalogs and existing class/profession skills, and records original
+wrapper provenance. It casts no teaching spell, grants no higher totem rank,
+training prerequisite, skill or profession, and changes no talent/spec ownership.
+Exact SQL checks cover child sets, masks, classes and skills. Reverse conversion
+keeps children without inventing wrappers. Fresh runs and target/control schemas
+are required. Pins, protected semantic manifests and v1 stay unchanged; approval
+remains UNREVIEWED and full gameplay NOT TESTED. See
+[the ordinary teacher contract](spell-reconstruction.md#ordinary-known-spell-teachers-spell-state-v16).
+
 Spell-state-v15 adds exact individual spec-button teachers `63706 -> 63645`
 and `63707 -> 63644`, alongside existing `63680`. Both effective worlds/DBC,
 active source anchors, existing dual specs and native Generic skill/caps are

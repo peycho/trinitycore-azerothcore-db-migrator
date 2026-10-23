@@ -687,7 +687,7 @@ Target-era writes are not automatically merged back. Their recovery requires
 a separately reviewed data migration. The toolkit has no automated database
 deletion or source write-back command.
 
-For toolkit v15 upgrades, the [individual spec-button teacher conversion](spell-reconstruction.md#individual-spec-button-teachers-spell-state-v15)
+For toolkit v16 upgrades, the [ordinary known-spell teacher conversion](spell-reconstruction.md#ordinary-known-spell-teachers-spell-state-v16)
 needs no source cleanup batch. Start a new migration run with fresh target/control
 schemas because policy and metadata hashes changed. Retain original preparation
 toolkits for exact restoration of older sealed archives. A successful database

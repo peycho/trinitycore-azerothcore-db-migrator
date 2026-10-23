@@ -53,7 +53,11 @@ the selected mapping registries.
   control provenance and converted only to their verified TC-known buttons.
   Existing two-spec ownership and native Generic skill are mandatory; no effect
   is executed and no spec or skill is granted. Reverse conversion keeps buttons
-  without inventing wrappers. Other learn-effect rows remain blocked.
+  without inventing wrappers. Exact ordinary teachers `10321`, `5396` and
+  `20220` likewise become only their verified TC-known children, requiring
+  existing class/profession skills and matching reviewed metadata. No teacher
+  is cast; no higher totem rank, training prerequisite, skill or profession is
+  granted. Other learn-effect rows remain blocked.
 - TrinityCore talent groups become AzerothCore bit masks; duplicate spells
   across both specs are collapsed with `BIT_OR`.
 - Spell state is reconstructed from legitimate known anchors and verified
@@ -78,8 +82,9 @@ the selected mapping registries.
   TC-known switch buttons only with existing dual-spec ownership and Generic
   skill. The original wrapper row is retained in control/report provenance as
   `TEACHER`; no teaching or spec-count effect is executed. Reverse conversion
-  preserves buttons without inventing an absent wrapper. Other teaching spells
-  remain blocked; see the [exact contract](spell-reconstruction.md#dual-spec-teaching-wrapper-spell-state-v10).
+  preserves buttons without inventing an absent wrapper. Ordinary teachers use
+  their [separate exact contracts](spell-reconstruction.md#ordinary-known-spell-teachers-spell-state-v16);
+  other teaching spells remain blocked.
   Ordinary training prerequisites do not erase source-known ordinary spells.
   Under `spell-state-v11`, those rows retain mask 3 and record any missing
   ordinary parents without granting them. Talent-linked requirements continue
