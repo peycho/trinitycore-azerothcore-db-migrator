@@ -100,8 +100,8 @@ both cores' chains and native runtime behavior before extending support.
 | `UNSUPPORTED_DEPENDENT_LEARN` | TC would restore a learned child without a verified compatible native AC dependency or reviewed persistent mapping. Inspect parent/child and active/auto-learn metadata. |
 | `UNREPRESENTABLE_INACTIVE_DEPENDENCY` | A learned child is inactive in TC, but the reviewed representation cannot preserve that availability in AC. |
 | `CONDITIONAL_DEPENDENT_LEARN` | A dependency reached through spell effects has stance/aura-state conditions that prevent unconditional reconstruction. |
-| `UNSUPPORTED_PERSISTENT_LEARN_EFFECT` | A spell selected for persistent storage itself contains a learn effect. AC refuses persistent learn-effect rows. The narrow [pet-teaching retirement](pet-teaching-repair.md) policy can archive verified pet wrappers; other teaching/profession cases remain blocked. |
-| `INCOMPATIBLE_CONSUMED_TEACHER` | The exact `63680` wrapper/button contract differs: inspect the named mechanic field, load edge, skill association or excluded route. Matching source/target mutations alone do not authorize conversion. |
+| `UNSUPPORTED_PERSISTENT_LEARN_EFFECT` | A spell selected for persistent storage itself contains a learn effect. AC refuses persistent learn-effect rows. The [spec-button teacher contracts](spell-reconstruction.md#individual-spec-button-teachers-spell-state-v15) represent only exact reviewed wrappers through their TC-known buttons. The narrow [pet-teaching retirement](pet-teaching-repair.md) policy can archive verified pet wrappers; other teaching/profession cases remain blocked. |
+| `INCOMPATIBLE_CONSUMED_TEACHER` | An exact `63680`, `63706` or `63707` wrapper/button contract differs: inspect the named mechanic field, load edge, skill association or excluded route. Matching source/target mutations alone do not authorize conversion. |
 | `UNREPRESENTABLE_TEACHER_STATE` | The reviewed hidden wrapper lacks an enabled stored TC anchor, existing two-spec ownership or verified level `1..80`, or occurs as a persistent AC row. Never purchase another spec, guess ownership or cast a teacher to bypass this failure. |
 | `CONFLICTING_SPELL_REPRESENTATION` | Independent paths assign incompatible persistent/runtime dispositions to the same spell. Review all derivations; mask merging alone cannot resolve it. |
 
@@ -169,6 +169,12 @@ and AC exact temporary helpers. Unexpected mechanics or incoming/outgoing
 routes remain `INCOMPATIBLE_WORLD_TALENT_AURA`; stored helpers still report
 `UNSUPPORTED_AURA_HELPER_SPELL_ROW`. See the
 [ranked world-helper contract](spell-reconstruction.md#nurturing-instinct-world-helpers-spell-state-v9).
+
+`spell-state-v15` additionally supports individual teachers `63706 -> 63645`
+and `63707 -> 63644`, with the same existing two-spec and native Generic-skill
+requirements. Each wrapper supplies only its own button; unrelated teaching,
+profession or skill-step spells remain blocked. See the
+[individual teacher contract](spell-reconstruction.md#individual-spec-button-teachers-spell-state-v15).
 
 `spell-state-v10` supports only the reviewed `63680` dual-spec teacher by
 recording the wrapper as `TEACHER` and persisting its two verified TC-known

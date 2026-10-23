@@ -149,6 +149,18 @@ REVIEWED_CONSUMED_TEACHERS = {
                             '74':1,'75':1,'81':4294967295,'86':1,'87':1},
               }},
 }
+# Each separate exact wrapper teaches only its corresponding button. Neither
+# is a purchase spell or authority for the other button or a second spec.
+for wrapper,button in ((63706,63645),(63707,63644)):
+    REVIEWED_CONSUMED_TEACHERS[str(wrapper)] = {
+        'children':[button], 'spec_count':2, 'skill':183, 'skill_category':12,
+        'race_mask':4095, 'class_mask':1535,
+        'mechanics':{
+            str(wrapper):{'5':2147483648,'28':190,'35':101,'46':13,'68':4294967295,
+                          '71':36,'74':1,'75':1,'81':4294967295,'86':1,'87':1,'116':button},
+            str(button):dict(REVIEWED_CONSUMED_TEACHERS['63680']['mechanics'][str(button)]),
+        },
+    }
 CORRECTION_DEFINITIONS = (
     'src/server/shared/SharedDefines.h',
     'src/server/game/Spells/SpellDefines.h',

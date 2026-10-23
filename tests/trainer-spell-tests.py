@@ -140,6 +140,15 @@ for(uint32 guid:{126,127})for(uint32 spec:{0,1}){
     assert(trainer.GetDefaultSpellState(&player,&dualTeacher)==SpellState::Known);
     player.spells.erase(63644);assert(trainer.GetDefaultSpellState(&player,&dualTeacher)!=SpellState::Known);
 }
+manager.spells[63706].effects={{36,63645}};
+manager.spells[63707].effects={{36,63644}};
+for (auto pair:std::vector<std::pair<uint32,uint32>>{{63706,63645},{63707,63644}}) {
+    Player player;player.spells[pair.second]=3;Trainer::Spell teacher{pair.first};
+    assert(!player.HasSpell(pair.first));
+    assert(trainer.GetDefaultSpellState(&player,&teacher)==SpellState::Known);
+    player.spells.clear();player.spells[pair.second==63645?63644:63645]=3;
+    assert(trainer.GetDefaultSpellState(&player,&teacher)!=SpellState::Known);
+}
 std::cout << "Pinned AC trainer direct/wrapped spell regressions passed\\n";
 }''')
 with tempfile.TemporaryDirectory() as directory:

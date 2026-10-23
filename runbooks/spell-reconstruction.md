@@ -7,6 +7,42 @@ already accepted player writes requires a separately reviewed repair with its
 own backup, ownership and rollback evidence. No core patch or CleanCharacterDB
 setting is used. The v2 profile remains **UNREVIEWED**.
 
+## Individual spec-button teachers (spell-state-v15)
+
+TC may store teaching spells `63706` (primary button `63645`) and `63707`
+(secondary button `63644`). Its non-autolearned load map reconstructs each
+corresponding button, independently of executing the teaching spell. AC refuses
+persistent learn-effect rows. V15 records these exact wrappers as control
+`TEACHER` provenance and persists only the corresponding verified TC-known
+button with mask `3`. A single wrapper never supplies the other button.
+Overlapping anchors merge deterministically with the existing `63680` contract.
+
+Both effective catalogs must match the explicit profile mechanics, exact
+single-child load/effect edges, ordinary Generic skill association, and excluded
+rank/talent/script/prerequisite routes. An active/enabled stored TC anchor,
+existing two-spec ownership and unchanged native Generic skill `183` are required.
+At a verified level `1..80`, value and cap must already equal `level × 5`.
+Missing or non-native skills, single-spec characters, unsupported flags, changed
+metadata/routes and stored AC wrappers remain blocked. This is representation
+conversion, not source cleanup or permission to grant missing specs or skills.
+
+The migration casts no teacher/button, buys no spec and preserves selected
+builds, active group, skills/caps, professions and unrelated data. Reverse
+conversion preserves only the known buttons, never inventing an absent wrapper.
+Original wrapper flags and children remain in committed provenance and
+`spell-consumed-teachers.tsv`. Exact semantic validation checks each wrapper's
+own child set, rejects duplicate/wrong children and verifies existing spec/skill
+state. Checkpoint, resume, rerun and input-drift guards include the new policy
+and metadata digest.
+
+Use a fresh migration run and target/control schemas; v14 checkpoints cannot be
+resumed with v15. Keep original preparation toolkits for restoring older sealed
+archives, whose metadata hashes intentionally differ. No new cleanup batch is
+required for this conversion. Core pins, protected manifests, v1 and approval
+`UNREVIEWED` remain unchanged. Native loader/trainer tests use mocked state;
+full gameplay remains **NOT TESTED**, including button use in both specs,
+save/relog/restart, talent points, professions and skill checks.
+
 ## Inactive selected hidden passive children (spell-state-v14)
 
 TC's initial `AddSpell` passive-cast branch does not depend on the client

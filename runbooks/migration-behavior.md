@@ -49,6 +49,11 @@ the selected mapping registries.
   to the values used by a newly constructed AzerothCore player. TrinityCore
   soft-deleted characters retain their deletion metadata while their `NULL`
   active name is converted to AzerothCore's empty-string representation.
+- Exact TC spec-button teachers `63680`, `63706` and `63707` are recorded as
+  control provenance and converted only to their verified TC-known buttons.
+  Existing two-spec ownership and native Generic skill are mandatory; no effect
+  is executed and no spec or skill is granted. Reverse conversion keeps buttons
+  without inventing wrappers. Other learn-effect rows remain blocked.
 - TrinityCore talent groups become AzerothCore bit masks; duplicate spells
   across both specs are collapsed with `BIT_OR`.
 - Spell state is reconstructed from legitimate known anchors and verified

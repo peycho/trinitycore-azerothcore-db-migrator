@@ -316,6 +316,9 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     spell_guard('INCOMPATIBLE_CONSUMED_TEACHER',
         f'INSERT INTO `{WORLD}`.spell_learn_spell VALUES (63680,6603,1)',
         f'DELETE FROM `{WORLD}`.spell_learn_spell WHERE entry=63680 AND SpellID=6603')
+    spell_guard('INCOMPATIBLE_CONSUMED_TEACHER',
+        f'INSERT INTO `{WORLD}`.spell_learn_spell VALUES (63706,6603,1)',
+        f'DELETE FROM `{WORLD}`.spell_learn_spell WHERE entry=63706 AND SpellID=6603')
     spell_guard('UNAUTHORIZED_TALENT_SPELL',
         f'INSERT INTO `{CHARS}`.character_spell VALUES (113,900010,1,1)',
         f'DELETE FROM `{CHARS}`.character_spell WHERE guid=113 AND spell=900010')
@@ -413,9 +416,25 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
               '63644:3,63645:3')
         equal(f"SELECT disposition,derived,JSON_EXTRACT(provenance,'$.original') FROM `{FC}`.spell_provenance "
               f"WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid={guid} AND spell=63680",'TEACHER\t0\t[1, 0]')
+    for guid in (136,137):
+        equal(f'SELECT GROUP_CONCAT(CONCAT(spell,":",specMask) ORDER BY spell) FROM `{AC_CHARS}`.character_spell WHERE guid={guid}','63645:3'if guid==136 else '63644:3,63645:3')
+        equal(f"SELECT disposition,JSON_EXTRACT(provenance,'$.original'),JSON_EXTRACT(provenance,'$.authorization.consumed_teacher.children') FROM `{FC}`.spell_provenance "
+              f"WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid={guid} AND spell=63706",'TEACHER\t[1, 0]\t[63645]')
+    equal(f'SELECT spell,specMask FROM `{AC_CHARS}`.character_spell WHERE guid=138','63644\t3')
+    sql(f'UPDATE `{AC_CHARS}`.character_spell SET specMask=1 WHERE guid=136 AND spell=63645')
+    library(forward,'validate_character_spells')
+    equal(f"SELECT passed FROM `{FC}`.validation_result WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND check_name='character_spell_consumed_teacher_mismatch'",0)
+    sql(f'UPDATE `{AC_CHARS}`.character_spell SET specMask=3 WHERE guid=136 AND spell=63645')
+    # A wrong single child cannot satisfy the primary-only provenance contract.
+    primary_proof_hex=sql(f"SELECT HEX(provenance) FROM `{FC}`.spell_expected WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=136 AND spell=63706")
+    sql(f"UPDATE `{FC}`.spell_expected SET provenance=JSON_SET(provenance,'$.authorization.consumed_teacher.children',JSON_ARRAY(63644)) WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=136 AND spell=63706")
+    library(forward,'validate_character_spells')
+    equal(f"SELECT passed FROM `{FC}`.validation_result WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND check_name='character_spell_consumed_teacher_mismatch'",0)
+    sql(f"UPDATE `{FC}`.spell_expected SET provenance=CONVERT(0x{primary_proof_hex} USING utf8mb4) WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=136 AND spell=63706")
     teacher_report=TOOLKIT/'reports'/fv['MIGRATION_RUN_ID']/'spell-consumed-teachers.tsv'
     original_teacher_report=teacher_report.read_bytes()
     assert b'126\t63680\t[1, 0]' in original_teacher_report
+    assert b'136\t63706\t[1, 0]' in original_teacher_report
     teacher_report.write_text('deliberately stale report\n')
     library(forward,'write_spell_reports')
     assert teacher_report.read_bytes()==original_teacher_report,'Teacher report must regenerate from committed provenance'
@@ -595,7 +614,7 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
         sql(f'DELETE FROM {table}', AC_CHARS)
     sql((ROOT / 'tests/fixtures/azerothcore-reverse-data.sql').read_text(), AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (113,674,3),(120,7744,3),(112,37377,3),(113,40081,3),(112,40326,3)',AC_CHARS)
-    sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (128,5209,3),(129,5209,3),(126,63644,3),(126,63645,3),(127,63644,3),(127,63645,3)',AC_CHARS)
+    sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (128,5209,3),(129,5209,3),(126,63644,3),(126,63645,3),(127,63644,3),(127,63645,3),(136,63645,3),(137,63645,3),(137,63644,3),(138,63644,3)',AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (132,21084,3),(133,20154,3),(134,20154,3),(134,21084,3)',AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES '+','.join(
         f'(119,{spell},3)' for spell in [*SPELL_FIXTURES.RUNEFORGING,53428]),AC_CHARS)
@@ -678,6 +697,11 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
               '63644:1:0,63645:1:0')
         equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid={guid} AND spell IN (63680,63624)',0)
         equal(f'SELECT talentGroupsCount,activeTalentGroup FROM `{TC_CHARS}`.characters WHERE guid={guid}',f'2\t{guid-126}')
+    for guid,active,expected in ((136,0,'63645:1:0'),(137,1,'63644:1:0,63645:1:0'),(138,1,'63644:1:0')):
+        equal(f'SELECT GROUP_CONCAT(CONCAT(spell,":",active,":",disabled) ORDER BY spell) FROM `{TC_CHARS}`.character_spell WHERE guid={guid}',expected)
+        equal(f'SELECT talentGroupsCount,activeTalentGroup FROM `{TC_CHARS}`.characters WHERE guid={guid}',f'2\t{active}')
+        equal(f'SELECT value,max FROM `{TC_CHARS}`.character_skills WHERE guid={guid} AND skill=183','400\t400')
+    equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE spell IN (63706,63707)',0)
     equal(f'SELECT active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid=115 AND spell=33872','1\t0')
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=115 AND spell=33873',0)
     equal(f'SELECT active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid=125 AND spell=33873','1\t0')

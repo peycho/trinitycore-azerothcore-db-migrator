@@ -807,3 +807,17 @@ trainer fingerprints, missing grants/acknowledgements, killed connections and
 late checkpoint failure, reruns and exact restoration. Retained snapshots stay
 read-only. The full preparation-on-fresh-snapshot and staging gameplay gates
 remain separate; neither these tests nor a candidate batch approve release.
+
+### Individual spec-button teacher regression
+
+V15 fixtures include `63706`, `63707`, each alone and both together, with both
+active specs and existing native Generic values. Spell-state tests prove that
+v14 rejects these rows, each converted wrapper supplies only its own button,
+o purchase/count/skill mutation occurs, overlaps merge, unsafe flags/specs/skills
+and changed mechanics/routes remain blocked, and reverse conversion is canonical
+button state. Protected TC dependency/AC persistent-learn refusal gates and AC
+trainer consumer run with recording state sinks. The bidirectional MySQL harness
+checks committed teacher provenance/report regeneration, exact per-wrapper SQL
+validation (wrong child/mask controls), interruption/rollback/resume, reruns,
+reverse state and unrelated source/world/index preservation. Native gameplay
+remains NOT TESTED; approval remains UNREVIEWED.

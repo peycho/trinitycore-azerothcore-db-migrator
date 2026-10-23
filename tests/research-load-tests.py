@@ -72,6 +72,8 @@ return true;
 int main() {
     manager.rows.emplace(63680,SpellLearnSpellNode{63645,true,false});
     manager.rows.emplace(63680,SpellLearnSpellNode{63644,true,false});
+    manager.rows.emplace(63706,SpellLearnSpellNode{63645,true,false});
+    manager.rows.emplace(63707,SpellLearnSpellNode{63644,true,false});
     for(uint32 active:{0,1}){
         Player tc,oldAc;tc.active=oldAc.active=active;
         SpellInfo teacher;teacher.Id=63680;teacher.flags=536871296;teacher.effects={36,36,0};
@@ -84,6 +86,14 @@ int main() {
             assert(normalized.TcLoad(&button,true)&&normalized.AcLoad(&button));
             assert(normalized.casts==0&&normalized.groups==2&&normalized.active==active);
         }
+    }
+    for(uint32 active:{0,1})for(uint32 id:{63706,63707}){
+        Player tc,oldAc;tc.active=oldAc.active=active;
+        SpellInfo teacher;teacher.Id=id;teacher.flags=0;teacher.effects={36,0,0};
+        assert(tc.TcLoad(&teacher,true));tc.RestoreTcDependencies(id);
+        assert((tc.restored==std::vector<uint32>{id==63706?63645u:63644u}));
+        assert(!oldAc.AcLoad(&teacher));assert(tc.casts==0&&oldAc.casts==0);
+        assert(tc.groups==2&&tc.active==active&&oldAc.groups==2&&oldAc.active==active);
     }
     for (uint32 id:{60893,61177,61288}) {
         SpellInfo research; research.Id=id;

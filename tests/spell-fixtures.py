@@ -212,6 +212,9 @@ def stores(profile):
     }.items():
         row=record('Spell',spell)
         for field,value in shape.items():row[field]=value
+    for wrapper,button in ((63706,63645),(63707,63644)):
+        teacher=record('Spell',wrapper)
+        for field,value in {5:2147483648,28:190,35:101,46:13,68:0xffffffff,71:36,74:1,75:1,81:0xffffffff,86:1,87:1,116:button}.items():teacher[field]=value
     record('SkillLine',183)[1]=12
     record('SkillRaceClassInfo',183)[1:7]=[183,4095,1535,1170,0,0]
     for spell in (63644,63645):

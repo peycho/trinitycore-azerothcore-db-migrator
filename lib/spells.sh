@@ -274,8 +274,9 @@ validate_character_spells() {
         SELECT COUNT(*) FROM (
           SELECT e.guid,e.spell,e.spec_mask,c.talentGroupsCount,c.level,
             generic.value generic_value,generic.max generic_cap,
-            COUNT(DISTINCT child.spell) children,
+            COUNT(DISTINCT child.spell) children,COUNT(child.spell) child_rows,
             SUM(IF(child.spell IS NULL OR child.spell NOT IN (63644,63645)
+              OR (e.spell IN (63706,63707) AND child.spell<>IF(e.spell=63706,63645,63644))
               OR expected_button.spell IS NULL OR expected_button.spec_mask<>3
               OR expected_button.disposition<>'PERSISTENT' OR button.spell IS NULL
               OR $teacher_button_state,1,0)) invalid_buttons
@@ -289,10 +290,10 @@ validate_character_spells() {
           LEFT JOIN \`$TARGET_CHARACTERS_SCHEMA\`.character_spell button ON button.guid=e.guid AND button.spell=child.spell
           WHERE e.run_id='$(sql_escape "$RUN_ID")' AND e.disposition='TEACHER'
           GROUP BY e.guid,e.spell,e.spec_mask,c.talentGroupsCount,c.level,generic.value,generic.max
-        ) contract WHERE '$MIGRATION_DIRECTION'<>'tc-to-ac' OR spell<>63680 OR spec_mask<>3
-            OR talentGroupsCount<>2 OR children<>2 OR invalid_buttons<>0
+        ) contract WHERE '$MIGRATION_DIRECTION'<>'tc-to-ac' OR spell NOT IN (63680,63706,63707) OR spec_mask<>3
+            OR talentGroupsCount<>2 OR children<>IF(spell=63680,2,1) OR child_rows<>children OR invalid_buttons<>0
             OR generic_value IS NULL OR generic_value<>level*5 OR generic_cap<>level*5;" \
-        "Consumed dual-spec wrappers require both exact persistent buttons and unchanged existing two-spec ownership"
+        "Consumed spec wrappers require their exact persistent buttons and unchanged existing two-spec ownership"
     check_zero character_skill_semantic_mismatch "
         SELECT COUNT(*) FROM \`$SOURCE_CHARACTERS_SCHEMA\`.character_skills s
         JOIN \`$TARGET_CHARACTERS_SCHEMA\`.characters c ON c.guid=s.guid

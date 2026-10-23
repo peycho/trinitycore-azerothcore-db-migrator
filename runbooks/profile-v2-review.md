@@ -1,5 +1,16 @@
 # Profile v2 review and acceptance record
 
+Spell-state-v15 adds exact individual spec-button teachers `63706 -> 63645`
+and `63707 -> 63644`, alongside existing `63680`. Both effective worlds/DBC,
+active source anchors, existing dual specs and native Generic skill/caps are
+verified; SQL persists only the corresponding TC-known buttons and control
+provenance. No source cleanup, cast, spec purchase, skill or talent change is
+introduced. Validation distinguishes each exact child set; reverse preserves
+buttons without inventing teachers. Policy/metadata digests require fresh runs
+and target/control schemas. Core pins, 101 TC / 106 AC semantic inputs and v1
+stay unchanged. Approval remains UNREVIEWED and full gameplay NOT TESTED; see
+[the contract](spell-reconstruction.md#individual-spec-button-teachers-spell-state-v15).
+
 The separate `tc-selected-direct-passive-authority-v1` preparation policy
 retires only unselected higher direct passive ranks in five verified talent
 families. Existing lower selected ranks in both specs remain authoritative.

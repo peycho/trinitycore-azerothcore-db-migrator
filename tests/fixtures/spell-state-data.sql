@@ -70,3 +70,9 @@ VALUES(135,1,'DormantDK','',5,6,80,2,0);
 INSERT INTO character_talent(guid,spell,talentGroup) VALUES(135,61154,0),(135,61158,1);
 INSERT INTO character_spell(guid,spell,active,disabled) VALUES(135,61154,1,0),(135,50096,0,0),(135,61274,0,0);
 INSERT INTO character_skills(guid,skill,value,max) VALUES(135,770,400,400),(135,171,320,450);
+
+-- TC restores only the primary switch from this distinct teaching wrapper.
+INSERT INTO characters(guid,account,name,taximask,race,class,level,talentGroupsCount,activeTalentGroup)
+VALUES(136,1,'PrimaryPal','',1,2,80,2,0),(137,1,'PrimaryRogue','',4,4,80,2,1),(138,1,'SecondWar','',1,1,80,2,1);
+INSERT INTO character_spell(guid,spell,active,disabled) VALUES(136,63706,1,0),(137,63706,1,0),(137,63707,1,0),(138,63707,1,0);
+INSERT INTO character_skills(guid,skill,value,max) VALUES(136,183,400,400),(137,183,400,400),(136,171,320,450),(138,183,400,400);
