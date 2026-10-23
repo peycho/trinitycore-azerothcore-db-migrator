@@ -119,7 +119,7 @@ both cores' chains and native runtime behavior before extending support.
 | `SPELL_SKILL_NOT_ELIGIBLE` | A spell's skill effect lacks eligible race/class metadata in one or both cores. |
 | `MISSING_SKILL_TIER` | Referenced target skill-tier metadata is absent. Verify the assets and database overlays. |
 | `NONDETERMINISTIC_SKILL_EFFECT` | The skill effect uses a die-side representation outside the deterministic forms understood by the reader. Review the effect instead of guessing a value. |
-| `UNSUPPORTED_SKILL_STEP_SPELL` | The spell contains a skill-step effect without a supported preservation contract. It may affect profession tiers or accounting. |
+| `UNSUPPORTED_SKILL_STEP_SPELL` | The spell contains a skill-step effect without a supported preservation contract. It may affect profession tiers or accounting. The optional [redundant teacher retirement](skill-teaching-repair.md) archives fixed wrappers only when all taught children are already known; it never relaxes this migration guard. |
 
 ## Metadata, scripts and traversal
 

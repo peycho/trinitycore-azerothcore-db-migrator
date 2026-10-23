@@ -1413,3 +1413,14 @@ selected pair count for `--expect-rows`, then review the new archived batch.
 Both starting-skill world tables are required. All occupied slots defer; no items
 are moved. Earlier policies still preserve skills. See the [full contract,
 privileges, exact restore and fresh-import sequence](talent-ownership-repair.md#opt-in-unselected-shaman-dual-wield-spell-and-skill).
+
+### Redundant skill-teaching wrappers
+
+`plan skill-teaching --migration-inspection latest --preview` reviews a separate
+opt-in retirement catalog for old skill-step teaching actions. Only wrappers
+whose taught children are already known through retained enabled spell/rank
+anchors qualify. Apply removes no taught spells and changes no skills/caps,
+recipes, talents, items or flags. It deliberately discards the old teaching
+wrapper, including any cap-reset effect. Use the returned selected wrapper-row
+count for `--expect-rows`, then review the new archived batch. See the [full
+contract, privileges, exact restore and fresh-import workflow](skill-teaching-repair.md).

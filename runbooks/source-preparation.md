@@ -125,6 +125,12 @@ spec selecting its talent. Recompute its selection and counts on every fresh
 snapshot; it deliberately changes skill ownership and is never an implicit part
 of the skill-preserving history policies.
 
+The separate [redundant skill-teaching retirement](skill-teaching-repair.md)
+archives only fixed reviewed teaching actions whose children are already known.
+It discards their cap-reset effect while retaining every stored skill/cap, recipe,
+talent build and item. Recompute candidates from the current inspection after
+other preparation batches; do not replay old wrapper counts on a fresh import.
+
 ## Repeat the complete preparation and migration
 
 The deliverable is a repeatable process on a **fresh production snapshot**.
