@@ -15,7 +15,7 @@ import struct
 import subprocess
 import sys
 
-POLICY = 'spell-state-v16'
+POLICY = 'spell-state-v17'
 LEARN, SKILL, SKILL_STEP, DUAL_WIELD = 36, 118, 44, 40
 PASSIVE, HIDDEN = 0x40, 0x80
 
@@ -35,6 +35,44 @@ class MetadataQueryError(RuntimeError):
 
 def reject(reason, detail):
     raise Unsupported(reason, detail)
+
+
+def known_runeforging_without_skill(spell, character, stored, skills, tc, ac, direction):
+    """Preserve known enchantments whose native addSpell path acquires no skill.
+
+    AcquireMethod 1 with high=510 is a reward threshold, not an acquisition
+    instruction. Neither a skill nor another enchantment is inferred here.
+    """
+    recipes = {53323,53331,53341,53342,53343,53344,54446,54447,62158,70164}
+    race, cls, _, _ = character
+    flags = stored.get(spell)
+    # The streamed CLI pads AC's mask with zero; pure readers may omit it.
+    enabled = flags == (1,0) if direction == 'tc-to-ac' else flags in ((3,), (3,0))
+    if spell not in recipes or cls != 6 or not 1 <= race <= 32 or 776 in skills or not enabled:
+        return None
+    layouts = []
+    for meta in (tc,ac):
+        row = meta.spells.get(spell, [])
+        ability = [a for a in meta.abilities[spell] if a[1] == 776]
+        infos = sorted(r[1:] for r in meta.stores['SkillRaceClassInfo'].values() if r[1] == 776)
+        method = int(spell in (53341,53343))
+        if (len(row) < 212 or row[4] & PASSIVE or row[71:74] != [53,3,0]
+                or any(row[116:119]) or meta.chain(spell) != (spell,)
+                or meta.skill_effect(spell) or meta.learns[spell] or meta.effect_learns[spell]
+                or meta.requires[spell] or spell in meta.talents or spell in meta.additional
+                or meta.talent_learn_owners.get(spell) or meta.aura_owners.get(spell)
+                or spell in meta.world_aura_owners
+                or len(ability) != 1 or ability[0][1:] != [776,spell,0,32,0,0,1,0,method,510,500,0,0]
+                or meta.stores['SkillLine'].get(776,[0,0])[1] != 7 or not infos
+                or any(r[2:] != [32,128,0,0,0] or r[1] and not r[1] & (1 << (race-1)) for r in infos)):
+            return None
+        layouts.append(infos)
+    if layouts[0] != layouts[1]:
+        return None
+    return {'policy':'KNOWN_RUNEFORGING_NO_SKILL_ACQUISITION', 'skill':776,
+            'skill_present':False, 'skill_granted':False, 'spell':spell,
+            'acquire_method':method, 'trivial_high':510, 'trivial_low':500,
+            'known_before':True, 'new_enchantments_granted':False}
 
 
 def digest(value):
@@ -1183,6 +1221,7 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
         return True
 
     inactive_skill_proofs = {}
+    absent_runeforging_proofs = {}
     def inactive_dual_wield(spell, mask):
         """An inactive Shaman talent does not load its child or create a skill.
 
@@ -1265,7 +1304,10 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
             # to 1/1; some addSpell paths also call LearnDefaultSkill. Refuse
             # nonstandard stored state instead of relying on that correction.
             if 776 not in skills:
-                reject('SPELL_WOULD_ADD_SKILL',f'{spell}: skill=776')
+                proof = known_runeforging_without_skill(spell,character,stored,skills,tc,ac,direction)
+                if proof is None:
+                    reject('SPELL_WOULD_ADD_SKILL',f'{spell}: skill=776')
+                absent_runeforging_proofs[spell] = proof
             layouts = []
             for metadata in (tc,ac):
                 infos = race_class_rows(metadata,776)
@@ -1276,7 +1318,7 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
                 layouts.append(sorted(tuple(info[1:7]) for info in infos))
             if layouts[0] != layouts[1]:
                 reject('INCOMPATIBLE_SKILL_METADATA',f'{spell}: skill=776; race/class metadata differ')
-            if tuple(skills[776]) != (1,1):
+            if 776 in skills and tuple(skills[776]) != (1,1):
                 reject('SPELL_WOULD_CHANGE_SKILL',f'{spell}: skill=776; native value=1; cap=1; stored={skills[776]}')
         effect = ac.skill_effect(spell)
         if effect:
@@ -1481,6 +1523,8 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
             'rank_root': tc.first(spell), 'owner_masks': sorted(authorized_by.items()),
             'required_spells': requirements,
         }
+        if spell in absent_runeforging_proofs:
+            row['authorization']['absent_runeforging_skill'] = absent_runeforging_proofs[spell]
         if spell in inactive_skill_proofs:
             row['authorization']['policy'] = 'NATIVE_INACTIVE_TALENT_SKILL'
             row['authorization']['inactive_talent_skill'] = inactive_skill_proofs[spell]

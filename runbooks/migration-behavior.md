@@ -85,6 +85,10 @@ the selected mapping registries.
   preserves buttons without inventing an absent wrapper. Ordinary teachers use
   their [separate exact contracts](spell-reconstruction.md#ordinary-known-spell-teachers-spell-state-v16);
   other teaching spells remain blocked.
+  V17 preserves already-known, non-acquiring Runeforging enchantments when skill
+  `776` is absent, in both directions. No skill or enchantment is granted; native
+  acquisition changes and learning routes remain blocked. See the
+  [known-only Runeforging contract](spell-reconstruction.md#known-runeforging-recipes-with-no-skill-spell-state-v17).
   Ordinary training prerequisites do not erase source-known ordinary spells.
   Under `spell-state-v11`, those rows retain mask 3 and record any missing
   ordinary parents without granting them. Talent-linked requirements continue

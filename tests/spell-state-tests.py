@@ -686,7 +686,9 @@ class SpellTests(unittest.TestCase):
             self.assertEqual(result[spell]['mask'],3)
             reverse=self.convert({spell:(3,)},skills={776:(1,1)},cls=6,tc=tc,reverse=True)
             self.assertEqual((reverse[spell]['active'],reverse[spell]['disabled']),(1,0))
-        self.fails('SPELL_WOULD_ADD_SKILL',lambda:self.convert({53341:(1,0)},skills={},cls=6,tc=tc))
+        result=self.convert({53341:(1,0)},skills={},cls=6,tc=tc)
+        self.assertEqual(set(result),{53341})
+        self.assertFalse(result[53341]['authorization']['absent_runeforging_skill']['skill_granted'])
         for value,cap in ((0,1),(1,450),(2,2)):
             self.fails('SPELL_WOULD_CHANGE_SKILL',lambda:self.convert({53341:(1,0)},skills={776:(value,cap)},cls=6,tc=tc))
         ac=copy.deepcopy(self.ac)
@@ -694,6 +696,56 @@ class SpellTests(unittest.TestCase):
         self.fails('INCOMPATIBLE_SKILL_METADATA',lambda:self.convert({53341:(1,0)},skills={776:(1,1)},cls=6,tc=tc,ac=ac))
         tc.scripts[53341].add('spell_chapter1_emblazon_runeblade')
         self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:self.convert({53341:(1,0)},skills={776:(1,1)},cls=6,tc=tc))
+
+    def test_v17_known_runeforging_preserves_absent_skill_in_both_directions(self):
+        for reverse in (False,True):
+            for spell in fixtures.RUNEFORGING:
+                skills={171:(320,450)};original=copy.deepcopy(skills)
+                result=self.convert({spell:(3,)if reverse else(1,0)},skills=skills,cls=6,reverse=reverse)
+                self.assertEqual(set(result),{spell})
+                self.assertEqual(result[spell]['mask'],3)
+                self.assertEqual(result[spell]['disposition'],'PERSISTENT')
+                proof=result[spell]['authorization']['absent_runeforging_skill']
+                self.assertTrue(proof['known_before'])
+                self.assertFalse(proof['skill_present']or proof['skill_granted']or proof['new_enchantments_granted'])
+                self.assertEqual(skills,original)
+
+    def test_v17_cli_streamed_ac_mask_padding_preserves_absent_skill(self):
+        # character_rows/main streams specMask,0 and constructs a two-cell tuple.
+        for spell in fixtures.RUNEFORGING:
+            for flags in ((3,),(3,0)):
+                result=self.convert({spell:flags},skills={},cls=6,reverse=True)
+                self.assertEqual(set(result),{spell})
+                self.assertFalse(result[spell]['authorization']['absent_runeforging_skill']['skill_granted'])
+            with self.assertRaises(Unsupported):
+                self.convert({spell:(3,1)},skills={},cls=6,reverse=True)
+
+    def test_v17_missing_skill_does_not_authorize_teachers_or_other_spell_flags(self):
+        for reverse in (False,True):
+            book={53428:(3,)if reverse else(1,0),53341:(3,)if reverse else(1,0)}
+            self.fails('SPELL_WOULD_ADD_SKILL',lambda:self.convert(book,skills={},cls=6,reverse=reverse))
+        for flags in ((0,0),(1,1),(0,1)):
+            with self.assertRaises(Unsupported):self.convert({53341:flags},skills={},cls=6)
+        for mask in (1,2):
+            with self.assertRaises(Unsupported):self.convert({53341:(mask,)},skills={},cls=6,reverse=True)
+
+    def test_v17_changed_runeforging_acquisition_contract_stays_blocked(self):
+        for reverse in (False,True):
+            for which in ('tc','ac'):
+                for change in ('method','high','low','passive','effect','learn','tier','flags','class','category'):
+                    tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac);meta=tc if which=='tc'else ac
+                    if change=='method':meta.abilities[53341][0][9]=2
+                    elif change=='high':meta.abilities[53341][0][10]=0
+                    elif change=='low':meta.abilities[53341][0][11]=0
+                    elif change=='passive':meta.spells[53341][4]|=64
+                    elif change=='effect':meta.spells[53341][71]=118
+                    elif change=='learn':meta.learns[53341].append((6603,1,False))
+                    elif change=='tier':meta.stores['SkillRaceClassInfo'][776][6]=171
+                    elif change=='flags':meta.stores['SkillRaceClassInfo'][776][4]=16
+                    elif change=='class':meta.stores['SkillRaceClassInfo'][776][3]=0
+                    elif change=='category':meta.stores['SkillLine'][776][1]=9
+                    with self.assertRaises(Unsupported,msg=(reverse,which,change)):
+                        self.convert({53341:(3,)if reverse else(1,0)},skills={},cls=6,reverse=reverse,tc=tc,ac=ac)
 
     def test_runeforging_dependencies_delegate_to_verified_native_skill_rewards(self):
         for reverse in (False,True):

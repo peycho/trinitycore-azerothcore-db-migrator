@@ -360,6 +360,12 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     spell_guard('UNSUPPORTED_NATIVE_PASSIVE_RANK',
         f'INSERT INTO `{AC_WORLD}`.trainer_spell VALUES (2,16958)',
         f'DELETE FROM `{AC_WORLD}`.trainer_spell WHERE TrainerId=2')
+    # Native acquisition controls: a changed AC ability must not use the v17 exemption.
+    changed_rune=SPELL_FIXTURES.stores(SPELL_PROFILE)['SkillLineAbility'][53341].copy()
+    changed_rune[9]=2
+    spell_guard('SPELL_WOULD_ADD_SKILL',
+        f'INSERT INTO `{AC_WORLD}`.skilllineability_dbc VALUES ('+','.join(map(str,changed_rune))+')',
+        f'DELETE FROM `{AC_WORLD}`.skilllineability_dbc WHERE ID=53341')
     print('Checking representation boundaries', flush=True)
     for length in (16, 17, 18, 32, 33, 64):
         sql(f"UPDATE account SET username=REPEAT('A',{length}) WHERE id=1", AUTH)
@@ -521,6 +527,12 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
         equal(f'SELECT specMask FROM `{AC_CHARS}`.character_spell WHERE guid={guid} AND spell={spell}',3)
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE spell IN (72752,72757,37378,37379,41421)',0)
     equal(f'SELECT value,max FROM `{AC_CHARS}`.character_skills WHERE guid=119 AND skill=776','1\t1')
+    for guid,spells in ((142,'53323:3,53341:3,53343:3'),(143,'53323:3')):
+        equal(f"SELECT GROUP_CONCAT(CONCAT(spell,':',specMask) ORDER BY spell) FROM `{AC_CHARS}`.character_spell WHERE guid={guid}",spells)
+        equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_skills WHERE guid={guid} AND skill=776',0)
+        equal(f"SELECT COUNT(*) FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid={guid} AND JSON_EXTRACT(provenance,'$.authorization.absent_runeforging_skill.skill_granted')=false",3 if guid==142 else 1)
+    equal(f'SELECT value,max FROM `{AC_CHARS}`.character_skills WHERE guid=142 AND skill=171','320\t450')
+
     equal(f'SELECT COUNT(*) FROM `{AC_CHARS}`.character_spell WHERE guid=119 AND spell IN (53341,53343)',0)
     for child,derived in [(53341,1),(53343,0)]:
         equal(f"SELECT disposition,spec_mask,derived FROM `{FC}`.spell_provenance WHERE run_id='{fv['MIGRATION_RUN_ID']}' AND guid=119 AND spell={child}",f'SKILL\t3\t{derived}')
@@ -639,6 +651,7 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (128,5209,3),(129,5209,3),(126,63644,3),(126,63645,3),(127,63644,3),(127,63645,3),(136,63645,3),(137,63645,3),(137,63644,3),(138,63644,3)',AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (132,21084,3),(133,20154,3),(134,20154,3),(134,21084,3)',AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES (139,20154,3),(139,20271,3),(139,21084,3),(140,5394,3),(141,20219,3)',AC_CHARS)
+    sql('INSERT INTO character_spell(guid,spell,specMask)VALUES(142,53323,3),(142,53341,3),(142,53343,3),(143,53323,3)',AC_CHARS)
     sql('INSERT INTO character_spell (guid,spell,specMask) VALUES '+','.join(
         f'(119,{spell},3)' for spell in [*SPELL_FIXTURES.RUNEFORGING,53428]),AC_CHARS)
     sql('INSERT INTO character_talent (guid,spell,specMask) VALUES (115,33872,1),(115,33873,2),(125,33872,1),(125,33873,2)',AC_CHARS)
@@ -714,6 +727,12 @@ apply_update_directory "$SOURCE_CHARACTERS_SCHEMA" "$TRINITYCORE_DIR/sql/updates
         equal(f'SELECT active,disabled FROM `{TC_CHARS}`.character_spell WHERE guid={guid} AND spell={spell}','1\t0')
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE spell IN (72752,72757,37378,37379,41421)',0)
     equal(f'SELECT value,max FROM `{TC_CHARS}`.character_skills WHERE guid=119 AND skill=776','1\t1')
+    for guid,spells in ((142,'53323:1:0,53341:1:0,53343:1:0'),(143,'53323:1:0')):
+        equal(f"SELECT GROUP_CONCAT(CONCAT(spell,':',active,':',disabled) ORDER BY spell) FROM `{TC_CHARS}`.character_spell WHERE guid={guid}",spells)
+        equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_skills WHERE guid={guid} AND skill=776',0)
+        equal(f"SELECT COUNT(*) FROM `{RC}`.spell_provenance WHERE run_id='{rv['MIGRATION_RUN_ID']}' AND guid={guid} AND JSON_EXTRACT(provenance,'$.authorization.absent_runeforging_skill.skill_granted')=false",3 if guid==142 else 1)
+    equal(f'SELECT value,max FROM `{TC_CHARS}`.character_skills WHERE guid=142 AND skill=171','320\t450')
+
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=119 AND spell IN (53341,53343)',0)
     equal(f'SELECT COUNT(*) FROM `{TC_CHARS}`.character_spell WHERE guid=115 AND spell IN (47179,47180)',0)
     for guid in (128,129):

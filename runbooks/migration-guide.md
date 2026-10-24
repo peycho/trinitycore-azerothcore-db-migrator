@@ -692,3 +692,14 @@ needs no source cleanup batch. Start a new migration run with fresh target/contr
 schemas because policy and metadata hashes changed. Retain original preparation
 toolkits for exact restoration of older sealed archives. A successful database
 rehearsal remains separate from native gameplay and production acceptance.
+
+### Toolkit v17 Runeforging validation correction
+
+The [known-only Runeforging contract](spell-reconstruction.md#known-runeforging-recipes-with-no-skill-spell-state-v17)
+fixes a false missing-skill blocker without changing source rows. After updating
+the complete toolkit, start a new migration run with fresh target/control schemas
+and rerun `preflight`; v16 checkpoints belong to their original toolkit. Follow
+`archive-unsupported` then `assemble` only after preflight passes. Existing native
+skill preparation policies and cleanup archives remain separate; retain their
+original toolkits for restoration. No cleanup batch is needed for this correction,
+and it does not resolve other blockers or grant gameplay approval.

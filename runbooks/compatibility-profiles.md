@@ -29,6 +29,9 @@ checkouts and retained pinned/staging refs match all protected content. Pins,
 manifests and v1 stay unchanged; release approval stays UNREVIEWED. New metadata
 and policy hashes require a fresh migration run and target/control schemas.
 See the [ordinary teacher contract](spell-reconstruction.md#ordinary-known-spell-teachers-spell-state-v16).
+V17 also preserves absent Runeforging for already-known non-acquiring rune
+enchantments under the [known-only contract](spell-reconstruction.md#known-runeforging-recipes-with-no-skill-spell-state-v17).
+This changes reconstruction validation, with no new metadata layout or core pin.
 
 The unapproved v2 spell metadata also contains a narrow persistent-world
 dependency contract for Flight Form and existing Expert Riding. It requires

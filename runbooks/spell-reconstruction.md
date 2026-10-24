@@ -7,6 +7,45 @@ already accepted player writes requires a separately reviewed repair with its
 own backup, ownership and rollback evidence. No core patch or CleanCharacterDB
 setting is used. The v2 profile remains **UNREVIEWED**.
 
+## Known Runeforging recipes with no skill (spell-state-v17)
+
+A stored, enabled Runeforging enchantment does not always acquire Runeforging
+skill `776`. Native TC `Player::AddSpell` and AC `Player::_addSpell` call
+`LearnDefaultSkill` for acquisition method `2`, or the special Runeforging path
+when the ability's trivial-high value is zero. Stock recipe rows with method
+`0` or `1` and trivial thresholds `510/500` satisfy neither condition. Method
+`1` describes a skill reward, not a command to acquire the missing skill.
+
+V17 preserves already-known ordinary rune enchantments with an **absent** skill
+in both directions, under a narrow matching metadata contract. The previous
+unconditional missing-skill check produced a false `SPELL_WOULD_ADD_SKILL` blocker
+for this state. No preparation SQL or new skill row is required.
+
+The reviewed spell IDs are `53323`, `53331`, `53341`, `53342`, `53343`, `53344`,
+`54446`, `54447`, `62158` and `70164`. Every reached ID must already be stored,
+be an enabled TC row or an ordinary AC mask `3`, and match singleton item-enchant
+mechanics, exact Runeforging ability fields, native mono skill metadata and a
+Death Knight's race/class eligibility in both catalogs. Existing script and
+spell validation still apply. Unknown recipes, acquisition-method changes,
+zero trivial-high values, changed metadata and learning/skill effects remain
+blocked. The transform casts nothing and inserts no missing recipe or skill.
+The same absence is preserved in reverse conversion; provenance records
+`authorization.absent_runeforging_skill` with `skill_granted=false`.
+
+If skill `776` **is present**, it must still be exactly `1/1`; native loaders
+normalize its mono range and unsupported stored values remain blocked. The
+existing `53428 -> 53341/53343` native reward delegation continues to require
+that skill. V17 does not permit a missing skill for that learning route or
+allow an inactive/disabled row to become usable. A known recipe with no skill
+remains in that same limited state; no profession is granted.
+
+Use a fresh migration run and target/control schemas. V16 checkpoints cannot be
+resumed under v17. Keep the complete original toolkit for earlier preparation
+archives. Core pins, protected manifests and approval **UNREVIEWED** remain
+unchanged. Native acquisition tests use protected C++ consumers with recording
+state; bidirectional migration fixtures cover exact spells, provenance and
+unchanged skill absence. Full worldserver gameplay remains **NOT TESTED**.
+
 ## Ordinary known-spell teachers (spell-state-v16)
 
 TC restores children of these exact active/enabled stored wrappers through its
@@ -862,8 +901,9 @@ TC's reviewed `spell_chapter1_runeforging_credit` handler is also accepted.
 Its protected chapter script only casts quest-credit spell `54586` for
 incomplete quest `12842`. Known Runeforging item-enchantment spells remain
 uncast during native loading; migration grants no enchantments or quest credit.
-The existing Runeforging skill must be `1/1`, with matching mono skill metadata
-in both cores. Native skill loading normalizes this skill to `1/1`; other stored
+When Runeforging skill exists it must be `1/1`, with matching mono skill metadata
+in both cores. The [v17 known-only contract](#known-runeforging-recipes-with-no-skill-spell-state-v17)
+also preserves absent skill state for non-acquiring stored enchantments. Native skill loading normalizes this skill to `1/1`; other stored
 values/caps block instead of relying on a correction. Only this named handler
 is accepted from that chapter file; other chapter handlers are not implicitly
 approved. Add a staging check that known Runeforging enchantments remain

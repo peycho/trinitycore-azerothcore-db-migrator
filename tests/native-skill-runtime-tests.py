@@ -84,11 +84,21 @@ int main(){
   left.TcAcquire(skill,2,0);right.AcAcquire(skill,2,0);assert(left.skills==right.skills);assert(left.skills.count(skill)==1);
   assert(left.groups==groups&&right.groups==groups&&left.active==active&&right.active==active&&left.slots==2&&right.slots==2);
  }
- Player recipe;recipe.TcAcquire(776,0,510);recipe.AcAcquire(776,0,510);assert(recipe.skills.empty());
+ for(uint32 method:{0,1}){
+  Player recipe;recipe.cls=6;recipe.skills[183]={400,400};auto before=recipe.skills;
+  recipe.TcAcquire(776,method,510);assert(recipe.skills==before);
+  recipe.AcAcquire(776,method,510);assert(recipe.skills==before);
+ }
+ for(uint32 method:{0,1,2}){
+  Player acquiring;acquiring.cls=6;acquiring.TcAcquire(776,method,0);
+  assert((acquiring.skills[776]==std::pair<uint16,uint16>{1,1}));
+ }
+ Player automatic;automatic.cls=6;automatic.AcAcquire(776,2,510);
+ assert((automatic.skills[776]==std::pair<uint16,uint16>{1,1}));
  Player defaultRune;defaultRune.TcAcquire(776,1,0);assert((defaultRune.skills[776]==std::pair<uint16,uint16>{1,1}));
  Player existing;existing.skills[183]={1,400};existing.TcAcquire(183,2,0);existing.AcAcquire(183,2,0);assert((existing.skills[183]==std::pair<uint16,uint16>{1,400}));
  Player noSkill;noSkill.AcDefault(999999,0);assert(noSkill.skills.empty());
- std::cout<<"PASS protected TC/AC default skill bodies: Generic creates level*5 at native maximums for levels 1/70/80; Runeforging creates 1/1; unknown skill no-op; profession slots unchanged\n";
+ std::cout<<"PASS protected TC/AC default skill bodies: Generic creates level*5 at native maximums for levels 1/70/80; Runeforging creates 1/1; unknown skill no-op; profession slots unchanged; method 0/1 high 510 recipes preserve absent Runeforging, acquiring controls create 1/1\n";
 }
 '''
 with tempfile.TemporaryDirectory()as d:

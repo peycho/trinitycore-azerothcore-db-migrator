@@ -82,3 +82,10 @@ INSERT INTO characters(guid,account,name,taximask,race,class,level,talentGroupsC
 VALUES(139,1,'JudgePal','',1,2,80,2,1),(140,1,'StreamSham','',2,7,80,2,0),(141,1,'GnomeEng','',3,3,80,1,0);
 INSERT INTO character_spell(guid,spell,active,disabled) VALUES(139,10321,1,0),(140,5396,1,0),(141,20220,1,0);
 INSERT INTO character_skills(guid,skill,value,max) VALUES(139,184,1,400),(139,594,1,400),(140,374,400,400),(141,202,450,450);
+
+-- Known runes do not acquire missing Runeforging when method=0/1 and high=510.
+INSERT INTO characters(guid,account,name,taximask,race,class,level,talentGroupsCount,activeTalentGroup)
+VALUES(142,1,'KnownRunes','',2,6,80,1,0),(143,1,'LoneRune','',1,6,80,2,1);
+INSERT INTO character_spell(guid,spell,active,disabled)
+VALUES(142,53323,1,0),(142,53341,1,0),(142,53343,1,0),(143,53323,1,0);
+INSERT INTO character_skills(guid,skill,value,max) VALUES(142,171,320,450);
