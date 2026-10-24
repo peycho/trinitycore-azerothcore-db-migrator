@@ -1473,3 +1473,12 @@ for the [fixed inactive Swipe contract](spell-eligibility-repair.md#opt-in-inact
 It requires a non-druid, no stored Bear Form or Feral skill, and an entirely
 inactive/non-disabled family. It preserves skills, both builds, items and flags;
 no spell is activated or granted. Other prerequisite cases remain deferred.
+
+## Reviewed missing Weaponsmith parent
+
+Use `plan specialization-parent --migration-inspection latest --preview` for the
+[complete parent-specialization procedure](specialization-parent-repair.md).
+This separate policy restores Weaponsmith only under a verified retained active
+Master Axesmith and retires three exact inactive competitors. It changes known
+specialization eligibility while preserving skills, recipes, items and both
+talent builds. The original retirement mode still defers missing parents.

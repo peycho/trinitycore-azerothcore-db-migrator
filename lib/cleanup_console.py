@@ -50,7 +50,7 @@ def sha(path):
 
 
 def toolkit_hashes():
-    names=('lib/cleanup_foreign_swipe_catalog.json','lib/cleanup_racial_catalog.json','lib/cleanup_specializations.py','lib/cleanup_specialization_catalog.json','lib/cleanup_professions.py','lib/cleanup_profession_catalog.json','tools/profession-activation-repair.sql.in','lib/cleanup_skill_teaching.py','lib/cleanup_skill_teaching_catalog.json','lib/cleanup_shaman_dual_wield.py','tools/shaman-dual-wield-repair.sql.in','console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
+    names=('lib/cleanup_specialization_parent.py','tools/specialization-parent-repair.sql.in','lib/cleanup_foreign_swipe_catalog.json','lib/cleanup_racial_catalog.json','lib/cleanup_specializations.py','lib/cleanup_specialization_catalog.json','lib/cleanup_professions.py','lib/cleanup_profession_catalog.json','tools/profession-activation-repair.sql.in','lib/cleanup_skill_teaching.py','lib/cleanup_skill_teaching_catalog.json','lib/cleanup_shaman_dual_wield.py','tools/shaman-dual-wield-repair.sql.in','console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
@@ -654,6 +654,12 @@ def command_action(settings, work, args):
             fail('SPECIALIZATION_ACK_INVALID','Specialization retirement acknowledgement differs')
         configuration_ack += f"SET @specialization_retirement_ack='{SPECIALIZATION_ACK}';\n"
         configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
+    from cleanup_specialization_parent import POLICY as PARENT_POLICY, ACK as PARENT_ACK
+    if manifest.get('policy') == PARENT_POLICY:
+        if manifest.get('specialization_ack') != PARENT_ACK:
+            fail('SPECIALIZATION_PARENT_ACK_INVALID','Parent-specialization acknowledgement differs')
+        configuration_ack += f"SET @specialization_retirement_ack='{PARENT_ACK}';\n"
+        configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
     from cleanup_professions import POLICY as PROFESSION_POLICY, ACK as PROFESSION_ACK
     if manifest.get('policy') == PROFESSION_POLICY:
         if manifest.get('profession_activation_ack') != PROFESSION_ACK:
@@ -844,6 +850,12 @@ def parser():
     specialty_review=specialties.add_mutually_exclusive_group(required=True)
     specialty_review.add_argument('--preview',action='store_true',help='Read-only specialization/equipped-item review; no SQL package')
     specialty_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows from the current preview')
+    parents=types.add_parser('specialization-parent',help='Restore reviewed missing Weaponsmith parent, retain active Master Axesmith and retire three inactive competitors')
+    parents.set_defaults(specialization_retirement=True,parent_specialization=True,inspection=None,audit=None)
+    parents.add_argument('--migration-inspection',required=True,help='Current sealed migration-blocker inspection ID or latest')
+    parent_review=parents.add_mutually_exclusive_group(required=True)
+    parent_review.add_argument('--preview',action='store_true',help='Read-only review; no SQL package or source changes')
+    parent_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact original selected rows from this preview, three per selected character')
     professions=types.add_parser('profession-activation',help='Separate archived activation of existing ordinary profession ranks; preserve skills and recipes')
     professions.set_defaults(profession_activation=True,inspection=None,audit=None)
     professions.add_argument('--migration-inspection',required=True,help='Current sealed migration-blocker inspection ID or latest')

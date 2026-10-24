@@ -14,7 +14,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main():
+def main(parent=False):
     port = os.environ.get('REHEARSAL_MYSQL_PORT','33317')
     if (os.environ.get('MIGRATOR_DISPOSABLE_MYSQL')!='1' or not port.isascii()
             or not port.isdigit() or not 1<=int(port)<=65535 or int(port)==3306):
@@ -77,6 +77,17 @@ def main():
                 sql(f'INSERT INTO `{source}`.character_spell VALUES({g},{spell},{a},{d},0x00ff,0.100001);')
                 if g in (1,2,8) and a==0:expected.append([g,spell,a,d])
             for sk,v,cap in skills:sql(f'INSERT INTO `{source}`.character_skills VALUES({g},{sk},{v},{cap});')
+        if parent:
+            sql(f'ALTER TABLE `{source}`.character_spell DROP COLUMN custom_blob, DROP COLUMN custom_decimal')
+            sql(f'TRUNCATE TABLE `{source}`.character_spell')
+            expected=[]
+            for g in range(1,9):
+                rows=[(9788,0,0),(17039,0,0),(17040,0,0),(17041,1,0),(51300,1,0),(6603,1,0),(3275,1,0)]
+                if g==5:rows=[(s,1 if s==17039 else a,d)for s,a,d in rows]
+                for spell,a,d in rows:sql(f'INSERT INTO `{source}`.character_spell VALUES({g},{spell},{a},{d})')
+                sql(f'DELETE FROM `{source}`.character_skills WHERE guid={g}')
+                sql(f'INSERT INTO `{source}`.character_skills VALUES({g},164,{1 if g==4 else 441},450)')
+                if g in (1,2,8):expected += [[g,spell,0,0]for spell in (9788,17039,17040)]
         expected.sort()
         # Use each real stock CREATE TABLE, not a synthetic C++ member name.
         # Native DDL spells the database column `requiredspell` in lowercase.
@@ -92,6 +103,8 @@ def main():
             sql(f'INSERT INTO `{source}`.character_inventory(guid,bag,slot,item) VALUES({g},0,{slot},{item});')
             sql(f'INSERT INTO `{world}`.item_template(entry,requiredspell,custom_decimal) VALUES({entry},{tc_req},0.100001);')
             if ac_req is not None:sql(f'INSERT INTO `{aworld}`.item_template(entry,requiredspell,custom_decimal) VALUES({entry},{ac_req},0.100001);')
+        if parent:
+            sql(f'UPDATE `{aworld}`.item_template SET requiredspell=9788 WHERE entry=10006')
         for user in (writer,reader):
             sql(f"CREATE USER '{user}'@'%' IDENTIFIED BY '';");users.append(user)
             for schema in (source,auth,world,aworld):sql(f"GRANT SELECT ON `{schema}`.* TO '{user}'@'%';")
@@ -152,38 +165,56 @@ backup_reference=dedicated-disposable-specialization-fixture
             report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(f'{g}\t*\tUNAUTHORIZED_TALENT_SPELL\t12677\n' for g in range(1,9)))
             result=run('inspect-migration-blockers','--report',str(report))
             inspection=Path(result.stdout.split('Reports: ',1)[1].strip()).name
-            plan=['plan','specialization-retirement','--migration-inspection',inspection]
+
+            if parent:
+                sql(f'ALTER TABLE `{source}`.character_spell ADD custom_spell_state INT NOT NULL DEFAULT 0')
+                result=run('inspect-migration-blockers','--report',str(report))
+                custom_inspection=Path(result.stdout.split('Reports: ',1)[1].strip()).name
+                error=run('plan','specialization-parent','--migration-inspection',custom_inspection,'--preview',code=2)
+                assert 'UNSUPPORTED_PARENT_COLUMNS' in error.stderr,error.stderr
+                sql(f'ALTER TABLE `{source}`.character_spell DROP COLUMN custom_spell_state')
+                result=run('inspect-migration-blockers','--report',str(report))
+                inspection=Path(result.stdout.split('Reports: ',1)[1].strip()).name
+            plan=['plan','specialization-parent' if parent else 'specialization-retirement','--migration-inspection',inspection]
             old=run('plan','talent-ownership','--migration-inspection',inspection,'--preview')
             assert '"selected_rows": 0' in old.stdout
             preview=run(*plan,'--preview')
             review=json.loads(Path(preview.stdout.split('Details: ',1)[1].strip()).read_text())
             assert review['selected']==expected,review
-            assert review['summary']['selected_characters']==3 and len(expected)==4
-            assert review['summary']['spell_rows_inserted']==0 and review['summary']['skill_rows_changed']==0
+            assert review['summary']['selected_characters']==3 and len(expected)==(9 if parent else 4)
+            assert review['summary']['spell_rows_inserted']==(3 if parent else 0) and review['summary']['skill_rows_changed']==0
             assert not (session/'active-batch.json').exists() and not list((session/'batches').iterdir())
             assert checksum()==baseline
             run(*plan,'--expect-rows','3',code=2)
             sql(f'UPDATE `{source}`.characters SET level=79 WHERE guid=5;')
-            drift = run(*plan,'--expect-rows','4',code=2)
+            drift = run(*plan,'--expect-rows','9' if parent else '4',code=2)
             assert 'HISTORY_INPUT_DRIFT' in drift.stderr,drift.stdout+drift.stderr
             sql(f'UPDATE `{source}`.characters SET level=80 WHERE guid=5;')
-            passed('active choices with ordinary rank-prefix anchors; no-op preview; source unchanged; pending-reset, missing Weaponsmith, TC/AC required equipment and unknown custom templates defer')
-            run(*plan,'--expect-rows','4')
+            passed('explicit parent restoration under retained Master Axesmith; pending-reset, low skill, ambiguous choice and TC/AC required or unknown equipped items defer' if parent else 'active choices with ordinary rank-prefix anchors; no-op preview; source unchanged; pending-reset, missing Weaponsmith, TC/AC required equipment and unknown custom templates defer')
+            run(*plan,'--expect-rows','9' if parent else '4')
             package=session/'batches'/json.loads((session/'active-batch.json').read_text())['batch']
             manifest=json.loads((package/'manifest.json').read_text());archive=manifest['archive_schema'];owned.append(archive)
-            assert manifest['policy']=='tc-inactive-competing-specialization-retirement-v1'
-            assert manifest['selected_rows']==4 and manifest['spell_rows_inserted']==0
+            assert manifest['policy']==('tc-reviewed-weaponsmith-parent-repair-v2' if parent else 'tc-inactive-competing-specialization-retirement-v1')
+            assert manifest['selected_rows']==(9 if parent else 4) and manifest['spell_rows_inserted']==(3 if parent else 0)
             run('prepare');run('prepare');assert checksum()==baseline
             denied=run('apply',code=2)
             assert 'DELETE' in denied.stderr,denied.stderr
             sql(f"GRANT INSERT,DELETE ON `{source}`.character_spell TO '{writer}'@'%';")
-            passed('full custom spell/binary/decimal originals archived; repeatable source-unchanged preparation; source writes require explicit DELETE/INSERT grants; no UPDATE privilege')
+            passed('stock spell and full custom character originals archived; source-unchanged preparation; paired DELETE/INSERT grants; no UPDATE privilege' if parent else 'full custom spell/binary/decimal originals archived; repeatable source-unchanged preparation; source writes require explicit DELETE/INSERT grants; no UPDATE privilege')
             ack="SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';SET @eligibility_tc_all_spells=0;SET @eligibility_ac_custom_spells=0;"
-            extra="SET @specialization_retirement_ack='RETIRE_INACTIVE_COMPETITORS_RETAIN_VERIFIED_ACTIVE_CHOICE';"
+            extra=("SET @specialization_retirement_ack='RESTORE_WEAPONSMITH_RETAIN_MASTER_AXESMITH_RETIRE_INACTIVE_COMPETITORS';" if parent else "SET @specialization_retirement_ack='RETIRE_INACTIVE_COMPETITORS_RETAIN_VERIFIED_ACTIVE_CHOICE';")
 
             def direct(extra=''):
                 return subprocess.run(['mysql',*base,'--user='+writer],input=ack+extra+f'CALL `{archive}`.apply_batch();',text=True,capture_output=True)
 
+            if parent:
+                old_ack=direct("SET @specialization_retirement_ack='RETIRE_INACTIVE_COMPETITORS_RETAIN_VERIFIED_ACTIVE_CHOICE';")
+                assert old_ack.returncode and checksum()==baseline
+                sql(f'INSERT INTO `{source}`.character_spell VALUES(1,9787,1,0)')
+                changed=checksum();denied=direct(extra)
+                assert denied.returncode and 'full-row fingerprint' in denied.stderr
+                assert checksum()==changed
+                sql(f'DELETE FROM `{source}`.character_spell WHERE guid=1 AND spell=9787')
             for wrong in ('',"SET @specialization_retirement_ack='WRONG';"):
                 denied=direct(wrong);assert denied.returncode and 'Explicit eligibility repair' in denied.stderr
                 assert checksum()==baseline
@@ -237,6 +268,9 @@ backup_reference=dedicated-disposable-specialization-fixture
                 if connection:break
                 time.sleep(.1)
             assert connection,'Fixture did not reach checkpoint'
+            if parent:
+                blocked=subprocess.run(['mysql',*base,'--user=root'],input=f'SET SESSION innodb_lock_wait_timeout=1; UPDATE `{world}`.item_template SET requiredspell=9788 WHERE entry=10001;',text=True,capture_output=True)
+                assert blocked.returncode and '1205' in blocked.stderr,blocked.stderr
             sql('KILL CONNECTION '+connection);worker.communicate(timeout=10);assert worker.returncode!=0;worker=None
             assert checksum()==baseline and sql(f'SELECT state FROM `{archive}`.batch;')=='PREPARED'
             sql(f'DROP TRIGGER `{archive}`.pause_commit;')
@@ -245,32 +279,37 @@ backup_reference=dedicated-disposable-specialization-fixture
             retained_hash=sql('CHECKSUM TABLE '+','.join(retained)+' EXTENDED;')
             run('apply');run('apply');status=run('status','--batch',package.name)
             assert 'APPLIED' in status.stdout
-            assert '4\t0\t4' in status.stdout,status.stdout
+            assert ('9\t0\t9' if parent else '4\t0\t4') in status.stdout,status.stdout
+            if parent:
+                assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid IN (1,2,8) AND spell=9787 AND active=1 AND disabled=0')=='3'
+                assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE spell=17041 AND active=1 AND disabled=0')=='8'
             for g,spell,_,_ in expected:
                 assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid={g} AND spell={spell};')=='0'
             assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE spell=6603;')=='8'
             assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE spell=3275;')=='8'
             assert sql('CHECKSUM TABLE '+','.join(retained)+' EXTENDED;')==retained_hash
-            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=5;')=='5'
-            for g,(_,skills,_) in cases.items():
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=5;')==('7' if parent else '5')
+            for g,(_,skills,_) in (() if parent else cases.items()):
                 for sk,v,cap in skills:
                     assert sql(f'SELECT value, max FROM `{source}`.character_skills WHERE guid={g} AND skill={sk};')==f'{v}\t{cap}'
             assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=1 AND spell=3104;')=='0'
-            assert sql(f'SELECT active FROM `{source}`.character_spell WHERE guid=5 AND spell=10656;')=='0'
-            sql(f'UPDATE `{source}`.character_spell SET custom_decimal=0.100002 WHERE guid=1 AND spell=6603;')
+            if not parent:assert sql(f'SELECT active FROM `{source}`.character_spell WHERE guid=5 AND spell=10656;')=='0'
+            sql(f'UPDATE `{source}`.characters SET custom_decimal=0.100002 WHERE guid=1;' if parent else f'UPDATE `{source}`.character_spell SET custom_decimal=0.100002 WHERE guid=1 AND spell=6603;')
             changed=checksum();run('restore',code=2);assert checksum()==changed
-            sql(f'UPDATE `{source}`.character_spell SET custom_decimal=0.100001 WHERE guid=1 AND spell=6603;')
+            sql(f'UPDATE `{source}`.characters SET custom_decimal=0.100001 WHERE guid=1;' if parent else f'UPDATE `{source}`.character_spell SET custom_decimal=0.100001 WHERE guid=1 AND spell=6603;')
             sql(f'UPDATE `{aworld}`.item_template SET requiredspell=17039 WHERE entry=10001;')
             changed=checksum();run('restore',code=2);assert checksum()==changed
             sql(f'UPDATE `{aworld}`.item_template SET requiredspell=17041 WHERE entry=10001;')
             run('restore');run('restore');assert checksum()==baseline
             run('apply',code=2)
             passed('committed rerun, only inactive competitors removed; active choices, ranks/recipes, both builds, every skill/cap, professions, worlds and unrelated state preserved; guarded full custom inverse and restore rerun')
-        print(f'MySQL {version}: {len(checks)} specialization retirement check groups PASS; native gameplay NOT TESTED.',flush=True)
+        print(f'MySQL {version}: {len(checks)} specialization {"parent repair" if parent else "retirement"} check groups PASS; native gameplay NOT TESTED.',flush=True)
     finally:
         if worker is not None and worker.poll() is None:worker.terminate();worker.wait()
         for schema in reversed(owned):sql(f'DROP DATABASE `{schema}`;')
         for user in users:sql(f"DROP USER '{user}'@'%';")
 
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    assert sys.argv[1:] in ([],['--parent'])
+    main(parent=sys.argv[1:]==['--parent'])

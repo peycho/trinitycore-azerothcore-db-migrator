@@ -51,6 +51,12 @@ The separate [inactive foreign Swipe mode](spell-eligibility-repair.md#opt-in-in
 retires only inactive Swipe ranks on non-druids with absent Bear Form and Feral
 skill; it grants no prerequisite and leaves all skills and ownership unchanged.
 
+For retained Master Axesmith with a missing Weaponsmith parent, the separately
+reviewed [parent-specialization repair](specialization-parent-repair.md) restores
+that exact parent and retires three inactive competitors. It requires valid
+existing skills, ordinary knowledge and both-world equipped-item checks, and
+preserves stored recipes, talent builds, items and login flags.
+
 For ordinary disabled spells, use the separate opt-in
 [isolated ordinary-history policy](cleanup-console.md#review-isolated-disabled-ordinary-spells).
 It previews exact candidates from a fresh migration inspection and excludes

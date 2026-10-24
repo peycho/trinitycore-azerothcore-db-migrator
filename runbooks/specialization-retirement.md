@@ -13,6 +13,11 @@ keeping their rows does not promise that every recipe or unequipped item remains
 usable after removing its required specialty. The reviewed active choice becomes
 authoritative. This is not the ordinary profession activation policy.
 
+For the separately reviewed missing-parent case under retained active Master
+Axesmith, use the [parent restoration policy](specialization-parent-repair.md).
+It explicitly restores Weaponsmith; this retirement policy continues to defer
+missing parents.
+
 ## Preview using current evidence
 
 Use a stopped preparation copy with its retained backup reference and current

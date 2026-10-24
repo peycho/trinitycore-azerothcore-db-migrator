@@ -1,6 +1,8 @@
 from pathlib import Path
 import json,subprocess,tempfile,hashlib,sys
-ROOT=Path(__file__).resolve().parents[1];tc_path,ac_path=map(Path,sys.argv[1:]);sys.path.insert(0,str(ROOT/'lib'))
+assert sys.argv[3:] in ([],['--parent'])
+parent_mode=sys.argv[3:]==['--parent']
+ROOT=Path(__file__).resolve().parents[1];tc_path,ac_path=map(Path,sys.argv[1:3]);sys.path.insert(0,str(ROOT/'lib'))
 from cleanup_specializations import native_sources
 
 def body(s,marker):
@@ -46,6 +48,21 @@ int main(){
  std::cout<<"PASS pinned TC/AC known-spell equipment gates and TC specialization NPC gates with mocked state: inactive TC specialization remains known and satisfies RequiredSpell; deleting it changes eligibility while retained active choice survives. No production or gameplay test.\n";
 }
 '''
+if parent_mode:
+ main=main.replace(' std::cout<<',r'''
+ tc::Player w;w.m_spells[9788]={1,false,false};w.m_spells[17039]={1,false,false};
+ w.m_spells[17040]={1,false,false};w.m_spells[17041]={1,true,false};w.m_spells[3275]={1,true,false};
+ tc::Item parentItem{9787};assert(!w.HasSpell(9787)&&!w.CanUse(&parentItem));
+ for(uint32 s:{9788,17039,17040}){w.m_spells.erase(s);}
+ w.m_spells[9787]={1,true,false};
+ assert(w.HasActiveSpell(9787)&&w.HasActiveSpell(17041)&&w.HasSpell(3275)&&w.CanUse(&parentItem));
+ assert(tc::HasWeaponSub(&w));
+ ac::Player aw;ac::Row parentRow,axeRow,recipeRow;
+ aw.m_spells[9787]=&parentRow;aw.m_spells[17041]=&axeRow;aw.m_spells[3275]=&recipeRow;
+ ac::Item ap{9787};for(int spec:{0,1}){aw.m_activeSpec=spec;assert(aw.CanUse(&ap)&&aw.HasSpell(17041)&&aw.HasSpell(3275));}
+ assert(!aw.HasSpell(9788)&&!aw.HasSpell(17039)&&!aw.HasSpell(17040));
+ std::cout<<"PASS explicit Weaponsmith parent restoration, retained Master Axesmith, stored recipe and both-spec native known-spell/item gates. Gameplay NOT TESTED\n";
+ std::cout<<''')
 preamble='#include <map>\n#include <cstdint>\n#include <cassert>\n#include <iostream>\nusing uint32=uint32_t;constexpr int PLAYERSPELL_REMOVED=2;constexpr bool DENIED=false,ALLOWED=true;constexpr uint32 S_MOONCLOTH=26798,S_SPELLFIRE=26797,S_SHADOWEAVE=26801,S_HAMMER=17040,S_AXE=17041,S_SWORD=17039;\n'
 with tempfile.TemporaryDirectory()as d:
  cpp=Path(d)/'spec.cpp';exe=Path(d)/'spec';cpp.write_text(preamble+''.join(parts)+main)

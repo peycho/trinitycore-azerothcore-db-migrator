@@ -26,6 +26,7 @@ import cleanup_obsolete_riding as riding
 import cleanup_skill_teaching as skill_teaching
 import cleanup_professions as professions
 import cleanup_specializations as specializations
+import cleanup_specialization_parent as specialization_parent
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
@@ -173,8 +174,9 @@ def check_metadata(settings, manifest):
         fail('ABSENT_TEACHER_ACK_INVALID','Absent-teacher contract differs from the reviewed batch')
     if manifest.get('policy') in pet_teaching.POLICIES and sha(ROOT/'lib/cleanup_pet_teaching.py') != manifest.get('pet_teaching_reader_sha256'):
         fail('PET_TEACHING_POLICY_DRIFT','Pet-teaching selector differs; retain the original toolkit for restoration')
-    if manifest.get('policy') == specializations.POLICY:
-        if (manifest.get('specialization_ack') != specializations.ACK
+    if manifest.get('policy') in specializations.POLICIES:
+        parent_policy = manifest.get('policy') == specialization_parent.POLICY
+        if (manifest.get('specialization_ack') != (specialization_parent.ACK if parent_policy else specializations.ACK)
                 or sha(ROOT/'lib/cleanup_specializations.py') != manifest.get('specialization_reader_sha256')
                 or sha(specializations.CATALOG) != manifest.get('specialization_catalog_sha256')
                 or sha(ROOT/'lib/cleanup_professions.py') != manifest.get('profession_reader_sha256')
@@ -182,6 +184,8 @@ def check_metadata(settings, manifest):
             fail('SPECIALIZATION_POLICY_DRIFT','Specialization selector or fixed catalogs changed; retain original toolkit')
         if specializations.native_sources(settings.paths) != manifest.get('specialization_native_sources'):
             fail('SPECIALIZATION_NATIVE_SOURCE_DRIFT','Native specialization/equipment consumers changed')
+        if parent_policy and sha(ROOT/'lib/cleanup_specialization_parent.py') != manifest.get('specialization_parent_reader_sha256'):
+            fail('SPECIALIZATION_PARENT_POLICY_DRIFT','Parent-specialization reader changed; retain original toolkit')
         if specializations.read_equipment(settings,manifest['character_guids']) != manifest.get('specialization_equipment'):
             fail('SPECIALIZATION_EQUIPMENT_DRIFT','Equipment or item requirement evidence changed')
     if manifest.get('policy') == professions.POLICY:
@@ -417,6 +421,8 @@ def plan_history(settings, work, args, output):
     riding_catalog = sha(riding.CATALOG) if riding_mode else None
     riding_item_catalog = sha(riding.ITEM_CATALOG) if riding_invalid_items else None
     specialization_mode = getattr(args,'specialization_retirement',False)
+    parent_mode = specialization_mode and getattr(args,'parent_specialization',False)
+    parent_reader = sha(ROOT/'lib/cleanup_specialization_parent.py') if parent_mode else None
     specialization_reader = sha(ROOT/'lib/cleanup_specializations.py') if specialization_mode else None
     specialization_catalog = sha(specializations.CATALOG) if specialization_mode else None
     profession_mode = getattr(args,'profession_activation',False)
@@ -442,7 +448,7 @@ def plan_history(settings, work, args, output):
     racial_mode = getattr(args,'spell_eligibility',False) and getattr(args,'reviewed_racials',False)
     racial_catalog = sha(eligibility.RACIAL_CATALOG) if racial_mode else None
     cower_proof = pet_teaching.cower_sources(settings.paths) if reviewed_cower else None
-    native_selector = riding if riding_mode else specializations if specialization_mode else professions if profession_mode else skill_teaching if skill_teaching_mode else shaman if shaman_mode else direct_passive if direct_mode else inactive_legacy if legacy_mode else pet_teaching if pet_mode else eligibility
+    native_selector = riding if riding_mode else specialization_parent if parent_mode else specializations if specialization_mode else professions if profession_mode else skill_teaching if skill_teaching_mode else shaman if shaman_mode else direct_passive if direct_mode else inactive_legacy if legacy_mode else pet_teaching if pet_mode else eligibility
     eligibility_reader = sha(ROOT/'lib/cleanup_eligibility.py') if two_world_mode else None
     ownership_mode = getattr(args,'talent_ownership',False) and not (direct_mode or shaman_mode)
     ownership_reader = sha(ROOT/'lib/cleanup_ownership.py') if ownership_mode else None
@@ -496,6 +502,8 @@ def plan_history(settings, work, args, output):
         rows=[]
     else:
         path, report, state, rows, audit = inspection(settings,work,inspection_id)
+    if parent_mode and {r[1] for r in captured_layout['columns'] if r[0]=='character_spell'} != {'guid','spell','active','disabled'}:
+        fail('UNSUPPORTED_PARENT_COLUMNS','Parent-specialization repair requires stock character_spell columns; custom spell-specific fields need separate review')
     if rekey_mode and {r[1] for r in captured_layout['columns'] if r[0]=='character_spell'} != {'guid','spell','active','disabled'}:
         fail('UNSUPPORTED_REKEY_COLUMNS','Passive rekey requires stock character_spell columns; custom spell-specific fields require separate review')
     inspection_sha = sha(path/'SHA256SUMS')
@@ -569,8 +577,8 @@ def plan_history(settings, work, args, output):
             selected,excluded,relation_proof,relation_summary,relation_edges=trained_history.select(
                 context,effective,args.expect_review_rows,orphan_children=child_mode,preview=preview)
         if child_mode or ordinary_mode or ownership_mode or two_world_mode:
-            review_name = 'obsolete-riding-review.json' if riding_mode else 'specialization-retirement-review.json' if specialization_mode else 'profession-activation-review.json' if profession_mode else 'skill-teaching-review.json' if skill_teaching_mode else 'shaman-dual-wield-review.json' if shaman_mode else 'selected-passive-review.json' if direct_mode else 'inactive-legacy-review.json' if legacy_mode else 'pet-teaching-review.json' if pet_mode else 'spell-eligibility-review.json' if two_world_mode else 'talent-ownership-review.json' if ownership_mode else 'ordinary-spell-review.json' if ordinary_mode else 'talent-child-review.json'
-            review_label = 'Obsolete riding spell/skill' if riding_mode else 'Inactive specialization retirement' if specialization_mode else 'Ordinary profession activation' if profession_mode else 'Redundant skill-teaching' if skill_teaching_mode else 'Coupled Shaman spell/skill' if shaman_mode else 'Selected direct passive' if direct_mode else 'Inactive legacy' if legacy_mode else 'Pet-teaching' if pet_mode else 'Spell-eligibility' if two_world_mode else 'Talent-ownership' if ownership_mode else 'Ordinary-spell' if ordinary_mode else 'Talent-child'
+            review_name = 'specialization-parent-review.json' if parent_mode else 'obsolete-riding-review.json' if riding_mode else 'specialization-retirement-review.json' if specialization_mode else 'profession-activation-review.json' if profession_mode else 'skill-teaching-review.json' if skill_teaching_mode else 'shaman-dual-wield-review.json' if shaman_mode else 'selected-passive-review.json' if direct_mode else 'inactive-legacy-review.json' if legacy_mode else 'pet-teaching-review.json' if pet_mode else 'spell-eligibility-review.json' if two_world_mode else 'talent-ownership-review.json' if ownership_mode else 'ordinary-spell-review.json' if ordinary_mode else 'talent-child-review.json'
+            review_label = 'Weaponsmith parent-specialization' if parent_mode else 'Obsolete riding spell/skill' if riding_mode else 'Inactive specialization retirement' if specialization_mode else 'Ordinary profession activation' if profession_mode else 'Redundant skill-teaching' if skill_teaching_mode else 'Coupled Shaman spell/skill' if shaman_mode else 'Selected direct passive' if direct_mode else 'Inactive legacy' if legacy_mode else 'Pet-teaching' if pet_mode else 'Spell-eligibility' if two_world_mode else 'Talent-ownership' if ownership_mode else 'Ordinary-spell' if ordinary_mode else 'Talent-child'
             review={'policy':policy,'migration_inspection':path.name,'scope_characters':len(context['characters']),
                     'summary':relation_summary,'selected':selected,'excluded':excluded,
                     'deferred':dict(Counter(row[2] for row in excluded)),
@@ -643,6 +651,8 @@ def plan_history(settings, work, args, output):
             fail('UNSUPPORTED_SCHEMA','Native primary keys required: '+table)
     if len(meta['columns']) > 512 or any('on update' in row[5].lower() for row in meta['columns']):
         fail('UNSUPPORTED_COLUMN','History policy requires at most 512 columns without automatic updates')
+    if parent_mode and set(columns(meta,'character_spell')) != {'guid','spell','active','disabled'}:
+        fail('UNSUPPORTED_PARENT_COLUMNS','Parent-specialization repair requires stock character_spell columns')
     if rekey_mode and set(columns(meta,'character_spell')) != {'guid','spell','active','disabled'}:
         fail('UNSUPPORTED_REKEY_COLUMNS','Passive rekey requires stock character_spell columns; custom spell-specific fields require separate review')
     queries = []
@@ -693,6 +703,14 @@ def plan_history(settings, work, args, output):
               'ON activate.guid=s.guid AND activate.spell=s.spell')
         query=aggregate(meta,'character_spell',source,f's.guid IN ({selector})',exact_numeric=True,join=join)
         query=query.replace('s.`active`','IF(activate.guid IS NULL,s.`active`,1)')
+    if parent_mode:
+        parent_ids = json.dumps(guids,separators=(',',':'))
+        parents = (f"SELECT p.guid,9787 spell,1 active,0 disabled FROM JSON_TABLE('{parent_ids}',"
+                   "'$[*]' COLUMNS(guid INT UNSIGNED PATH '$')) p")
+        projected_source = (f'(SELECT guid,spell,active,disabled FROM `{source}`.character_spell s '
+                            f'WHERE s.guid IN ({selector}) AND NOT ({exclusion}) UNION ALL {parents})')
+        query = aggregate(meta,'character_spell',source,f's.guid IN ({selector})',exact_numeric=True)
+        query = query.replace(f'`{source}`.`character_spell` s',projected_source+' s')
     queries.append(('after',f"SELECT JSON_ARRAY('character_spell',guid,n,h) row_value FROM ({query}) a ORDER BY guid"))
     if shaman_mode or riding_mode:
         retired_skill = 149 if riding_mode else 118
@@ -724,7 +742,7 @@ def plan_history(settings, work, args, output):
     counts = {table:sum(row[2] for row in cells if row[0]==table) for table in TABLES}
     if counts['characters'] != len(guids) or sum(counts.values())>5_000_000:
         fail('HISTORY_SNAPSHOT_BOUND','Missing affected characters or more than 5000000 archived rows')
-    template = ROOT/('tools/obsolete-riding-repair.sql.in' if riding_mode else 'tools/profession-activation-repair.sql.in' if profession_mode else 'tools/shaman-dual-wield-repair.sql.in' if shaman_mode else 'tools/inactive-legacy-repair.sql.in' if legacy_mode else 'tools/pet-teaching-repair.sql.in' if pet_mode else 'tools/spell-eligibility-repair.sql.in' if two_world_mode else
+    template = ROOT/('tools/specialization-parent-repair.sql.in' if parent_mode else 'tools/obsolete-riding-repair.sql.in' if riding_mode else 'tools/profession-activation-repair.sql.in' if profession_mode else 'tools/shaman-dual-wield-repair.sql.in' if shaman_mode else 'tools/inactive-legacy-repair.sql.in' if legacy_mode else 'tools/pet-teaching-repair.sql.in' if pet_mode else 'tools/spell-eligibility-repair.sql.in' if two_world_mode else
                     'tools/passive-rekey-repair.sql.in' if rekey_mode else 'tools/talent-ownership-repair.sql.in' if ownership_mode else 'tools/disabled-talent-history.sql.in')
     batch_inputs = {'policy':policy,'inspection':sha(path/'SHA256SUMS'),'snapshot':cells,'after':after,
                     'selection':selected,'world':world,'meta':meta,'template':sha(template),'id':output.name}
@@ -773,6 +791,8 @@ def plan_history(settings, work, args, output):
         batch_inputs['pet_teaching_reader_sha256'] = pet_reader
     if reviewed_cower:
         batch_inputs['cower_native_contract'] = cower_proof
+    if parent_mode:
+        batch_inputs['specialization_parent_reader_sha256'] = parent_reader
     if rekey_mode:
         batch_inputs['rekeys'] = rekeys
     batch = sha_json(batch_inputs)
@@ -791,6 +811,10 @@ def plan_history(settings, work, args, output):
         'GUID_INSERT':planner.insert_values('affected',[(guid,) for guid in guids]),
         'CHECK_ORIGINAL':blocks['original'],'CHECK_ARCHIVE':blocks['archive'],'CHECK_APPLIED':blocks['applied'],
         'ARCHIVE_INSERT':'\n'.join(f'  INSERT INTO {table}_before SELECT s.* FROM `{source}`.{table} s JOIN affected g ON g.guid=s.guid;' for table in TABLES)}
+    if parent_mode:
+        parent_rows = [(g,9787,1,0) for g in guids]
+        values.update(PARENT_INSERT=planner.insert_values('expected_parents',parent_rows),
+                      PARENT_HASH=planner.key_hash(parent_rows))
     if rekey_mode:
         values.update(MAPPING_INSERT=planner.insert_values('expected_rekeys',rekeys),
                       MAPPING_HASH=planner.key_hash(rekeys))
@@ -906,6 +930,7 @@ def plan_history(settings, work, args, output):
                 or racial_mode and sha(eligibility.RACIAL_CATALOG) != racial_catalog
                 or pet_mode and sha(ROOT/'lib/cleanup_pet_teaching.py') != pet_reader
                 or legacy_mode and sha(ROOT/'lib/cleanup_inactive_legacy.py') != legacy_reader
+                or parent_mode and sha(ROOT/'lib/cleanup_specialization_parent.py') != parent_reader
                 or specialization_mode and (sha(ROOT/'lib/cleanup_specializations.py') != specialization_reader
                                             or sha(specializations.CATALOG) != specialization_catalog
                                             or sha(ROOT/'lib/cleanup_professions.py') != profession_reader
@@ -995,7 +1020,7 @@ def plan_history(settings, work, args, output):
                         numeric_reader_sha256=sha(ROOT/'lib/cleanup_active_reset.py'),
                         script_contract='No removed family script or dependency; both native skill catalogs agree')
     if specialization_mode:
-        manifest.update(specialization_ack=specializations.ACK,specialization_reader_sha256=specialization_reader,
+        manifest.update(specialization_ack=specialization_parent.ACK if parent_mode else specializations.ACK,specialization_reader_sha256=specialization_reader,
                         specialization_catalog_sha256=specialization_catalog,profession_reader_sha256=profession_reader,
                         profession_catalog_sha256=profession_catalog,specialization_equipment=specializations.restricted(equipment,guids),
                         specialization_native_sources=specialization_native_sources,native_policy=relation_summary['native_policy'],
@@ -1012,6 +1037,10 @@ def plan_history(settings, work, args, output):
         manifest.update(shaman_ack=shaman.ACK,shaman_reader_sha256=shaman_reader,inventory_metadata=inventory_meta,shaman_default_skills=default_skills,
                         native_policy=relation_summary['native_policy'],
                         script_contract='Paired unselected Shaman 674/118 retirement; no alternate native routes; empty off-hand required')
+    if parent_mode:
+        manifest.update(specialization_parent_reader_sha256=parent_reader,
+                        parent_spells_inserted=len(guids),
+                        script_contract='Explicit missing Weaponsmith parent restoration; retained active Master Axesmith; three inactive competitors retired; no native casts')
     if riding_mode:
         manifest.update(riding_ack=riding.INVALID_ITEMS_ACK if riding_invalid_items else riding.ACK,riding_reader_sha256=riding_reader,riding_catalog_sha256=riding_catalog,
                         riding_items=riding.restricted(riding_items,guids),riding_default_skills=riding_defaults,
@@ -1082,6 +1111,12 @@ FROM `{archive}`.character_skills_before a JOIN `{archive}`.affected g ON g.guid
 LEFT JOIN `{source}`.character_skills s ON s.guid=a.guid AND s.skill=a.skill WHERE a.skill=149 ORDER BY a.guid LIMIT 100;
 SELECT s.guid,s.skill,s.value,s.max AS current_cap FROM `{source}`.character_skills s
 JOIN `{archive}`.affected g ON g.guid=s.guid WHERE s.skill=762 ORDER BY s.guid LIMIT 100;
+'''
+    if parent_mode:
+        status += f'''SELECT p.guid,p.spell AS restored_parent,s.active,s.disabled
+FROM `{archive}`.expected_parents p LEFT JOIN `{source}`.character_spell s ON s.guid=p.guid AND s.spell=p.spell ORDER BY p.guid;
+SELECT s.guid,s.spell AS retained_axesmith,s.active,s.disabled FROM `{source}`.character_spell s
+JOIN `{archive}`.affected g ON g.guid=s.guid WHERE s.spell=17041 ORDER BY s.guid;
 '''
     if rekey_mode:
         status += f'''SELECT e.guid,e.from_spell,e.to_spell,s.active,s.disabled

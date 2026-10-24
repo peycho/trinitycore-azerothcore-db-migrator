@@ -12,7 +12,8 @@ import cleanup_professions as professions
 from spells import Unsupported
 
 POLICY='tc-inactive-competing-specialization-retirement-v1'
-POLICIES=(POLICY,)
+PARENT_POLICY='tc-reviewed-weaponsmith-parent-repair-v2'
+POLICIES=(POLICY,PARENT_POLICY)
 ACK='RETIRE_INACTIVE_COMPETITORS_RETAIN_VERIFIED_ACTIVE_CHOICE'
 CATALOG=ROOT/'lib/cleanup_specialization_catalog.json'
 RULES=json.loads(CATALOG.read_text())
