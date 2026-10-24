@@ -18,6 +18,12 @@ It deliberately permits reviewed enabled-row retirement when both catalogs
 reject the complete ordinary rank family, while protecting skills and talents.
 It does not change existing history policies or migration rejection rules.
 
+The separate [obsolete Wolf Riding repair](obsolete-riding-repair.md) uses
+`plan obsolete-riding --migration-inspection latest --preview`. It deliberately
+retires forbidden spell `825` **and skill `149` together**, requiring retained
+modern Riding `762` and clear owned/inventory/mail item requirements in both
+worlds. Other eligibility and skill policies keep their original scope.
+
 The opt-in `plan spell-eligibility --reviewed-racials` v3 mode reviews four fixed
 stock racial spells on verified wrong races. It grants no replacement racial and
 preserves stored skills, talents and items. See the
@@ -133,6 +139,7 @@ never added automatically. The source privileges are:
 | Active-build pending reset with reviewed foreign spell | DELETE on character_spell and UPDATE(at_login) on characters | INSERT on character_spell and UPDATE(at_login) on characters |
 | Disabled unselected direct talent history | DELETE on character_spell | INSERT on character_spell |
 | Reviewed skill clamp | UPDATE(value) on character_skills | UPDATE(value) on character_skills |
+| Forbidden Wolf Riding spell/skill pair | DELETE on character_spell and character_skills | INSERT on both tables |
 
 Do not give source item_instance UPDATE/DELETE or auth/world writes for these
 policies. MySQL credentials are passed through temporary mode-0600 client files,

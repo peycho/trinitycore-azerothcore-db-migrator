@@ -1,5 +1,9 @@
 # Reviewed ordinary spell eligibility repair
 
+Forbidden Wolf Riding `825` with stored skill `149` uses the separate
+[coupled riding retirement](obsolete-riding-repair.md). Ordinary eligibility
+policies continue to defer stored skills and riding effects.
+
 This separate preparation policy retires ordinary spell families that AC rejects
 for the character's race/class, **including enabled TC rows**. It deliberately
 changes unsupported source spell availability. It is not a general cleanup,

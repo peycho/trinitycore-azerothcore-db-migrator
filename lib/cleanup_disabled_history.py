@@ -22,13 +22,14 @@ import cleanup_pet_teaching as pet_teaching
 import cleanup_inactive_legacy as inactive_legacy
 import cleanup_selected_passive as direct_passive
 import cleanup_shaman_dual_wield as shaman
+import cleanup_obsolete_riding as riding
 import cleanup_skill_teaching as skill_teaching
 import cleanup_professions as professions
 import cleanup_specializations as specializations
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
-POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, ordinary_history.TRAINING_POLICY, death_coil.POLICY, *ownership.POLICIES, *eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES)
+POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, ordinary_history.TRAINING_POLICY, death_coil.POLICY, *ownership.POLICIES, *eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *riding.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -152,7 +153,7 @@ def check_metadata(settings, manifest):
                 or sha(ROOT/'lib/cleanup_active_reset.py') != manifest.get('numeric_reader_sha256')
                 or ordinary_history.configuration_contract(settings,training_prerequisites=True) != manifest.get('configuration_contract')):
             fail('ORDINARY_TRAINING_POLICY_DRIFT','Ordinary training policy, guards, metadata reader or configuration differs; retain original toolkit')
-    if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES):
+    if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *riding.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES):
         if (manifest.get('numeric_fingerprint') != 'EXACT_FRACTIONAL_V1'
                 or sha(ROOT/'lib/cleanup_active_reset.py') != manifest.get('numeric_reader_sha256')):
             fail('ELIGIBILITY_POLICY_DRIFT','Exact numeric fingerprint contract differs from this candidate')
@@ -189,6 +190,18 @@ def check_metadata(settings, manifest):
                 or sha(ROOT/'lib/cleanup_skill_teaching.py') != manifest.get('skill_teaching_reader_sha256')
                 or sha(skill_teaching.CATALOG) != manifest.get('skill_teaching_catalog_sha256')):
             fail('SKILL_TEACHER_POLICY_DRIFT','Skill-teaching selector or fixed catalog differs; retain original toolkit')
+    if manifest.get('policy') == riding.POLICY:
+        if (manifest.get('riding_ack') != riding.ACK
+                or sha(ROOT/'lib/cleanup_obsolete_riding.py') != manifest.get('riding_reader_sha256')
+                or sha(riding.CATALOG) != manifest.get('riding_catalog_sha256')
+                or sha(ROOT/'lib/cleanup_shaman_dual_wield.py') != manifest.get('starting_skill_reader_sha256')
+                or riding.native_sources(settings.paths) != manifest.get('riding_native_sources')):
+            fail('OBSOLETE_RIDING_POLICY_DRIFT','Obsolete riding contract differs; retain the original toolkit')
+        if riding.defaults(settings) != manifest.get('riding_default_skills'):
+            fail('OBSOLETE_RIDING_DEFAULT_DRIFT','Starting-skill inputs changed')
+        guids = manifest['character_guids']
+        if riding.read_items(settings,guids) != manifest.get('riding_items'):
+            fail('OBSOLETE_RIDING_ITEM_DRIFT','Owned/inventory/mail item requirements changed')
     if manifest.get('policy') == shaman.POLICY:
         if (manifest.get('shaman_ack') != shaman.ACK
                 or sha(ROOT/'lib/cleanup_shaman_dual_wield.py') != manifest.get('shaman_reader_sha256')):
@@ -246,10 +259,10 @@ def check_metadata(settings, manifest):
     for key,entry in manifest.get('core_compatibility',{}).items():
         if settings.compatibility.get(key,{}).get('manifest_sha256') != entry.get('manifest_sha256'):
             fail('CORE_PROFILE_MISMATCH','Core compatibility manifests differ from the reviewed history batch')
-    effective, world = read_world(settings,exact_numeric=manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES, ordinary_history.TRAINING_POLICY, ownership.FOREIGN_POLICY, ownership.PREFIX_POLICY, ownership.AURA_ALIAS_POLICY, ownership.REKEY_POLICY, SWITCH_POLICY))
+    effective, world = read_world(settings,exact_numeric=manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *riding.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES, ordinary_history.TRAINING_POLICY, ownership.FOREIGN_POLICY, ownership.PREFIX_POLICY, ownership.AURA_ALIAS_POLICY, ownership.REKEY_POLICY, SWITCH_POLICY))
     if sha_json(world) != manifest.get('world_sha256') or effective.hashes != manifest.get('semantic_dbc_sha256'):
         fail('HISTORY_METADATA_DRIFT','Effective TC world/DBC metadata differs from this reviewed history batch')
-    if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES):
+    if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *riding.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES):
         target, captured = eligibility.read_target(settings)
         if sha_json(captured) != manifest.get('target_world_sha256') or target.hashes != manifest.get('target_dbc_sha256'):
             fail('ELIGIBILITY_TARGET_DRIFT','Effective AC world/DBC metadata differs from the reviewed candidate')
@@ -392,6 +405,9 @@ def check_sets(meta, source, archive, counts, changed_table='character_spell', *
 
 
 def plan_history(settings, work, args, output):
+    riding_mode = getattr(args,'obsolete_riding',False)
+    riding_reader = sha(ROOT/'lib/cleanup_obsolete_riding.py') if riding_mode else None
+    riding_catalog = sha(riding.CATALOG) if riding_mode else None
     specialization_mode = getattr(args,'specialization_retirement',False)
     specialization_reader = sha(ROOT/'lib/cleanup_specializations.py') if specialization_mode else None
     specialization_catalog = sha(specializations.CATALOG) if specialization_mode else None
@@ -408,7 +424,7 @@ def plan_history(settings, work, args, output):
     direct_ownership_reader = sha(ROOT/'lib/cleanup_ownership.py') if direct_mode else None
     pet_mode = getattr(args,'pet_teaching',False)
     legacy_mode = getattr(args,'inactive_legacy',False)
-    two_world_mode = getattr(args,'spell_eligibility',False) or pet_mode or legacy_mode or direct_mode or shaman_mode or skill_teaching_mode or profession_mode or specialization_mode
+    two_world_mode = getattr(args,'spell_eligibility',False) or pet_mode or legacy_mode or direct_mode or shaman_mode or skill_teaching_mode or profession_mode or specialization_mode or riding_mode
     legacy_reader = sha(ROOT/'lib/cleanup_inactive_legacy.py') if legacy_mode else None
     pet_reader = sha(ROOT/'lib/cleanup_pet_teaching.py') if pet_mode else None
     reviewed_cower = pet_mode and getattr(args,'reviewed_cower',False)
@@ -416,7 +432,7 @@ def plan_history(settings, work, args, output):
     racial_mode = getattr(args,'spell_eligibility',False) and getattr(args,'reviewed_racials',False)
     racial_catalog = sha(eligibility.RACIAL_CATALOG) if racial_mode else None
     cower_proof = pet_teaching.cower_sources(settings.paths) if reviewed_cower else None
-    native_selector = specializations if specialization_mode else professions if profession_mode else skill_teaching if skill_teaching_mode else shaman if shaman_mode else direct_passive if direct_mode else inactive_legacy if legacy_mode else pet_teaching if pet_mode else eligibility
+    native_selector = riding if riding_mode else specializations if specialization_mode else professions if profession_mode else skill_teaching if skill_teaching_mode else shaman if shaman_mode else direct_passive if direct_mode else inactive_legacy if legacy_mode else pet_teaching if pet_mode else eligibility
     eligibility_reader = sha(ROOT/'lib/cleanup_eligibility.py') if two_world_mode else None
     ownership_mode = getattr(args,'talent_ownership',False) and not (direct_mode or shaman_mode)
     ownership_reader = sha(ROOT/'lib/cleanup_ownership.py') if ownership_mode else None
@@ -509,6 +525,10 @@ def plan_history(settings, work, args, output):
     if specialization_mode:
         specialization_native_sources = specializations.native_sources(settings.paths)
         equipment = specializations.read_equipment(settings,[r[0] for r in context['characters']])
+    if riding_mode:
+        riding_sources = riding.native_sources(settings.paths)
+        riding_items = riding.read_items(settings,[r[0] for r in context['characters']])
+        riding_defaults = riding.defaults(settings)
     if shaman_mode:
         inventory_meta, offhand_rows = shaman.inventory(settings,context)
         default_skills = shaman.defaults(settings)
@@ -518,7 +538,7 @@ def plan_history(settings, work, args, output):
         if two_world_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=native_selector.select(
                 context,effective,target_effective,args.expect_review_rows,preview=preview,
-                **({'equipment':equipment['rows']} if specialization_mode else {'offhand':{r[0] for r in offhand_rows},'default_skills':default_skills} if shaman_mode else {'reviewed_cower':True} if reviewed_cower else {'absent_teachers':True} if absent_teachers else {'reviewed_racials':True} if racial_mode else {}))
+                **({'items':riding_items['rows'],'default_skills':riding_defaults} if riding_mode else {'equipment':equipment['rows']} if specialization_mode else {'offhand':{r[0] for r in offhand_rows},'default_skills':default_skills} if shaman_mode else {'reviewed_cower':True} if reviewed_cower else {'absent_teachers':True} if absent_teachers else {'reviewed_racials':True} if racial_mode else {}))
             eligibility_proofs = relation_summary.pop('eligibility_proofs')
         elif ownership_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ownership.select(
@@ -538,8 +558,8 @@ def plan_history(settings, work, args, output):
             selected,excluded,relation_proof,relation_summary,relation_edges=trained_history.select(
                 context,effective,args.expect_review_rows,orphan_children=child_mode,preview=preview)
         if child_mode or ordinary_mode or ownership_mode or two_world_mode:
-            review_name = 'specialization-retirement-review.json' if specialization_mode else 'profession-activation-review.json' if profession_mode else 'skill-teaching-review.json' if skill_teaching_mode else 'shaman-dual-wield-review.json' if shaman_mode else 'selected-passive-review.json' if direct_mode else 'inactive-legacy-review.json' if legacy_mode else 'pet-teaching-review.json' if pet_mode else 'spell-eligibility-review.json' if two_world_mode else 'talent-ownership-review.json' if ownership_mode else 'ordinary-spell-review.json' if ordinary_mode else 'talent-child-review.json'
-            review_label = 'Inactive specialization retirement' if specialization_mode else 'Ordinary profession activation' if profession_mode else 'Redundant skill-teaching' if skill_teaching_mode else 'Coupled Shaman spell/skill' if shaman_mode else 'Selected direct passive' if direct_mode else 'Inactive legacy' if legacy_mode else 'Pet-teaching' if pet_mode else 'Spell-eligibility' if two_world_mode else 'Talent-ownership' if ownership_mode else 'Ordinary-spell' if ordinary_mode else 'Talent-child'
+            review_name = 'obsolete-riding-review.json' if riding_mode else 'specialization-retirement-review.json' if specialization_mode else 'profession-activation-review.json' if profession_mode else 'skill-teaching-review.json' if skill_teaching_mode else 'shaman-dual-wield-review.json' if shaman_mode else 'selected-passive-review.json' if direct_mode else 'inactive-legacy-review.json' if legacy_mode else 'pet-teaching-review.json' if pet_mode else 'spell-eligibility-review.json' if two_world_mode else 'talent-ownership-review.json' if ownership_mode else 'ordinary-spell-review.json' if ordinary_mode else 'talent-child-review.json'
+            review_label = 'Obsolete riding spell/skill' if riding_mode else 'Inactive specialization retirement' if specialization_mode else 'Ordinary profession activation' if profession_mode else 'Redundant skill-teaching' if skill_teaching_mode else 'Coupled Shaman spell/skill' if shaman_mode else 'Selected direct passive' if direct_mode else 'Inactive legacy' if legacy_mode else 'Pet-teaching' if pet_mode else 'Spell-eligibility' if two_world_mode else 'Talent-ownership' if ownership_mode else 'Ordinary-spell' if ordinary_mode else 'Talent-child'
             review={'policy':policy,'migration_inspection':path.name,'scope_characters':len(context['characters']),
                     'summary':relation_summary,'selected':selected,'excluded':excluded,
                     'deferred':dict(Counter(row[2] for row in excluded)),
@@ -555,6 +575,9 @@ def plan_history(settings, work, args, output):
                 review['target_dbc_sha256'] = target_effective.hashes
             if specialization_mode:
                 review['equipment'] = equipment
+            if riding_mode:
+                review['items'] = riding_items
+                review['starting_skills'] = riding_defaults
             if reviewed_cower:
                 review['cower_native_contract'] = cower_proof
             if training_prerequisites:
@@ -660,8 +683,9 @@ def plan_history(settings, work, args, output):
         query=aggregate(meta,'character_spell',source,f's.guid IN ({selector})',exact_numeric=True,join=join)
         query=query.replace('s.`active`','IF(activate.guid IS NULL,s.`active`,1)')
     queries.append(('after',f"SELECT JSON_ARRAY('character_spell',guid,n,h) row_value FROM ({query}) a ORDER BY guid"))
-    if shaman_mode:
-        query=aggregate(meta,'character_skills',source,f's.guid IN ({selector}) AND s.skill<>118',exact_numeric=True)
+    if shaman_mode or riding_mode:
+        retired_skill = 149 if riding_mode else 118
+        query=aggregate(meta,'character_skills',source,f's.guid IN ({selector}) AND s.skill<>{retired_skill}',exact_numeric=True)
         queries.append(('after',f"SELECT JSON_ARRAY('character_skills',guid,n,h) row_value FROM ({query}) a ORDER BY guid"))
     # Each digest is bounded per character, not one concatenation of millions
     # of source rows. Counts are checked before any executable package exists.
@@ -689,7 +713,7 @@ def plan_history(settings, work, args, output):
     counts = {table:sum(row[2] for row in cells if row[0]==table) for table in TABLES}
     if counts['characters'] != len(guids) or sum(counts.values())>5_000_000:
         fail('HISTORY_SNAPSHOT_BOUND','Missing affected characters or more than 5000000 archived rows')
-    template = ROOT/('tools/profession-activation-repair.sql.in' if profession_mode else 'tools/shaman-dual-wield-repair.sql.in' if shaman_mode else 'tools/inactive-legacy-repair.sql.in' if legacy_mode else 'tools/pet-teaching-repair.sql.in' if pet_mode else 'tools/spell-eligibility-repair.sql.in' if two_world_mode else
+    template = ROOT/('tools/obsolete-riding-repair.sql.in' if riding_mode else 'tools/profession-activation-repair.sql.in' if profession_mode else 'tools/shaman-dual-wield-repair.sql.in' if shaman_mode else 'tools/inactive-legacy-repair.sql.in' if legacy_mode else 'tools/pet-teaching-repair.sql.in' if pet_mode else 'tools/spell-eligibility-repair.sql.in' if two_world_mode else
                     'tools/passive-rekey-repair.sql.in' if rekey_mode else 'tools/talent-ownership-repair.sql.in' if ownership_mode else 'tools/disabled-talent-history.sql.in')
     batch_inputs = {'policy':policy,'inspection':sha(path/'SHA256SUMS'),'snapshot':cells,'after':after,
                     'selection':selected,'world':world,'meta':meta,'template':sha(template),'id':output.name}
@@ -722,6 +746,10 @@ def plan_history(settings, work, args, output):
         batch_inputs.update(skill_teaching_reader_sha256=teaching_reader,skill_teaching_catalog_sha256=teaching_catalog)
     if shaman_mode:
         batch_inputs.update(shaman_reader_sha256=shaman_reader,inventory_metadata=inventory_meta,shaman_default_skills=default_skills)
+    if riding_mode:
+        batch_inputs.update(riding_reader_sha256=riding_reader,riding_catalog_sha256=riding_catalog,
+                            riding_items=riding.restricted(riding_items,guids),riding_default_skills=riding_defaults,
+                            riding_native_sources=riding_sources,starting_skill_reader_sha256=sha(ROOT/'lib/cleanup_shaman_dual_wield.py'))
     if direct_mode:
         batch_inputs.update(direct_passive_reader_sha256=direct_reader,ownership_reader_sha256=direct_ownership_reader)
     if legacy_mode:
@@ -733,8 +761,8 @@ def plan_history(settings, work, args, output):
     if rekey_mode:
         batch_inputs['rekeys'] = rekeys
     batch = sha_json(batch_inputs)
-    archive = ('tc_specialization_' if specialization_mode else 'tc_profession_' if profession_mode else 'tc_skill_teacher_' if skill_teaching_mode else 'tc_shaman_dual_' if shaman_mode else 'tc_direct_passive_' if direct_mode else 'tc_inactive_legacy_' if legacy_mode else 'tc_pet_teaching_' if pet_mode else 'tc_eligibility_' if two_world_mode else 'tc_ownership_' if ownership_mode else 'tc_disabled_history_')+uuid.uuid4().hex[:20]
-    blocks = check_sets(meta,source,archive,counts,changed_table=('character_spell','character_skills') if shaman_mode else 'character_spell',exact_numeric=exact_mode)
+    archive = ('tc_obsolete_riding_' if riding_mode else 'tc_specialization_' if specialization_mode else 'tc_profession_' if profession_mode else 'tc_skill_teacher_' if skill_teaching_mode else 'tc_shaman_dual_' if shaman_mode else 'tc_direct_passive_' if direct_mode else 'tc_inactive_legacy_' if legacy_mode else 'tc_pet_teaching_' if pet_mode else 'tc_eligibility_' if two_world_mode else 'tc_ownership_' if ownership_mode else 'tc_disabled_history_')+uuid.uuid4().hex[:20]
+    blocks = check_sets(meta,source,archive,counts,changed_table=('character_spell','character_skills') if shaman_mode or riding_mode else 'character_spell',exact_numeric=exact_mode)
     values = {'SOURCE':source,'ARCHIVE':archive,'UUID':work.current()['identity']['uuid'],
         'BATCH':batch,'AUDIT':audit['audited_results_sha256'],'COUNT':len(selected),'GUID_COUNT':len(guids),
         'EXPECTED_HASH':planner.key_hash(selected),'SNAPSHOT_COUNT':len(cells),'SNAPSHOT_HASH':planner.key_hash(cells),
@@ -804,7 +832,7 @@ def plan_history(settings, work, args, output):
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit native Death Coil rank 1 availability assertion required'; END IF;
 """ + values['WORLD_CHECKS']
     if two_world_mode:
-        ack_var = 'specialization_retirement_ack' if specialization_mode else 'profession_activation_ack' if profession_mode else 'skill_teaching_ack' if skill_teaching_mode else 'shaman_dual_wield_ack' if shaman_mode else 'direct_passive_ack' if direct_mode else 'inactive_legacy_ack' if legacy_mode else 'pet_teaching_ack' if pet_mode else 'spell_eligibility_ack'
+        ack_var = 'obsolete_riding_ack' if riding_mode else 'specialization_retirement_ack' if specialization_mode else 'profession_activation_ack' if profession_mode else 'skill_teaching_ack' if skill_teaching_mode else 'shaman_dual_wield_ack' if shaman_mode else 'direct_passive_ack' if direct_mode else 'inactive_legacy_ack' if legacy_mode else 'pet_teaching_ack' if pet_mode else 'spell_eligibility_ack'
         config_prefix = 'pet_teaching' if pet_mode else 'eligibility'
         values['WORLD_CHECKS'] = f"""IF NOT (BINARY @{ack_var} <=> BINARY '{native_selector.ACK}')
  OR NOT (BINARY @{config_prefix}_tc_all_spells <=> BINARY '0')
@@ -816,6 +844,9 @@ def plan_history(settings, work, args, output):
     if shaman_mode:
         values['WORLD_CHECKS'] = shaman.inventory_guard(source,inventory_meta) + values['WORLD_CHECKS']
         values['WORLD_CHECKS'] += '\n' + '\n'.join(eligibility.world_checks(w['schema'],w) for w in default_skills.values())
+    if riding_mode:
+        values['WORLD_CHECKS'] = riding.items_guard(settings,riding_items,guids) + values['WORLD_CHECKS']
+        values['WORLD_CHECKS'] += '\n' + '\n'.join(eligibility.world_checks(w['schema'],w) for w in riding_defaults.values())
     if direct_mode:
         values['WORLD_CHECKS'] = """IF NOT (BINARY @talent_ownership_ack <=> BINARY 'SELECTED_TALENTS_AUTHORITATIVE') THEN
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit selected-talent ownership repair acknowledgement required'; END IF;
@@ -867,6 +898,11 @@ def plan_history(settings, work, args, output):
                 or shaman_mode and (sha(ROOT/'lib/cleanup_shaman_dual_wield.py') != shaman_reader
                                     or shaman.inventory(settings,context) != (inventory_meta,offhand_rows)
                                     or shaman.defaults(settings) != default_skills)
+                or riding_mode and (sha(ROOT/'lib/cleanup_obsolete_riding.py') != riding_reader
+                                    or sha(riding.CATALOG) != riding_catalog
+                                    or riding.native_sources(settings.paths) != riding_sources
+                                    or riding.read_items(settings,[r[0] for r in context['characters']]) != riding_items
+                                    or riding.defaults(settings) != riding_defaults)
                 or direct_mode and (sha(ROOT/'lib/cleanup_selected_passive.py') != direct_reader
                                     or sha(ROOT/'lib/cleanup_ownership.py') != direct_ownership_reader)):
             fail('ELIGIBILITY_TARGET_DRIFT','Eligibility reader or AC inputs changed during planning')
@@ -954,6 +990,12 @@ def plan_history(settings, work, args, output):
         manifest.update(shaman_ack=shaman.ACK,shaman_reader_sha256=shaman_reader,inventory_metadata=inventory_meta,shaman_default_skills=default_skills,
                         native_policy=relation_summary['native_policy'],
                         script_contract='Paired unselected Shaman 674/118 retirement; no alternate native routes; empty off-hand required')
+    if riding_mode:
+        manifest.update(riding_ack=riding.ACK,riding_reader_sha256=riding_reader,riding_catalog_sha256=riding_catalog,
+                        riding_items=riding.restricted(riding_items,guids),riding_default_skills=riding_defaults,
+                        riding_native_sources=riding_sources,starting_skill_reader_sha256=sha(ROOT/'lib/cleanup_shaman_dual_wield.py'),
+                        native_policy=relation_summary['native_policy'],
+                        script_contract='Forbidden Wolf Riding pair only; retain verified modern Riding; item requirements and dependencies checked in both worlds')
     if direct_mode:
         manifest.update(direct_passive_ack=direct_passive.ACK,direct_passive_reader_sha256=direct_reader,
                         ownership_reader_sha256=direct_ownership_reader,ownership_ack=ownership.ACK,
@@ -1004,6 +1046,13 @@ ORDER BY e.guid,e.spell LIMIT 100;
 FROM `{archive}`.character_skills_before a JOIN `{archive}`.affected g ON g.guid=a.guid
 LEFT JOIN `{source}`.character_skills s ON s.guid=a.guid AND s.skill=a.skill WHERE a.skill=118 ORDER BY a.guid LIMIT 100;
 '''
+    if riding_mode:
+        status += f'''SELECT a.guid,a.skill,a.value,a.max AS archived_cap,s.skill IS NOT NULL AS still_stored
+FROM `{archive}`.character_skills_before a JOIN `{archive}`.affected g ON g.guid=a.guid
+LEFT JOIN `{source}`.character_skills s ON s.guid=a.guid AND s.skill=a.skill WHERE a.skill=149 ORDER BY a.guid LIMIT 100;
+SELECT s.guid,s.skill,s.value,s.max AS current_cap FROM `{source}`.character_skills s
+JOIN `{archive}`.affected g ON g.guid=s.guid WHERE s.skill=762 ORDER BY s.guid LIMIT 100;
+'''
     if rekey_mode:
         status += f'''SELECT e.guid,e.from_spell,e.to_spell,s.active,s.disabled
 FROM `{archive}`.expected_rekeys e LEFT JOIN `{source}`.character_spell s
@@ -1028,7 +1077,7 @@ ON s.guid=e.guid AND s.spell=e.to_spell ORDER BY e.guid,e.from_spell LIMIT 100;
     if ownership_mode:
         write_json(output/'ownership-native-proof.json', ownership_native_proofs)
     if two_world_mode:
-        write_json(output/('specialization-native-proof.json' if specialization_mode else 'profession-activation-native-proof.json' if profession_mode else 'skill-teaching-native-proof.json' if skill_teaching_mode else 'shaman-native-proof.json' if shaman_mode else 'selected-passive-native-proof.json' if direct_mode else 'inactive-legacy-native-proof.json' if legacy_mode else 'pet-teaching-native-proof.json' if pet_mode else 'eligibility-native-proof.json'), eligibility_proofs)
+        write_json(output/('obsolete-riding-native-proof.json' if riding_mode else 'specialization-native-proof.json' if specialization_mode else 'profession-activation-native-proof.json' if profession_mode else 'skill-teaching-native-proof.json' if skill_teaching_mode else 'shaman-native-proof.json' if shaman_mode else 'selected-passive-native-proof.json' if direct_mode else 'inactive-legacy-native-proof.json' if legacy_mode else 'pet-teaching-native-proof.json' if pet_mode else 'eligibility-native-proof.json'), eligibility_proofs)
         write_json(output/'target-metadata.json',target_world)
     if reviewed_cower:
         write_json(output/'cower-native-contract.json',cower_proof)
@@ -1050,7 +1099,9 @@ ON s.guid=e.guid AND s.spell=e.to_spell ORDER BY e.guid,e.from_spell LIMIT 100;
     write_json(output/'metadata.json',world)
     from cleanup_console import seal
     seal(output)
-    if specialization_mode:
+    if riding_mode:
+        print(f'Reviewed {relation_summary["reviewed_candidate_rows"]} obsolete riding candidates; selected {len(selected)} spell/skill pairs; deferred {len(excluded)}; no source changes')
+    elif specialization_mode:
         print(f'Reviewed {relation_summary["reviewed_candidate_rows"]} inactive specialization rows; selected {len(selected)} exact competitors; deferred {len(excluded)}; no source changes')
     elif profession_mode:
         print(f'Reviewed {relation_summary["reviewed_candidate_rows"]} inactive profession candidates; selected {len(selected)} existing rows for activation; deferred {len(excluded)}; no source changes')

@@ -148,6 +148,14 @@ eligibility and checks both worlds' equipped-item requirements. Ambiguous choice
 missing prerequisites and affected/unknown equipment defer. Recompute its live
 preview and equipment evidence on every fresh snapshot.
 
+The separate [obsolete Wolf Riding pair repair](obsolete-riding-repair.md)
+retires only verified forbidden spell `825` and skill `149` together, retaining
+existing modern Riding `762`. Owned/inventory/mail item requirements in both
+worlds, known teachers and starting-skill routes are checked. Preview with
+`plan obsolete-riding --migration-inspection latest --preview`; regenerate the
+inspection and expected pair count for each fresh snapshot. This is an explicit
+exception to skill preservation, not a general riding or mount conversion.
+
 ## Repeat the complete preparation and migration
 
 The deliverable is a repeatable process on a **fresh production snapshot**.
