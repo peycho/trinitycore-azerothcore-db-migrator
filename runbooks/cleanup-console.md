@@ -1465,3 +1465,11 @@ unknown/affected equipped items and pending resets defer. Recipes and skills are
 not purged, but known-specialization eligibility deliberately changes. See the
 [specialization retirement guide](specialization-retirement.md) for preview,
 reviewed batch creation, privileges, exact restoration and fresh-import steps.
+
+## Inactive foreign Swipe retirement
+
+Use `plan spell-eligibility --migration-inspection latest --inactive-foreign-swipes --preview`
+for the [fixed inactive Swipe contract](spell-eligibility-repair.md#opt-in-inactive-foreign-swipe-v4).
+It requires a non-druid, no stored Bear Form or Feral skill, and an entirely
+inactive/non-disabled family. It preserves skills, both builds, items and flags;
+no spell is activated or granted. Other prerequisite cases remain deferred.

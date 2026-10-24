@@ -52,6 +52,7 @@ python3 "$ROOT/tests/inactive-legacy-tests.py"
 python3 "$ROOT/tests/selected-passive-tests.py"
 python3 "$ROOT/tests/spell-eligibility-tests.py"
 python3 "$ROOT/tests/racial-eligibility-tests.py"
+python3 "$ROOT/tests/foreign-swipe-tests.py"
 python3 "$ROOT/tests/pet-teaching-tests.py"
 
 for mapping in "$ROOT"/mappings/{tc-to-ac,ac-to-tc}/{auth,characters}.csv; do

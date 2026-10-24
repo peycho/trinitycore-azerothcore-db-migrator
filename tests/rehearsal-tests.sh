@@ -74,6 +74,7 @@ python3 "$ROOT/tests/specialization-mysql-tests.py"
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py"
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --absent-teachers
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --reviewed-racials
+python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --inactive-foreign-swipes
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --training-prerequisites
 python3 "$ROOT/tests/pet-teaching-mysql-tests.py"
 python3 "$ROOT/tests/pet-teaching-mysql-tests.py" --reviewed-cower

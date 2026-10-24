@@ -47,6 +47,9 @@ The separate [fixed racial extension](spell-eligibility-repair.md#opt-in-fixed-w
 retires only four reviewed stock racial spells on verified wrong races. It removes
 the unsupported racial bonus without changing stored skill values/caps and grants
 no replacement racial. Languages and old riding skills remain outside its scope.
+The separate [inactive foreign Swipe mode](spell-eligibility-repair.md#opt-in-inactive-foreign-swipe-v4)
+retires only inactive Swipe ranks on non-druids with absent Bear Form and Feral
+skill; it grants no prerequisite and leaves all skills and ownership unchanged.
 
 For ordinary disabled spells, use the separate opt-in
 [isolated ordinary-history policy](cleanup-console.md#review-isolated-disabled-ordinary-spells).

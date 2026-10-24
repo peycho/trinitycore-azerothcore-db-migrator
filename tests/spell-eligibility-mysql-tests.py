@@ -14,7 +14,8 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main(pet_teaching=False,reviewed_cower=False,absent_teachers=False,ordinary_training=False,reviewed_racials=False):
+def main(pet_teaching=False,reviewed_cower=False,absent_teachers=False,ordinary_training=False,reviewed_racials=False,inactive_foreign_swipes=False):
+    assert not inactive_foreign_swipes or not(pet_teaching or reviewed_racials or absent_teachers or ordinary_training)
     assert not reviewed_racials or not(pet_teaching or absent_teachers or ordinary_training)
     assert not ordinary_training or not (pet_teaching or absent_teachers)
     assert not absent_teachers or not pet_teaching
@@ -39,7 +40,7 @@ def main(pet_teaching=False,reviewed_cower=False,absent_teachers=False,ordinary_
     version = sql('SELECT @@version;')
     assert version.startswith('8.4.'), version
     kind = 'disabled-spell-history' if ordinary_training else 'pet-teaching' if pet_teaching else 'spell-eligibility'
-    label = 'reviewed-racials' if reviewed_racials else 'training-prerequisites' if ordinary_training else 'absent-teachers' if absent_teachers else 'reviewed-cower' if reviewed_cower else 'pet-teaching' if pet_teaching else 'eligibility'
+    label = 'inactive-foreign-swipes' if inactive_foreign_swipes else 'reviewed-racials' if reviewed_racials else 'training-prerequisites' if ordinary_training else 'absent-teachers' if absent_teachers else 'reviewed-cower' if reviewed_cower else 'pet-teaching' if pet_teaching else 'eligibility'
     prefix = 'eligibility_'+uuid.uuid4().hex[:10]
     source, auth, tcworld, acworld = [prefix+s for s in ('_chars','_auth','_tc','_ac')]
     writer, reader = prefix+'_w', prefix+'_r'
@@ -85,6 +86,11 @@ def main(pet_teaching=False,reviewed_cower=False,absent_teachers=False,ordinary_
             UPDATE `{source}`.character_spell SET custom_decimal=0.100001 WHERE guid=1 AND spell=6603;
             INSERT INTO `{tcworld}`.spell_dbc(Id,EffectRealPointsPerLevel1) VALUES(900099,0.1);
             INSERT INTO `{acworld}`.spell_dbc(ID,Speed) VALUES(900099,0.1);''')
+        if inactive_foreign_swipes:
+            sql(f"UPDATE `{source}`.characters SET class=11 WHERE guid=2")
+            sql(f"UPDATE `{source}`.character_spell SET spell=779,active=0 WHERE spell=465")
+            sql(f"UPDATE `{source}`.character_spell SET spell=780,active=0 WHERE spell=48942")
+            sql(f"UPDATE `{source}`.character_skills SET skill=134 WHERE guid=4")
         if reviewed_racials:
             sql(f"UPDATE `{source}`.characters SET race=3 WHERE guid=2")
             sql(f"UPDATE `{source}`.characters SET race=2 WHERE guid=5")
@@ -124,6 +130,11 @@ def main(pet_teaching=False,reviewed_cower=False,absent_teachers=False,ordinary_
             training_assets=importlib.util.module_from_spec(training_spec);training_spec.loader.exec_module(training_assets)
             original_training=assets.stores
             assets.stores=lambda p:training_assets.extend(original_training(p),p)
+        if inactive_foreign_swipes:
+            swipe_spec=importlib.util.spec_from_file_location('swipe_assets',ROOT/'tests/foreign-swipe-fixtures.py')
+            swipe_assets=importlib.util.module_from_spec(swipe_spec);swipe_spec.loader.exec_module(swipe_assets)
+            original_swipes=assets.stores
+            assets.stores=lambda p:swipe_assets.extend(original_swipes(p),p)
         if reviewed_racials:
             racial_spec=importlib.util.spec_from_file_location('racial_assets',ROOT/'tests/racial-eligibility-fixtures.py')
             racial_assets=importlib.util.module_from_spec(racial_spec);racial_spec.loader.exec_module(racial_assets)
@@ -149,8 +160,12 @@ def main(pet_teaching=False,reviewed_cower=False,absent_teachers=False,ordinary_
         if ordinary_training:
             from cleanup_ordinary_history import TRAINING_CHAINS
             values=','.join(f'({root},{spell},{rank})' for root,chain in TRAINING_CHAINS.items()for rank,spell in enumerate(chain,1))
+        if inactive_foreign_swipes:
+            values=','.join(f'(779,{spell},{rank})' for rank,spell in enumerate(swipe_assets.CHAIN,1))
         for schema in (tcworld, acworld):
             sql(f'INSERT INTO `{schema}`.spell_ranks VALUES '+values)
+        if inactive_foreign_swipes:
+            sql(f'INSERT INTO `{acworld}`.spell_required VALUES(779,5487)')
         if ordinary_training:
             for schema in (tcworld,acworld):
                 sql(f'INSERT INTO `{schema}`.spell_required VALUES(27681,14752)')
@@ -219,7 +234,7 @@ backup_reference=disposable-synthetic-fixture
             report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(
                 f'{g}\t*\tAC_WOULD_DELETE_SPELL\t48942: captured fixture scope\n' for g in range(1,6)))
             run('inspect-migration-blockers', '--report', str(report))
-            plan = ('plan',kind,'--migration-inspection','latest') + (('--reviewed-racials',) if reviewed_racials else ('--training-prerequisites',) if ordinary_training else ('--reviewed-cower',) if reviewed_cower else ('--absent-teachers',) if absent_teachers else ())
+            plan = ('plan',kind,'--migration-inspection','latest') + (('--inactive-foreign-swipes',) if inactive_foreign_swipes else ('--reviewed-racials',) if reviewed_racials else ('--training-prerequisites',) if ordinary_training else ('--reviewed-cower',) if reviewed_cower else ('--absent-teachers',) if absent_teachers else ())
             if ordinary_training:
                 for setting in ('','1'):
                     config.write_text(text.replace('player_start_all_spells=0','player_start_all_spells='+setting))
@@ -233,6 +248,9 @@ backup_reference=disposable-synthetic-fixture
             config.write_text(text)
             if ordinary_training:
                 control=run('plan','disabled-spell-history','--migration-inspection','latest','--preview')
+                assert '"selected_rows": 0' in control.stdout
+            if inactive_foreign_swipes:
+                control=run('plan','spell-eligibility','--migration-inspection','latest','--preview')
                 assert '"selected_rows": 0' in control.stdout
             if reviewed_racials:
                 control=run('plan','spell-eligibility','--migration-inspection','latest','--preview')
@@ -269,6 +287,10 @@ backup_reference=disposable-synthetic-fixture
                 assert manifest['selected_custom_default_rows']==3
                 assert all(p['inactive_custom_default_spells'] for p in manifest['training_prerequisite_proofs'])
                 assert json.loads((package/'ordinary-training-proof.json').read_text())==manifest['training_prerequisite_proofs']
+            if inactive_foreign_swipes:
+                assert manifest['policy']=='tc-inactive-foreign-swipe-retirement-v4'
+                assert manifest['swipe_ack']=='RETIRE_ONLY_INACTIVE_FOREIGN_SWIPE_ABSENT_BEAR_FORM'
+                assert 'swipe_catalog_sha256' in manifest
             if reviewed_racials:
                 assert manifest['policy']=='tc-ineligible-reviewed-racial-spell-repair-v3'
                 assert manifest['racial_ack']=='RETIRE_ONLY_REVIEWED_WRONG_RACE_RACIALS'
@@ -281,6 +303,8 @@ backup_reference=disposable-synthetic-fixture
                 assert json.loads((package/'cower-native-contract.json').read_text())==manifest['cower_native_contract']
             assert manifest['selected_rows']==3 and manifest['enabled_rows_removed']==(0 if ordinary_training else 3)
             assert manifest['excluded_reason_counts']==(
+                {'DEFER_PENDING_NATIVE_RESET':1,'DEFER_EXISTING_ASSOCIATED_SKILL':1,'DEFER_FOREIGN_SWIPE_CLASS_OR_FLAGS':1}
+                if inactive_foreign_swipes else
                 {'DEFER_PENDING_NATIVE_RESET':1,'DEFER_PET_ABILITY_IN_PLAYER_BOOK':1,'DEFER_PET_TEACHER_CHARACTER_STATE':1}
                 if pet_teaching else {'DEFER_PENDING_NATIVE_RESET':1,'DEFER_ENABLED_RELATED_SPELL':1,'DEFER_CUSTOM_DEFAULT_ROUTE':1}
                 if ordinary_training else {'DEFER_PENDING_NATIVE_RESET':1,'DEFER_EXISTING_ASSOCIATED_SKILL':1})
@@ -297,6 +321,29 @@ backup_reference=disposable-synthetic-fixture
                     assert 'Explicit reviewed ordinary training prerequisites' in error
                     assert checksum()==baseline
                 ack+="SET @ordinary_training_ack='REVIEWED_TRAINING_PREREQUISITES_ONLY';"
+            if inactive_foreign_swipes:
+                without_swipe_ack=ack
+                ack+="SET @eligibility_swipe_ack='RETIRE_ONLY_INACTIVE_FOREIGN_SWIPE_ABSENT_BEAR_FORM';"
+                for wrong in ('',"SET @eligibility_swipe_ack='UNKNOWN';"):
+                    error=sql(without_swipe_ack+wrong+f'CALL `{archive}`.apply_batch();',writer,False)
+                    assert 'Explicit inactive foreign Swipe' in error
+                    assert checksum()==baseline
+                catalog=ROOT/'lib/cleanup_foreign_swipe_catalog.json';original_catalog=catalog.read_bytes()
+                try:
+                    catalog.write_bytes(original_catalog+b' ')
+                    assert 'FOREIGN_SWIPE_POLICY_DRIFT' in run('apply',code=2).stderr
+                    assert checksum()==baseline
+                finally:catalog.write_bytes(original_catalog)
+                sql(f'INSERT INTO `{source}`.character_spell(guid,spell,active,disabled) VALUES(1,5487,1,1)')
+                changed=checksum();run('apply',code=2)
+                assert 'full-row fingerprint differs' in sql(ack+f'CALL `{archive}`.apply_batch();',writer,False)
+                assert checksum()==changed
+                sql(f'DELETE FROM `{source}`.character_spell WHERE guid=1 AND spell=5487')
+                sql(f'UPDATE `{acworld}`.spell_required SET req_spell=6603 WHERE spell_id=779')
+                changed=checksum();run('apply',code=2)
+                assert 'world content drift' in sql(ack+f'CALL `{archive}`.apply_batch();',writer,False)
+                assert checksum()==changed
+                sql(f'UPDATE `{acworld}`.spell_required SET req_spell=5487 WHERE spell_id=779')
             if reviewed_racials:
                 without_racial_ack=ack
                 ack+="SET @eligibility_racials_ack='RETIRE_ONLY_REVIEWED_WRONG_RACE_RACIALS';"
@@ -330,7 +377,7 @@ backup_reference=disposable-synthetic-fixture
                 assert 'Explicit reviewed Cower child' in error
             ack_label='Explicit reviewed ordinary training prerequisites' if ordinary_training else 'Explicit pet-teaching repair' if pet_teaching else 'Explicit eligibility repair'
             error=sql(f"SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';CALL `{archive}`.apply_batch();",writer,False)
-            assert ('Explicit reviewed racial retirement' if reviewed_racials else 'Explicit reviewed Cower child' if reviewed_cower else 'Explicit absent-teacher eligibility' if absent_teachers else ack_label) in error
+            assert ('Explicit inactive foreign Swipe' if inactive_foreign_swipes else 'Explicit reviewed racial retirement' if reviewed_racials else 'Explicit reviewed Cower child' if reviewed_cower else 'Explicit absent-teacher eligibility' if absent_teachers else ack_label) in error
             for variable in (('ordinary_history_all_spells',) if ordinary_training else ('pet_teaching_tc_all_spells','pet_teaching_ac_custom_spells') if pet_teaching else ('eligibility_tc_all_spells','eligibility_ac_custom_spells')):
                 error=sql(ack+f"SET @{variable}='UNKNOWN'; CALL `{archive}`.apply_batch();",writer,False)
                 assert ('Explicit PlayerStart.AllSpells=0' if ordinary_training else ack_label) in error
@@ -374,8 +421,8 @@ backup_reference=disposable-synthetic-fixture
                 assert 'world content drift' in error,error
                 assert checksum()==changed
                 sql(f'UPDATE `{schema}`.spell_dbc SET `{field}`=0.1 WHERE Id=900099')
-            changed_spell=16811 if ordinary_training else 1749 if pet_teaching else 48942
-            original_rank=3 if pet_teaching or ordinary_training else 10
+            changed_spell=780 if inactive_foreign_swipes else 16811 if ordinary_training else 1749 if pet_teaching else 48942
+            original_rank=2 if inactive_foreign_swipes else 3 if pet_teaching or ordinary_training else 10
             for schema in ((tcworld,) if ordinary_training else (tcworld, acworld)):
                 sql(f'UPDATE `{schema}`.spell_ranks SET `rank`=11 WHERE spell_id={changed_spell}')
                 changed=checksum();run('apply',code=2)
@@ -442,5 +489,5 @@ backup_reference=disposable-synthetic-fixture
 
 
 if __name__ == '__main__':
-    assert sys.argv[1:] in ([],['--absent-teachers'],['--training-prerequisites'],['--reviewed-racials'])
-    main(absent_teachers=sys.argv[1:]==['--absent-teachers'],ordinary_training=sys.argv[1:]==['--training-prerequisites'],reviewed_racials=sys.argv[1:]==['--reviewed-racials'])
+    assert sys.argv[1:] in ([],['--absent-teachers'],['--training-prerequisites'],['--reviewed-racials'],['--inactive-foreign-swipes'])
+    main(inactive_foreign_swipes=sys.argv[1:]==['--inactive-foreign-swipes'],absent_teachers=sys.argv[1:]==['--absent-teachers'],ordinary_training=sys.argv[1:]==['--training-prerequisites'],reviewed_racials=sys.argv[1:]==['--reviewed-racials'])

@@ -14,11 +14,40 @@ from spells import Metadata, Unsupported
 POLICY = 'tc-ineligible-ordinary-spell-repair-v1'
 ABSENT_TEACHER_POLICY = 'tc-ineligible-ordinary-absent-teacher-repair-v2'
 RACIAL_POLICY = 'tc-ineligible-reviewed-racial-spell-repair-v3'
-POLICIES = (POLICY, ABSENT_TEACHER_POLICY, RACIAL_POLICY)
+SWIPE_POLICY = 'tc-inactive-foreign-swipe-retirement-v4'
+POLICIES = (POLICY, ABSENT_TEACHER_POLICY, RACIAL_POLICY, SWIPE_POLICY)
 ACK = 'RETIRE_VERIFIED_INELIGIBLE_SPELLS'
 ABSENT_TEACHER_ACK = 'VERIFIED_TEACHERS_ABSENT'
 RACIAL_ACK = 'RETIRE_ONLY_REVIEWED_WRONG_RACE_RACIALS'
 RACIAL_CATALOG = ROOT/'lib/cleanup_racial_catalog.json'
+SWIPE_ACK = 'RETIRE_ONLY_INACTIVE_FOREIGN_SWIPE_ABSENT_BEAR_FORM'
+SWIPE_CATALOG = ROOT/'lib/cleanup_foreign_swipe_catalog.json'
+
+
+def swipe_contract(meta, graph, rules):
+    """Fixed ordinary damage family; never a general prerequisite exception."""
+    chain = tuple(rules[meta.core]['779']['chain'])
+    expected_edges = {(5487,779,'REQUIRED_BY')} if meta.core == 'ac' else set()
+    if {e for e in graph.edges if e[0] in chain or e[1] in chain} != expected_edges:
+        return False
+    if sorted(r for r in meta.stores['SkillRaceClassInfo'].values() if r[1] == 134) != rules[meta.core+'_skill_info']:
+        return False
+    if meta.stores['SkillLine'].get(134,[0,0])[1] != 7:
+        return False
+    for s in chain:
+        expected = rules[meta.core].get(str(s)); row = meta.spells.get(s,[])
+        if (not expected or len(row) < 212 or list(meta.chain(s)) != expected['chain']
+                or any(row[i] != expected['mechanics'].get(str(i),0) for i in (*range(4,131),*range(208,212)))
+                or meta.abilities[s] != expected['abilities']
+                or sorted(meta.requires[s]) != expected['requires']
+                or sorted(meta.prerequisite_users[s]) != expected['prerequisite_users']
+                or sorted(meta.learn_parents[s]) != expected['learn_parents']
+                or [list(r) for r in meta.learns[s]] != expected['learns']
+                or [list(r) for r in meta.effect_learns[s]] != expected['effect_learns']
+                or meta.scripts[s] or s in meta.talents or meta.talent_learn_owners.get(s)
+                or meta.aura_owners.get(s) or s in meta.world_aura_owners or s in meta.additional):
+            return False
+    return True
 
 
 def racial_contract(meta, spell, rules):
@@ -203,8 +232,9 @@ def eligibility(meta, spell, race, cls, *, infos_by_skill=None):
     return {'passes': not skills or bool(matches), 'skills': skills, 'skill_info': infos}
 
 
-def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False, reviewed_racials=False):
-    if reviewed_racials and absent_teachers:
+def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False, reviewed_racials=False,
+           inactive_foreign_swipes=False):
+    if sum((reviewed_racials,absent_teachers,inactive_foreign_swipes)) > 1:
         fail('ELIGIBILITY_MODE_CONFLICT', 'Choose one reviewed eligibility extension')
     rules = json.loads(RACIAL_CATALOG.read_text()) if reviewed_racials else None
     racial_safe = {int(s): all(racial_contract(m, int(s), rules) for m in (tc, ac))
@@ -237,6 +267,8 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
             invalid.add(g)
         seen.add(key)
     graphs = (Relations(tc), Relations(ac))
+    swipe_rules = json.loads(SWIPE_CATALOG.read_text()) if inactive_foreign_swipes else None
+    swipe_safe = all(swipe_contract(m,graph,swipe_rules) for m,graph in zip((tc,ac),graphs)) if swipe_rules else False
     indexes, cache, teacher_catalog = {}, {}, {}
     for m in (tc, ac):
         index = defaultdict(list)
@@ -262,6 +294,8 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
         roots = sorted({tc.first(s) for s in book if not check(ac, s, c)['passes']})
         if reviewed_racials:
             roots = sorted(s for s in book if s in racial_safe and not check(ac,s,c)['passes'])
+        if inactive_foreign_swipes:
+            roots = [779] if any(s in book for s in tc.chain(779)) else []
         for root in roots:
             nodes = tc.chain(root)
             present = sorted(set(nodes) & book.keys())
@@ -286,6 +320,12 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
                 reason = 'DEFER_INVALID_TALENT_SELECTION'
             elif any(a not in (0,1) or d not in (0,1) for a,d in (book[s] for s in present)):
                 reason = 'DEFER_INVALID_RELATED_FLAGS'
+            elif inactive_foreign_swipes and not swipe_safe:
+                reason = 'DEFER_FOREIGN_SWIPE_METADATA'
+            elif inactive_foreign_swipes and (c[2] == 11 or any(book[s] != (0,0) for s in present)):
+                reason = 'DEFER_FOREIGN_SWIPE_CLASS_OR_FLAGS'
+            elif inactive_foreign_swipes and 5487 in book:
+                reason = 'DEFER_STORED_BEAR_FORM'
             elif reviewed_racials and not racial_safe[root]:
                 reason = 'DEFER_REVIEWED_RACIAL_METADATA'
             elif reviewed_racials and any(r[2] & (1 << (c[1]-1))
@@ -301,7 +341,7 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
             elif any(s in m.talents or s in m.talent_learn_owners or s in m.aura_owners
                      or s in m.world_aura_owners or s in m.additional for m in (tc, ac) for s in nodes):
                 reason = 'DEFER_TALENT_OR_AURA_ROUTE'
-            elif any(graph.incoming[root] or graph.next[root] for graph in graphs) and teacher_proof is None:
+            elif any(graph.incoming[root] or graph.next[root] for graph in graphs) and teacher_proof is None and not inactive_foreign_swipes:
                 reason = 'DEFER_LEARNING_OR_REQUIREMENT_ROUTE'
             elif any(s in graph.unsupported or s in graph.unknown_skill_spells for graph in graphs for s in nodes):
                 reason = 'DEFER_UNSUPPORTED_RELATION_METADATA'
@@ -340,6 +380,8 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
                                'retired_skill_bonus':{'skill':755,'bonus':5} if root == 28875 else None}
                               if reviewed_racials else {}),
                            **({'absent_teacher_contract':teacher_proof} if teacher_proof else {}),
+                           **({'inactive_foreign_swipe_contract':swipe_rules['contract'],
+                               'bear_form_absent':True,'inactive_only':True} if inactive_foreign_swipes else {}),
                            'ranks': [{'spell': s, **check(ac, s, c)} for s in nodes]})
             proof.extend((g, root, s, 'INELIGIBLE_ORDINARY_RANK',
                           'REMOVE_INELIGIBLE_ENABLED' if s in book and not book[s][1]
@@ -367,6 +409,9 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
     if absent_teachers:
         summary['reviewed_absent_teacher_rows'] = sum(len(p['stored_spells']) for p in native if 'absent_teacher_contract' in p)
         summary['native_policy'] += '; only exact reviewed absent single-child teachers may supply inert incoming routes'
+    if inactive_foreign_swipes:
+        summary['inactive_rows_removed'] = len(selected)
+        summary['native_policy'] += '; fixed Swipe (Bear) family only, entirely inactive/non-disabled on non-druids with no stored Bear Form or Feral skill; only the reviewed AC Bear Form prerequisite is allowed; no prerequisite or rank grant'
     if reviewed_racials:
         summary['reviewed_racial_rows'] = len(selected)
         summary['native_policy'] = ('Retire only four fixed stock singleton racial spells on verified wrong races; '

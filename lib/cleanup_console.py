@@ -50,7 +50,7 @@ def sha(path):
 
 
 def toolkit_hashes():
-    names=('lib/cleanup_racial_catalog.json','lib/cleanup_specializations.py','lib/cleanup_specialization_catalog.json','lib/cleanup_professions.py','lib/cleanup_profession_catalog.json','tools/profession-activation-repair.sql.in','lib/cleanup_skill_teaching.py','lib/cleanup_skill_teaching_catalog.json','lib/cleanup_shaman_dual_wield.py','tools/shaman-dual-wield-repair.sql.in','console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
+    names=('lib/cleanup_foreign_swipe_catalog.json','lib/cleanup_racial_catalog.json','lib/cleanup_specializations.py','lib/cleanup_specialization_catalog.json','lib/cleanup_professions.py','lib/cleanup_profession_catalog.json','tools/profession-activation-repair.sql.in','lib/cleanup_skill_teaching.py','lib/cleanup_skill_teaching_catalog.json','lib/cleanup_shaman_dual_wield.py','tools/shaman-dual-wield-repair.sql.in','console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
@@ -630,12 +630,16 @@ def command_action(settings, work, args):
         if manifest.get('aura_alias_ack') != AURA_ALIAS_ACK:
             fail('OWNERSHIP_ALIAS_ACK_INVALID','Aura-alias acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @talent_aura_alias_ack='UNSELECTED_REVIEWED_AURA_ALIASES_ONLY';\n"
-    from cleanup_eligibility import POLICIES as ELIGIBILITY_POLICIES, ACK as ELIGIBILITY_ACK, ABSENT_TEACHER_POLICY, ABSENT_TEACHER_ACK, RACIAL_POLICY, RACIAL_ACK
+    from cleanup_eligibility import POLICIES as ELIGIBILITY_POLICIES, ACK as ELIGIBILITY_ACK, ABSENT_TEACHER_POLICY, ABSENT_TEACHER_ACK, RACIAL_POLICY, RACIAL_ACK, SWIPE_POLICY, SWIPE_ACK
     if manifest.get('policy') in ELIGIBILITY_POLICIES:
         if manifest.get('eligibility_ack') != ELIGIBILITY_ACK:
             fail('ELIGIBILITY_ACK_INVALID','Eligibility acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS';\n"
         configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
+    if manifest.get('policy') == SWIPE_POLICY:
+        if manifest.get('swipe_ack') != SWIPE_ACK:
+            fail('FOREIGN_SWIPE_ACK_INVALID','Inactive foreign Swipe acknowledgement differs')
+        configuration_ack += f"SET @eligibility_swipe_ack='{SWIPE_ACK}';\n"
     if manifest.get('policy') == RACIAL_POLICY:
         if manifest.get('racial_ack') != RACIAL_ACK:
             fail('RACIAL_ACK_INVALID','Reviewed racial acknowledgement differs from the candidate')
@@ -863,6 +867,7 @@ def parser():
     eligibility.set_defaults(spell_eligibility=True,inspection=None,audit=None)
     eligibility.add_argument('--migration-inspection',required=True,help='Sealed migration-blocker inspection ID or latest')
     eligibility_mode=eligibility.add_mutually_exclusive_group()
+    eligibility_mode.add_argument('--inactive-foreign-swipes',action='store_true',help='Separate v4: only inactive foreign Swipe ranks with absent Bear Form and Feral skill; no grants')
     eligibility_mode.add_argument('--reviewed-racials',action='store_true',help='Separate v3 fixed-catalog wrong-race racial retirement; no languages, riding or replacement racials')
     eligibility_mode.add_argument('--absent-teachers',action='store_true',help='Separate v2 contract for exact reviewed absent single-child teachers; other dependencies still defer')
     eligibility_review=eligibility.add_mutually_exclusive_group(required=True)

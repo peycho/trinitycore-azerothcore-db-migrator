@@ -292,3 +292,49 @@ metadata drift, late failure and disconnect rollback. Full gameplay remains
 On a fresh import, create a new session and regenerate inspections, selections,
 counts and archives using this policy. Old batch IDs and SQL packages belong to
 their original source snapshot.
+## Opt-in inactive foreign Swipe (v4)
+
+`--inactive-foreign-swipes` selects the separate
+`tc-inactive-foreign-swipe-retirement-v4` contract. It retires only existing
+inactive/non-disabled (`active=0, disabled=0`) ranks of Swipe (Bear), whose root
+is `779`, on a verified non-druid. It does not activate spells or add Bear Form.
+Every stored rank in that family must be inactive/non-disabled, Bear Form `5487`
+must be completely absent from the spellbook (including disabled history), and
+Feral Combat skill `134` must be absent. Druids, enabled/disabled siblings,
+pending talent resets and unsupported character/talent state defer.
+
+The fixed catalog seals the complete reviewed rank order, spell mechanics,
+abilities and skill eligibility in both cores. TC has no prerequisite edge for
+this family; AC has exactly `5487 -> 779` in `spell_required`. That prerequisite
+is a requirement, not a grant of Bear Form. Only this exact absent-prerequisite
+case is allowed. Added learning, requirement, talent, aura or script routes,
+changed masks and unknown metadata remain blocked. All other eligibility modes
+retain their behavior; the new flag is mutually exclusive with their flags.
+
+```bash
+python3 console plan spell-eligibility \
+  --migration-inspection latest --inactive-foreign-swipes --preview
+python3 console plan spell-eligibility \
+  --migration-inspection INSPECTION_ID --inactive-foreign-swipes --expect-rows SELECTED_ROWS
+```
+
+Use the actual preview selection, then review the candidate README,
+`selected-rows.tsv` and `eligibility-native-proof.json`. Use the existing explicit
+prepare/status/apply/status/restore sequence above. Complete originals, custom
+columns, numeric fingerprints, both-world metadata, configuration assertions and
+all affected source state remain guarded. SQL removes only selected spell rows;
+both talent builds, skills/caps, items and login flags stay unchanged. No absent
+rank, prerequisite, skill or replacement ability is granted.
+
+Direct SQL additionally requires
+`@eligibility_swipe_ack='RETIRE_ONLY_INACTIVE_FOREIGN_SWIPE_ABSENT_BEAR_FORM'`.
+Missing/wrong acknowledgement, changed catalog, newly stored Bear Form or changed
+prerequisite inputs reject the sealed batch. Retain original toolkits for earlier
+archives. Fresh imports need new sessions, inspections, selections and archives.
+
+The migrator reports only the first failure for each character. Retiring a
+reviewed row can expose a different blocker on the same character, so the number
+of blocked characters may stay unchanged. A pending native-reset flag likewise
+does not prove its reset has executed or that other blockers will disappear.
+Local native-reader and disposable SQL checks are separate from gameplay, which
+remains **NOT TESTED**. Approval remains **UNREVIEWED**.

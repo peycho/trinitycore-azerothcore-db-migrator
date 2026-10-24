@@ -161,6 +161,10 @@ def check_metadata(settings, manifest):
             fail('ELIGIBILITY_POLICY_DRIFT','Eligibility selector differs; retain the original toolkit for restoration')
         if eligibility.configuration_contract(settings) != manifest.get('configuration_contract'):
             fail('ELIGIBILITY_CONFIG_DRIFT','Eligibility configuration differs from the reviewed candidate')
+    if manifest.get('policy') == eligibility.SWIPE_POLICY:
+        if (manifest.get('swipe_ack') != eligibility.SWIPE_ACK
+                or sha(eligibility.SWIPE_CATALOG) != manifest.get('swipe_catalog_sha256')):
+            fail('FOREIGN_SWIPE_POLICY_DRIFT','Inactive foreign Swipe contract changed; retain original toolkit')
     if manifest.get('policy') == eligibility.RACIAL_POLICY:
         if (manifest.get('racial_ack') != eligibility.RACIAL_ACK
                 or sha(eligibility.RACIAL_CATALOG) != manifest.get('racial_catalog_sha256')):
@@ -433,6 +437,8 @@ def plan_history(settings, work, args, output):
     pet_reader = sha(ROOT/'lib/cleanup_pet_teaching.py') if pet_mode else None
     reviewed_cower = pet_mode and getattr(args,'reviewed_cower',False)
     absent_teachers = getattr(args,'spell_eligibility',False) and getattr(args,'absent_teachers',False)
+    swipe_mode = getattr(args,'spell_eligibility',False) and getattr(args,'inactive_foreign_swipes',False)
+    swipe_catalog = sha(eligibility.SWIPE_CATALOG) if swipe_mode else None
     racial_mode = getattr(args,'spell_eligibility',False) and getattr(args,'reviewed_racials',False)
     racial_catalog = sha(eligibility.RACIAL_CATALOG) if racial_mode else None
     cower_proof = pet_teaching.cower_sources(settings.paths) if reviewed_cower else None
@@ -517,7 +523,7 @@ def plan_history(settings, work, args, output):
     if two_world_mode:
         policy = (riding.INVALID_ITEMS_POLICY if riding_invalid_items else pet_teaching.COWER_POLICY if reviewed_cower else
                   eligibility.ABSENT_TEACHER_POLICY if absent_teachers else
-                  eligibility.RACIAL_POLICY if racial_mode else native_selector.POLICY)
+                  eligibility.RACIAL_POLICY if racial_mode else eligibility.SWIPE_POLICY if swipe_mode else native_selector.POLICY)
         print('Capturing effective AC world/DBC eligibility inputs (read-only)',flush=True)
         target_effective, target_world = eligibility.read_target(settings)
     relation_rows,relation_proof,relation_summary,relation_edges = [],[],{},[]
@@ -543,7 +549,7 @@ def plan_history(settings, work, args, output):
             selected,excluded,relation_proof,relation_summary,relation_edges=native_selector.select(
                 context,effective,target_effective,args.expect_review_rows,preview=preview,
                 **({'items':riding_items['rows'],'default_skills':riding_defaults,'native_invalid_items':riding_invalid_items,
-                    'zero_template_counts':riding_items.get('zero_template_counts')} if riding_mode else {'equipment':equipment['rows']} if specialization_mode else {'offhand':{r[0] for r in offhand_rows},'default_skills':default_skills} if shaman_mode else {'reviewed_cower':True} if reviewed_cower else {'absent_teachers':True} if absent_teachers else {'reviewed_racials':True} if racial_mode else {}))
+                    'zero_template_counts':riding_items.get('zero_template_counts')} if riding_mode else {'equipment':equipment['rows']} if specialization_mode else {'offhand':{r[0] for r in offhand_rows},'default_skills':default_skills} if shaman_mode else {'reviewed_cower':True} if reviewed_cower else {'absent_teachers':True} if absent_teachers else {'reviewed_racials':True} if racial_mode else {'inactive_foreign_swipes':True} if swipe_mode else {}))
             eligibility_proofs = relation_summary.pop('eligibility_proofs')
         elif ownership_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ownership.select(
@@ -735,6 +741,8 @@ def plan_history(settings, work, args, output):
         batch_inputs.update(eligibility_reader_sha256=eligibility_reader,eligibility_proofs=eligibility_proofs,
                             target_world=target_world,target_dbc_sha256=target_effective.hashes,
                             numeric_reader_sha256=sha(ROOT/'lib/cleanup_active_reset.py'))
+    if swipe_mode:
+        batch_inputs.update(swipe_catalog_sha256=swipe_catalog,swipe_ack=eligibility.SWIPE_ACK)
     if racial_mode:
         batch_inputs.update(racial_catalog_sha256=racial_catalog,racial_ack=eligibility.RACIAL_ACK)
     if config_contract is not None:
@@ -863,6 +871,10 @@ def plan_history(settings, work, args, output):
         values['WORLD_CHECKS'] = """IF NOT (BINARY @eligibility_racials_ack <=> BINARY 'RETIRE_ONLY_REVIEWED_WRONG_RACE_RACIALS') THEN
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit reviewed racial retirement acknowledgement required'; END IF;
 """ + values['WORLD_CHECKS']
+    if swipe_mode:
+        values['WORLD_CHECKS'] = f"""IF NOT (BINARY @eligibility_swipe_ack <=> BINARY '{eligibility.SWIPE_ACK}') THEN
+ SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit inactive foreign Swipe acknowledgement required'; END IF;
+""" + values['WORLD_CHECKS']
     if absent_teachers:
         values['WORLD_CHECKS'] = """IF NOT (BINARY @eligibility_absent_teachers_ack <=> BINARY 'VERIFIED_TEACHERS_ABSENT') THEN
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit absent-teacher eligibility acknowledgement required'; END IF;
@@ -890,6 +902,7 @@ def plan_history(settings, work, args, output):
         final_target, final_target_world = eligibility.read_target(settings)
         if (final_target_world != target_world or final_target.hashes != target_effective.hashes
                 or sha(ROOT/'lib/cleanup_eligibility.py') != eligibility_reader
+                or swipe_mode and sha(eligibility.SWIPE_CATALOG) != swipe_catalog
                 or racial_mode and sha(eligibility.RACIAL_CATALOG) != racial_catalog
                 or pet_mode and sha(ROOT/'lib/cleanup_pet_teaching.py') != pet_reader
                 or legacy_mode and sha(ROOT/'lib/cleanup_inactive_legacy.py') != legacy_reader
@@ -1016,6 +1029,10 @@ def plan_history(settings, work, args, output):
     if legacy_mode:
         manifest.update(inactive_legacy_ack=inactive_legacy.ACK,inactive_legacy_reader_sha256=legacy_reader,
                         script_contract='Exact scriptless singleton legacy catalog; only inactive/non-disabled removals; retained active spells and all native talent/skill data unchanged; no inferred ranks')
+    if swipe_mode:
+        manifest.update(swipe_ack=eligibility.SWIPE_ACK,swipe_catalog_sha256=swipe_catalog,
+                        native_policy=relation_summary['native_policy'],
+                        script_contract='Fixed inactive foreign Swipe ranks; no Bear Form or Feral skill; no grants')
     if racial_mode:
         manifest.update(racial_ack=eligibility.RACIAL_ACK,racial_catalog_sha256=racial_catalog,
                         native_policy=relation_summary['native_policy'],
