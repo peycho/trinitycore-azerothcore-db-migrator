@@ -1,0 +1,15 @@
+{
+  "contract": "NATIVE_ITEM_ABSENCE_OR_ZERO_WITHOUT_TEMPLATE_ONLY_V1",
+  "native_sources": {
+    "tc": {
+      "src/server/game/Entities/Item/Item.cpp": "49cac30f57c514b71f57a5b3ffc485e47f636084f3fad4042a5eaf2e9e94164c",
+      "src/server/database/Database/Implementation/CharacterDatabase.cpp": "648721c78f4f1f3cd9864443d0f92165715a117c416c4e715c79a64cd6cff517",
+      "src/server/game/Entities/Player/Player.cpp": "65723c1a91d64571bc338a9de3d95b408167f0d0c732b26329e77e3451e28592"
+    },
+    "ac": {
+      "src/server/game/Entities/Item/Item.cpp": "146001ae02c7e2d1e983817a3a5dfb398d9b8c4a93080e3884c209044cafe07c",
+      "src/server/database/Database/Implementation/CharacterDatabase.cpp": "830abd588dbb8c2987e0f09eac35af3d73d051d628f7275ca4731bf773864df8",
+      "src/server/game/Entities/Player/PlayerStorage.cpp": "8f86d4f688feaa678fd25d0d085e845fb6397cc6cfd8e8a1073481f91e4ccb53"
+    }
+  }
+}

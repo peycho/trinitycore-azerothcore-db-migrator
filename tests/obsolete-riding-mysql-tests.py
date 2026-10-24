@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -14,6 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
+    invalid_items = '--native-invalid-items' in sys.argv[1:]
+    if any(a != '--native-invalid-items' for a in sys.argv[1:]): raise SystemExit('Unknown test mode')
     port = os.environ.get('REHEARSAL_MYSQL_PORT','33317')
     if (os.environ.get('MIGRATOR_DISPOSABLE_MYSQL') != '1' or not port.isascii()
             or not port.isdigit() or not 1 <= int(port) <= 65535 or int(port) == 3306):
@@ -66,6 +69,11 @@ def main():
         sql(f'INSERT INTO `{source}`.character_inventory VALUES(1,0,23,101),(3,0,23,103);')
         sql(f"INSERT INTO `{source}`.mail(id,receiver,subject,body) VALUES(1,2,'retained mount','');")
         sql(f'INSERT INTO `{source}`.mail_items VALUES(1,102,0);')
+        if invalid_items:
+            sql(f"INSERT INTO `{source}`.item_instance(guid,itemEntry,owner_guid,enchantments) VALUES(104,0,1,'retained zero');")
+            sql(f'INSERT INTO `{source}`.character_inventory VALUES(1,0,24,104),(1,0,25,999998);')
+            sql(f"INSERT INTO `{source}`.mail(id,receiver,subject,body) VALUES(2,2,'retained missing attachment','');")
+            sql(f'INSERT INTO `{source}`.mail_items VALUES(2,999997,0);')
         for user in (writer,reader):
             sql(f"CREATE USER '{user}'@'%' IDENTIFIED BY ''"); users.append(user)
             for schema in (source,auth,world,aworld): sql(f"GRANT SELECT ON `{schema}`.* TO '{user}'@'%'")
@@ -123,6 +131,11 @@ backup_reference=disposable-obsolete-riding-fixture
             result = run('inspect-migration-blockers','--report',str(report))
             inspection = Path(result.stdout.split('Reports: ',1)[1].strip()).name
             plan = ['plan','obsolete-riding','--migration-inspection',inspection]
+            if invalid_items:
+                control = run(*plan,'--preview')
+                control_review = json.loads(Path(control.stdout.split('Details: ',1)[1].strip()).read_text())
+                assert not control_review['selected'], control_review
+                plan.append('--native-invalid-items')
             preview = run(*plan,'--preview')
             review = json.loads(Path(preview.stdout.split('Details: ',1)[1].strip()).read_text())
             assert review['selected'] == [[1,825,1,0],[2,825,1,0]], review
@@ -133,7 +146,10 @@ backup_reference=disposable-obsolete-riding-fixture
             run(*plan,'--expect-rows','2')
             package = session/'batches'/json.loads((session/'active-batch.json').read_text())['batch']
             manifest = json.loads((package/'manifest.json').read_text()); archive = manifest['archive_schema']; owned.append(archive)
-            assert manifest['policy'] == 'tc-obsolete-wolf-riding-spell-skill-retirement-v1'
+            assert manifest['policy'] == ('tc-obsolete-wolf-riding-native-invalid-items-v2' if invalid_items else 'tc-obsolete-wolf-riding-spell-skill-retirement-v1')
+            if invalid_items:
+                assert manifest['native_invalid_items_retained'] == 3
+                assert manifest['riding_items']['zero_template_counts'] == {'tc':0,'ac':0}
             run('prepare'); run('prepare'); assert checksum() == baseline
             denied = run('apply',code=2); assert 'DELETE' in denied.stderr
             sql(f"GRANT INSERT,DELETE ON `{source}`.character_spell TO '{writer}'@'%'")
@@ -141,15 +157,31 @@ backup_reference=disposable-obsolete-riding-fixture
             assert checksum() == baseline
             sql(f"GRANT INSERT,DELETE ON `{source}`.character_skills TO '{writer}'@'%'")
             ack = "SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;"
-            explicit = "SET @obsolete_riding_ack='RETIRE_FORBIDDEN_WOLF_RIDING_PAIR_RETAIN_MODERN_RIDING';"
+            explicit = ("SET @obsolete_riding_ack='RETAIN_NATIVE_INVALID_ITEM_ROWS_CHECK_ALL_VALID_REQUIREMENTS';" if invalid_items
+                        else "SET @obsolete_riding_ack='RETIRE_FORBIDDEN_WOLF_RIDING_PAIR_RETAIN_MODERN_RIDING';")
             def direct(extra=''):
                 return subprocess.run(['mysql',*options,'--user='+writer],input=ack+extra+f'CALL `{archive}`.apply_batch();',text=True,capture_output=True)
             assert direct().returncode != 0 and checksum() == baseline
+            if invalid_items:
+                wrong = direct("SET @obsolete_riding_ack='RETIRE_FORBIDDEN_WOLF_RIDING_PAIR_RETAIN_MODERN_RIDING';")
+                assert wrong.returncode and checksum() == baseline
+                for schema in (world,aworld):
+                    sql(f"INSERT INTO `{schema}`.item_template VALUES(0,0,0,0,'unexpected custom zero')")
+                    changed = checksum(); denied = direct(explicit)
+                    assert denied.returncode and 'no item template zero' in denied.stderr, denied.stderr
+                    assert checksum() == changed
+                    sql(f'DELETE FROM `{schema}`.item_template WHERE entry=0')
+                for update,undo in (
+                    (f'UPDATE `{source}`.item_instance SET itemEntry=777777 WHERE guid=104',f'UPDATE `{source}`.item_instance SET itemEntry=0 WHERE guid=104'),
+                    (f"INSERT INTO `{source}`.item_instance(guid,itemEntry,owner_guid,enchantments) VALUES(999998,10001,0,'newly resolved')",f'DELETE FROM `{source}`.item_instance WHERE guid=999998')):
+                    sql(update); changed = checksum(); denied = direct(explicit)
+                    assert denied.returncode and checksum() == changed
+                    sql(undo)
             for update,undo in (
                 (f'UPDATE `{world}`.item_template SET RequiredSkill=149 WHERE entry=10001',f'UPDATE `{world}`.item_template SET RequiredSkill=762 WHERE entry=10001'),
                 (f'UPDATE `{aworld}`.item_template SET requiredspell=825 WHERE entry=10001',f'UPDATE `{aworld}`.item_template SET requiredspell=0 WHERE entry=10001'),
                 (f'UPDATE `{source}`.character_skills SET custom_decimal=0.100009 WHERE guid=1 AND skill=149',f'UPDATE `{source}`.character_skills SET custom_decimal=0.100001 WHERE guid=1 AND skill=149'),
-                (f'INSERT INTO `{source}`.mail_items VALUES(2,103,1)',f'DELETE FROM `{source}`.mail_items WHERE mail_id=2'),
+                (f'INSERT INTO `{source}`.mail_items VALUES(3,103,1)',f'DELETE FROM `{source}`.mail_items WHERE mail_id=3 AND item_guid=103'),
                 (f"INSERT INTO `{aworld}`.playercreateinfo_skills VALUES(0,0,149,0,'new route')",f'DELETE FROM `{aworld}`.playercreateinfo_skills'),
                 (f'UPDATE `{world}`.spell_dbc SET EffectRealPointsPerLevel1=0.2 WHERE Id=900099',f'UPDATE `{world}`.spell_dbc SET EffectRealPointsPerLevel1=0.1 WHERE Id=900099')):
                 sql(update); changed = checksum(); denied = direct(explicit)
@@ -189,7 +221,7 @@ backup_reference=disposable-obsolete-riding-fixture
             sql(f'UPDATE `{source}`.character_skills SET value=300 WHERE guid=1 AND skill=762')
             run('restore'); run('restore'); assert checksum() == baseline
             run('apply',code=2)
-        print('PASS obsolete riding MySQL: full console preview/prepare/apply/status/restore; item and mail requirements in both worlds; missing grants; direct SQL acknowledgement and source/world/default drift; late failure and disconnected transaction rollback; concurrent item requirement write blocked; paired reruns and exact custom inverse; modern riding and all unrelated tables preserved. Gameplay NOT TESTED.',flush=True)
+        print('PASS obsolete riding MySQL '+('v2 native-invalid-items' if invalid_items else 'v1')+': full console preview/prepare/apply/status/restore; item and mail requirements in both worlds; missing grants; direct SQL acknowledgement and source/world/default drift; late failure and disconnected transaction rollback; concurrent item requirement write blocked; paired reruns and exact custom inverse; modern riding and all unrelated tables preserved; '+('invalid references/zero instances retained, zero-template and resolved-reference drift rejected. ' if invalid_items else '')+'Gameplay NOT TESTED.',flush=True)
     finally:
         if worker is not None and worker.poll() is None: worker.terminate(); worker.wait()
         for schema in reversed(owned): sql(f'DROP DATABASE `{schema}`')

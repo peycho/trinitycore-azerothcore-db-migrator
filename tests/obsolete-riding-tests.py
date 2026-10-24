@@ -10,7 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]; sys.path.insert(0,str(ROOT/'lib'))
 from cleanup_console import CleanupError, parser
-from cleanup_obsolete_riding import contract, select
+from cleanup_obsolete_riding import contract, select, native_invalid_item
 from spells import Metadata, reconstruct, Unsupported
 
 def module(name,path):
@@ -107,6 +107,38 @@ class RidingTests(unittest.TestCase):
     def test_parser_uses_pair_count(self):
         args = parser().parse_args(['plan','obsolete-riding','--migration-inspection','latest','--expect-rows','6'])
         self.assertTrue(args.obsolete_riding); self.assertEqual(args.expect_review_rows,6)
+    def test_native_invalid_items_are_explicit_and_retained(self):
+        self.items += [[1,11,*([None]*11)], [1,12,12,1,0,*([None]*8)]]
+        before = copy.deepcopy((self.state,self.items))
+        self.assertFalse(self.review()[0])
+        result = self.review(native_invalid_items=True,zero_template_counts={'tc':0,'ac':0})
+        self.assertEqual(result[0],[(1,825,1,0)])
+        self.assertEqual(result[3]['native_invalid_item_rows_retained'],2)
+        self.assertEqual(result[3]['native_invalid_item_reasons'],
+            {'MISSING_INSTANCE_REFERENCE':1,'ZERO_ENTRY_INSTANCE_WITHOUT_TEMPLATE':1})
+        self.assertEqual((self.state,self.items),before)
+    def test_unknown_nonzero_template_still_defers_under_v2(self):
+        for index in (5,9):
+            original = self.items[0][index]; self.items[0][index] = None
+            self.assertFalse(self.review(native_invalid_items=True,zero_template_counts={'tc':0,'ac':0})[0])
+            self.items[0][index] = original
+    def test_zero_template_absence_must_be_explicit_both_worlds(self):
+        for counts in (None,{}, {'tc':0}, {'tc':1,'ac':0}, {'tc':0,'ac':1}):
+            with self.subTest(counts=counts), self.assertRaises(CleanupError):
+                self.review(native_invalid_items=True,zero_template_counts=counts)
+    def test_partial_zero_and_zero_guid_are_not_native_invalid_evidence(self):
+        rows = [[1,0,*([None]*11)], [1,12,12,None,0,*([None]*8)],
+                [1,12,12,1,7,*([None]*8)], [1,12,13,1,0,*([None]*8)],
+                [1,12,12,1,0,0,0,0,0,None,None,None,None]]
+        for row in rows:
+            self.assertIsNone(native_invalid_item(row))
+            self.items = [row]
+            self.assertFalse(self.review(native_invalid_items=True,zero_template_counts={'tc':0,'ac':0})[0])
+    def test_v2_preserves_real_legacy_item_requirement_exclusion(self):
+        self.items += [[1,11,*([None]*11)]]
+        self.items[0][8] = 825
+        self.assertEqual(self.review(native_invalid_items=True,zero_template_counts={'tc':0,'ac':0})[1][0][2],
+                         'DEFER_ITEM_REQUIRES_LEGACY_RIDING')
 
 
 if __name__ == '__main__': unittest.main()

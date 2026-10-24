@@ -155,6 +155,10 @@ worlds, known teachers and starting-skill routes are checked. Preview with
 `plan obsolete-riding --migration-inspection latest --preview`; regenerate the
 inspection and expected pair count for each fresh snapshot. This is an explicit
 exception to skill preservation, not a general riding or mount conversion.
+The opt-in `--native-invalid-items` v2 mode keeps verified missing-instance
+references and undefined entry-zero instances unchanged. It requires no template
+zero in either world, retains all valid-item guards, and does not resolve or
+bypass the separate item audit/migration findings.
 
 ## Repeat the complete preparation and migration
 

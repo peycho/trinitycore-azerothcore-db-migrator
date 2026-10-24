@@ -190,17 +190,19 @@ def check_metadata(settings, manifest):
                 or sha(ROOT/'lib/cleanup_skill_teaching.py') != manifest.get('skill_teaching_reader_sha256')
                 or sha(skill_teaching.CATALOG) != manifest.get('skill_teaching_catalog_sha256')):
             fail('SKILL_TEACHER_POLICY_DRIFT','Skill-teaching selector or fixed catalog differs; retain original toolkit')
-    if manifest.get('policy') == riding.POLICY:
-        if (manifest.get('riding_ack') != riding.ACK
+    if manifest.get('policy') in riding.POLICIES:
+        invalid_items = manifest.get('policy') == riding.INVALID_ITEMS_POLICY
+        if (manifest.get('riding_ack') != (riding.INVALID_ITEMS_ACK if invalid_items else riding.ACK)
                 or sha(ROOT/'lib/cleanup_obsolete_riding.py') != manifest.get('riding_reader_sha256')
                 or sha(riding.CATALOG) != manifest.get('riding_catalog_sha256')
                 or sha(ROOT/'lib/cleanup_shaman_dual_wield.py') != manifest.get('starting_skill_reader_sha256')
-                or riding.native_sources(settings.paths) != manifest.get('riding_native_sources')):
+                or riding.native_sources(settings.paths,native_invalid_items=invalid_items) != manifest.get('riding_native_sources')
+                or invalid_items and sha(riding.ITEM_CATALOG) != manifest.get('riding_item_catalog_sha256')):
             fail('OBSOLETE_RIDING_POLICY_DRIFT','Obsolete riding contract differs; retain the original toolkit')
         if riding.defaults(settings) != manifest.get('riding_default_skills'):
             fail('OBSOLETE_RIDING_DEFAULT_DRIFT','Starting-skill inputs changed')
         guids = manifest['character_guids']
-        if riding.read_items(settings,guids) != manifest.get('riding_items'):
+        if riding.read_items(settings,guids,native_invalid_items=invalid_items) != manifest.get('riding_items'):
             fail('OBSOLETE_RIDING_ITEM_DRIFT','Owned/inventory/mail item requirements changed')
     if manifest.get('policy') == shaman.POLICY:
         if (manifest.get('shaman_ack') != shaman.ACK
@@ -406,8 +408,10 @@ def check_sets(meta, source, archive, counts, changed_table='character_spell', *
 
 def plan_history(settings, work, args, output):
     riding_mode = getattr(args,'obsolete_riding',False)
+    riding_invalid_items = riding_mode and getattr(args,'native_invalid_items',False)
     riding_reader = sha(ROOT/'lib/cleanup_obsolete_riding.py') if riding_mode else None
     riding_catalog = sha(riding.CATALOG) if riding_mode else None
+    riding_item_catalog = sha(riding.ITEM_CATALOG) if riding_invalid_items else None
     specialization_mode = getattr(args,'specialization_retirement',False)
     specialization_reader = sha(ROOT/'lib/cleanup_specializations.py') if specialization_mode else None
     specialization_catalog = sha(specializations.CATALOG) if specialization_mode else None
@@ -511,7 +515,7 @@ def plan_history(settings, work, args, output):
     if ownership_mode:
         policy = ownership.REKEY_POLICY if rekey_mode else ownership.AURA_ALIAS_POLICY if alias_mode else ownership.PREFIX_POLICY if prefix_mode else ownership.FOREIGN_POLICY if foreign_mode else ownership.POLICY
     if two_world_mode:
-        policy = (pet_teaching.COWER_POLICY if reviewed_cower else
+        policy = (riding.INVALID_ITEMS_POLICY if riding_invalid_items else pet_teaching.COWER_POLICY if reviewed_cower else
                   eligibility.ABSENT_TEACHER_POLICY if absent_teachers else
                   eligibility.RACIAL_POLICY if racial_mode else native_selector.POLICY)
         print('Capturing effective AC world/DBC eligibility inputs (read-only)',flush=True)
@@ -526,8 +530,8 @@ def plan_history(settings, work, args, output):
         specialization_native_sources = specializations.native_sources(settings.paths)
         equipment = specializations.read_equipment(settings,[r[0] for r in context['characters']])
     if riding_mode:
-        riding_sources = riding.native_sources(settings.paths)
-        riding_items = riding.read_items(settings,[r[0] for r in context['characters']])
+        riding_sources = riding.native_sources(settings.paths,native_invalid_items=riding_invalid_items)
+        riding_items = riding.read_items(settings,[r[0] for r in context['characters']],native_invalid_items=riding_invalid_items)
         riding_defaults = riding.defaults(settings)
     if shaman_mode:
         inventory_meta, offhand_rows = shaman.inventory(settings,context)
@@ -538,7 +542,8 @@ def plan_history(settings, work, args, output):
         if two_world_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=native_selector.select(
                 context,effective,target_effective,args.expect_review_rows,preview=preview,
-                **({'items':riding_items['rows'],'default_skills':riding_defaults} if riding_mode else {'equipment':equipment['rows']} if specialization_mode else {'offhand':{r[0] for r in offhand_rows},'default_skills':default_skills} if shaman_mode else {'reviewed_cower':True} if reviewed_cower else {'absent_teachers':True} if absent_teachers else {'reviewed_racials':True} if racial_mode else {}))
+                **({'items':riding_items['rows'],'default_skills':riding_defaults,'native_invalid_items':riding_invalid_items,
+                    'zero_template_counts':riding_items.get('zero_template_counts')} if riding_mode else {'equipment':equipment['rows']} if specialization_mode else {'offhand':{r[0] for r in offhand_rows},'default_skills':default_skills} if shaman_mode else {'reviewed_cower':True} if reviewed_cower else {'absent_teachers':True} if absent_teachers else {'reviewed_racials':True} if racial_mode else {}))
             eligibility_proofs = relation_summary.pop('eligibility_proofs')
         elif ownership_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ownership.select(
@@ -750,6 +755,8 @@ def plan_history(settings, work, args, output):
         batch_inputs.update(riding_reader_sha256=riding_reader,riding_catalog_sha256=riding_catalog,
                             riding_items=riding.restricted(riding_items,guids),riding_default_skills=riding_defaults,
                             riding_native_sources=riding_sources,starting_skill_reader_sha256=sha(ROOT/'lib/cleanup_shaman_dual_wield.py'))
+    if riding_invalid_items:
+        batch_inputs['riding_item_catalog_sha256'] = riding_item_catalog
     if direct_mode:
         batch_inputs.update(direct_passive_reader_sha256=direct_reader,ownership_reader_sha256=direct_ownership_reader)
     if legacy_mode:
@@ -833,8 +840,9 @@ def plan_history(settings, work, args, output):
 """ + values['WORLD_CHECKS']
     if two_world_mode:
         ack_var = 'obsolete_riding_ack' if riding_mode else 'specialization_retirement_ack' if specialization_mode else 'profession_activation_ack' if profession_mode else 'skill_teaching_ack' if skill_teaching_mode else 'shaman_dual_wield_ack' if shaman_mode else 'direct_passive_ack' if direct_mode else 'inactive_legacy_ack' if legacy_mode else 'pet_teaching_ack' if pet_mode else 'spell_eligibility_ack'
+        native_ack = riding.INVALID_ITEMS_ACK if riding_invalid_items else native_selector.ACK
         config_prefix = 'pet_teaching' if pet_mode else 'eligibility'
-        values['WORLD_CHECKS'] = f"""IF NOT (BINARY @{ack_var} <=> BINARY '{native_selector.ACK}')
+        values['WORLD_CHECKS'] = f"""IF NOT (BINARY @{ack_var} <=> BINARY '{native_ack}')
  OR NOT (BINARY @{config_prefix}_tc_all_spells <=> BINARY '0')
  OR NOT (BINARY @{config_prefix}_ac_custom_spells <=> BINARY '0') THEN
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit {"pet-teaching" if pet_mode else "eligibility"} repair and native custom-start-off assertions required'; END IF;
@@ -845,7 +853,7 @@ def plan_history(settings, work, args, output):
         values['WORLD_CHECKS'] = shaman.inventory_guard(source,inventory_meta) + values['WORLD_CHECKS']
         values['WORLD_CHECKS'] += '\n' + '\n'.join(eligibility.world_checks(w['schema'],w) for w in default_skills.values())
     if riding_mode:
-        values['WORLD_CHECKS'] = riding.items_guard(settings,riding_items,guids) + values['WORLD_CHECKS']
+        values['WORLD_CHECKS'] = riding.items_guard(settings,riding_items,guids,native_invalid_items=riding_invalid_items) + values['WORLD_CHECKS']
         values['WORLD_CHECKS'] += '\n' + '\n'.join(eligibility.world_checks(w['schema'],w) for w in riding_defaults.values())
     if direct_mode:
         values['WORLD_CHECKS'] = """IF NOT (BINARY @talent_ownership_ack <=> BINARY 'SELECTED_TALENTS_AUTHORITATIVE') THEN
@@ -900,8 +908,9 @@ def plan_history(settings, work, args, output):
                                     or shaman.defaults(settings) != default_skills)
                 or riding_mode and (sha(ROOT/'lib/cleanup_obsolete_riding.py') != riding_reader
                                     or sha(riding.CATALOG) != riding_catalog
-                                    or riding.native_sources(settings.paths) != riding_sources
-                                    or riding.read_items(settings,[r[0] for r in context['characters']]) != riding_items
+                                    or riding_invalid_items and sha(riding.ITEM_CATALOG) != riding_item_catalog
+                                    or riding.native_sources(settings.paths,native_invalid_items=riding_invalid_items) != riding_sources
+                                    or riding.read_items(settings,[r[0] for r in context['characters']],native_invalid_items=riding_invalid_items) != riding_items
                                     or riding.defaults(settings) != riding_defaults)
                 or direct_mode and (sha(ROOT/'lib/cleanup_selected_passive.py') != direct_reader
                                     or sha(ROOT/'lib/cleanup_ownership.py') != direct_ownership_reader)):
@@ -991,11 +1000,15 @@ def plan_history(settings, work, args, output):
                         native_policy=relation_summary['native_policy'],
                         script_contract='Paired unselected Shaman 674/118 retirement; no alternate native routes; empty off-hand required')
     if riding_mode:
-        manifest.update(riding_ack=riding.ACK,riding_reader_sha256=riding_reader,riding_catalog_sha256=riding_catalog,
+        manifest.update(riding_ack=riding.INVALID_ITEMS_ACK if riding_invalid_items else riding.ACK,riding_reader_sha256=riding_reader,riding_catalog_sha256=riding_catalog,
                         riding_items=riding.restricted(riding_items,guids),riding_default_skills=riding_defaults,
                         riding_native_sources=riding_sources,starting_skill_reader_sha256=sha(ROOT/'lib/cleanup_shaman_dual_wield.py'),
                         native_policy=relation_summary['native_policy'],
                         script_contract='Forbidden Wolf Riding pair only; retain verified modern Riding; item requirements and dependencies checked in both worlds')
+    if riding_invalid_items:
+        manifest.update(riding_item_catalog_sha256=riding_item_catalog,
+                        native_invalid_items_retained=sum(len(p['native_invalid_items_retained']) for p in eligibility_proofs),
+                        script_contract='Verified missing-instance references and zero-entry instances retained unchanged; both worlds lack template zero; all valid item requirements checked; unknown nonzero templates defer')
     if direct_mode:
         manifest.update(direct_passive_ack=direct_passive.ACK,direct_passive_reader_sha256=direct_reader,
                         ownership_reader_sha256=direct_ownership_reader,ownership_ack=ownership.ACK,

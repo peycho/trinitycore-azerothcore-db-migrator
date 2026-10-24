@@ -99,3 +99,48 @@ After reviewed batches, start a new migration run and run preflight. This repair
 bypasses no migration check. Native consumer/disposable SQL tests are separate
 from gameplay acceptance, which remains **NOT TESTED**; release approval remains
 **UNREVIEWED**.
+
+## Opt-in native-invalid item evidence (v2)
+
+`--native-invalid-items` selects the separate
+`tc-obsolete-wolf-riding-native-invalid-items-v2` contract. The default v1 mode
+still defers incomplete item requirements.
+
+This mode recognizes only two exact cases: a positive item GUID whose joined
+instance and template fields are all NULL, or an existing entry-zero instance
+with a known owner field and no template in either world. It explicitly verifies
+that **neither world defines item template zero**. Native inventory queries
+exclude missing instances; mail uses a left join, and both native item loaders
+reject an undefined template before reading instance fields or requirements.
+Additional pinned item loaders and inventory/mail query sources are checked.
+
+These invalid records cannot establish a usable item requirement on the retired
+riding pair. The repair records their GUIDs and reasons but leaves their instances,
+references, mail, container contents and all other item data unchanged. It does
+not repair corruption or authorize a native login/deletion path. Every valid
+item keeps both-world requirement checks; missing **nonzero** templates, partial
+NULL evidence and zero item GUIDs continue to defer.
+
+After installing the complete updated toolkit, refresh context using the saved
+report, including when an earlier pair was applied. Use the same current session
+if the source identity is unchanged:
+
+```bash
+python3 console inspect-migration-blockers --report /path/to/spell-state-blockers.tsv
+python3 console plan obsolete-riding --migration-inspection latest --native-invalid-items --preview
+python3 console plan obsolete-riding --migration-inspection latest --native-invalid-items --expect-rows COUNT
+```
+
+Use the actual preview count, not an old snapshot's count. Prepare/apply/status/
+restore follow the same workflow above. Proofs include
+`native_invalid_items_retained`, `valid_items_checked` and the verified absence
+of zero templates. Fresh item/requirement reads and serializable SQL guards
+reject resolved references, changed entries, added definitions and any newly
+defined template zero at every phase. Native source/catalog fingerprints and
+the distinct acknowledgement are sealed. Direct SQL needs
+`@obsolete_riding_ack='RETAIN_NATIVE_INVALID_ITEM_ROWS_CHECK_ALL_VALID_REQUIREMENTS'`;
+the v1 acknowledgement cannot apply a v2 batch.
+
+Earlier archives require their original toolkit for exact restoration. This
+mode grants no item or riding state and bypasses no migration item checks.
+Gameplay remains **NOT TESTED**; approval remains **UNREVIEWED**.

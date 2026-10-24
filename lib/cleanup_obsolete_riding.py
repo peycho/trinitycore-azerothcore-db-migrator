@@ -15,21 +15,42 @@ from cleanup_shaman_dual_wield import defaults
 from spells import Unsupported
 
 POLICY = 'tc-obsolete-wolf-riding-spell-skill-retirement-v1'
-POLICIES = (POLICY,)
+INVALID_ITEMS_POLICY = 'tc-obsolete-wolf-riding-native-invalid-items-v2'
+POLICIES = (POLICY, INVALID_ITEMS_POLICY)
 ACK = 'RETIRE_FORBIDDEN_WOLF_RIDING_PAIR_RETAIN_MODERN_RIDING'
+INVALID_ITEMS_ACK = 'RETAIN_NATIVE_INVALID_ITEM_ROWS_CHECK_ALL_VALID_REQUIREMENTS'
 CATALOG = ROOT/'lib/cleanup_obsolete_riding_catalog.json'
+ITEM_CATALOG = ROOT/'lib/cleanup_obsolete_riding_item_catalog.json'
 RANKS = (33388, 33391, 34090, 34091)
 RETIRED_SPELL, RETIRED_SKILL = 825, 149
 
 
-def native_sources(paths):
+def native_sources(paths, *, native_invalid_items=False):
     rules = json.loads(CATALOG.read_text())
-    for core, files in rules['native_sources'].items():
+    sources = rules['native_sources']
+    if native_invalid_items:
+        for core,files in json.loads(ITEM_CATALOG.read_text())['native_sources'].items():
+            sources[core].update(files)
+    for core, files in sources.items():
         for name, expected in files.items():
             path = paths[core+'_source']/name
             if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
                 fail('OBSOLETE_RIDING_NATIVE_DRIFT', 'Reviewed skill consumer differs: '+core+':'+name)
-    return rules['native_sources']
+    return sources
+
+
+def native_invalid_item(row):
+    """Recognize only exact joined absence or reserved zero without templates.
+
+Never infer inertness from an unknown nonzero template, a partial NULL record,
+or a world that defines entry zero. Callers separately prove zero is undefined.
+"""
+    if row[1] and all(v is None for v in row[2:]):
+        return 'MISSING_INSTANCE_REFERENCE'
+    if (row[1] and row[2] == row[1] and row[3] is not None and row[4] == 0
+            and all(v is None for v in row[5:])):
+        return 'ZERO_ENTRY_INSTANCE_WITHOUT_TEMPLATE'
+    return None
 
 
 def info(meta, skill, race, cls):
@@ -90,7 +111,10 @@ def default_blocks(capture, race, cls):
     return False
 
 
-def select(state, tc, ac, expected=None, *, preview=False, items, default_skills):
+def select(state, tc, ac, expected=None, *, preview=False, items, default_skills,
+           native_invalid_items=False, zero_template_counts=None):
+    if native_invalid_items and zero_template_counts != {'tc':0,'ac':0}:
+        fail('OBSOLETE_RIDING_ZERO_TEMPLATE', 'Native-invalid item policy requires verified absence of item template zero in both worlds')
     validate_stored(state['character_spell'])
     if not 1 <= len(state['characters']) <= 40000 or sum(map(len,state.values())) > MAX_ROWS:
         fail('OBSOLETE_RIDING_BOUND', 'Captured scope exceeds reviewed bounds')
@@ -125,6 +149,9 @@ def select(state, tc, ac, expected=None, *, preview=False, items, default_skills
     for g,c in sorted(chars.items()):
         if 825 not in books[g]: continue
         book = books[g]; stored = skills[g].get(762); anchors = []
+        inert = [(r,native_invalid_item(r)) for r in owned[g]] if native_invalid_items else []
+        inert = [(r,kind) for r,kind in inert if kind]
+        valid_items = [r for r in owned[g] if not native_invalid_items or not native_invalid_item(r)]
         reason = ''
         if c[6]: reason = 'DEFER_ONLINE_CHARACTER'
         elif c[7] & 4: reason = 'DEFER_PENDING_NATIVE_RESET'
@@ -148,8 +175,8 @@ def select(state, tc, ac, expected=None, *, preview=False, items, default_skills
             elif any(s in book for s in tc.learn_parents[825] | ac.learn_parents[825]):
                 reason = 'DEFER_STORED_LEGACY_RIDING_TEACHER'
             elif default_blocks(default_skills,c[1],c[2]): reason = 'DEFER_LEGACY_DEFAULT_SKILL_ROUTE'
-            elif any(x is None for r in owned[g] for x in r[2:]): reason = 'DEFER_UNKNOWN_ITEM_REQUIREMENT'
-            elif any(r[6] == 149 or r[8] == 825 or r[10] == 149 or r[12] == 825 for r in owned[g]):
+            elif any(x is None for r in valid_items for x in r[2:]): reason = 'DEFER_UNKNOWN_ITEM_REQUIREMENT'
+            elif any(r[6] == 149 or r[8] == 825 or r[10] == 149 or r[12] == 825 for r in valid_items):
                 reason = 'DEFER_ITEM_REQUIRES_LEGACY_RIDING'
         if reason:
             excluded.append((g,825,reason)); continue
@@ -158,6 +185,9 @@ def select(state, tc, ac, expected=None, *, preview=False, items, default_skills
                        'retained_riding_skill':[762,*stored], 'retained_enabled_anchor':anchors[0],
                        'legacy_forbidden_both_cores':True,'owned_inventory_mail_items_checked':len(owned[g]),
                        'teacher_6746_absent':True,'items_changed':0,'mounts_granted':0})
+        if native_invalid_items:
+            proofs[-1].update(native_invalid_items_retained=[{'item_guid':r[1],'reason':kind} for r,kind in inert],
+                             valid_items_checked=len(valid_items),zero_templates_absent_both_worlds=True)
     if not preview and (not selected or expected != len(selected)):
         fail('OBSOLETE_RIDING_SELECTION_MISMATCH', f'--expect-rows must equal selected spell/skill pairs ({len(selected)})')
     summary = {'reviewed_candidate_rows':len(selected)+len(excluded), 'selected_rows':len(selected),
@@ -167,6 +197,10 @@ def select(state, tc, ac, expected=None, *, preview=False, items, default_skills
         'deferred_candidate_rows':len(excluded),'deferred':dict(Counter(r[2] for r in excluded)),
         'eligibility_proofs':proofs,
         'native_policy':'Retire forbidden Wolf Riding 825 AND skill 149 together only with an existing enabled matching modern Riding 762 anchor; preserve modern riding, mounts/items, both builds, other skills/caps, profession slots and flags; defer unknown item requirements, legacy dependencies and pending resets; no grants'}
+    if native_invalid_items:
+        counts = Counter(x['reason'] for p in proofs for x in p['native_invalid_items_retained'])
+        summary.update(native_invalid_item_rows_retained=sum(counts.values()),native_invalid_item_reasons=dict(counts))
+        summary['native_policy'] += '; retain exact verified missing-instance references and zero-entry instances without treating them as usable item requirements; both worlds must lack template zero; every valid item is checked; unknown nonzero templates still defer'
     return selected,excluded,[],summary,[]
 
 
@@ -186,7 +220,7 @@ def items_query(settings, scope):
     return fields, query
 
 
-def read_items(settings, guids):
+def read_items(settings, guids, *, native_invalid_items=False):
     from cleanup_plans import metadata, snapshot
     names = [('source',settings.schemas['characters'],['character_inventory','mail','mail_items','item_instance']),
              ('tc',settings.schemas['world'],['item_template']),('ac',settings.get('target','world'),['item_template'])]
@@ -202,23 +236,38 @@ def read_items(settings, guids):
     ids = ','.join(map(str,sorted(guids))) or '0'
     fields,query = items_query(settings,f'l.guid IN ({ids})')
     rows = snapshot(settings,[('items', f"SELECT JSON_ARRAY({','.join(fields)}) row_value {query} ORDER BY l.guid,l.item LIMIT 400001")])['items']
+    zero_counts = None
+    if native_invalid_items:
+        captured = snapshot(settings,[(core,f"SELECT JSON_ARRAY(COUNT(*)) row_value FROM `{schema}`.item_template WHERE entry=0")
+                            for core,schema in (('tc',settings.schemas['world']),('ac',settings.get('target','world')))])
+        zero_counts = {core:captured[core][0][0] for core in ('tc','ac')}
     if len(rows) > 400000 or any(n > 10000 for n in Counter(r[0] for r in rows).values()):
         fail('OBSOLETE_RIDING_ITEM_BOUND', 'More than 10000 items per character or 400000 scoped items')
     for key,schema,tables in names:
         view = copy(settings); view.schemas = {**settings.schemas,'characters':schema}
         if dict(metadata(view,tables)) != layouts[key]['meta']:
             fail('OBSOLETE_RIDING_ITEM_DRIFT', 'Item requirement layout changed during capture')
-    return {'layouts':layouts,'rows':rows}
+    result = {'layouts':layouts,'rows':rows}
+    if native_invalid_items: result['zero_template_counts'] = zero_counts
+    return result
 
 
 def restricted(capture, guids):
     ids = set(guids)
-    return {'layouts':capture['layouts'],'rows':[r for r in capture['rows'] if r[0] in ids]}
+    result = {'layouts':capture['layouts'],'rows':[r for r in capture['rows'] if r[0] in ids]}
+    if 'zero_template_counts' in capture: result['zero_template_counts'] = capture['zero_template_counts']
+    return result
 
 
-def items_guard(settings, capture, guids):
+def items_guard(settings, capture, guids, *, native_invalid_items=False):
     from cleanup_plans import planner
     checks = []
+    if native_invalid_items:
+        if capture.get('zero_template_counts') != {'tc':0,'ac':0}:
+            fail('OBSOLETE_RIDING_ZERO_TEMPLATE','Expected absence of template zero in the reviewed item evidence')
+        for schema in (settings.schemas['world'],settings.get('target','world')):
+            checks.append(f"""IF EXISTS(SELECT 1 FROM `{schema}`.item_template WHERE entry=0) THEN
+ SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Native-invalid item policy requires no item template zero'; END IF;""")
     for entry in capture['layouts'].values():
         schema,meta = entry['schema'],entry['meta']
         tables = ','.join("'"+r[0]+"'" for r in meta['tables'])

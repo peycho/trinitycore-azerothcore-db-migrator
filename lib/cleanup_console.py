@@ -56,7 +56,7 @@ def toolkit_hashes():
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
            'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','lib/cleanup_talent_relations.py','lib/cleanup_selected_rank_history.py','lib/cleanup_migration_evidence.py','lib/cleanup_trained_history.py','tools/disabled-talent-history.sql.in',
            'lib/cleanup_native_skills.py','lib/cleanup_ordinary_history.py','lib/cleanup_death_coil.py','lib/cleanup_ownership.py','lib/cleanup_eligibility.py','lib/cleanup_pet_teaching.py','tools/pet-teaching-repair.sql.in','tools/spell-eligibility-repair.sql.in','tools/talent-ownership-repair.sql.in','tools/passive-rekey-repair.sql.in','lib/cleanup_selected_passive.py','lib/cleanup_inactive_legacy.py','tools/inactive-legacy-repair.sql.in','tools/native-skill-repair.sql.in','tools/native-generic-repair.sql.in')
-    names+=('lib/cleanup_obsolete_riding.py','lib/cleanup_obsolete_riding_catalog.json','tools/obsolete-riding-repair.sql.in')
+    names+=('lib/cleanup_obsolete_riding.py','lib/cleanup_obsolete_riding_catalog.json','lib/cleanup_obsolete_riding_item_catalog.json','tools/obsolete-riding-repair.sql.in')
     hashes={}
     for name in names:
         path=ROOT/name
@@ -663,11 +663,12 @@ def command_action(settings, work, args):
         configuration_ack += f"SET @skill_teaching_ack='{SKILL_TEACHING_ACK}';\n"
         configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
     from cleanup_shaman_dual_wield import POLICY as SHAMAN_POLICY, ACK as SHAMAN_ACK
-    from cleanup_obsolete_riding import POLICY as RIDING_POLICY, ACK as RIDING_ACK
-    if manifest.get('policy') == RIDING_POLICY:
-        if manifest.get('riding_ack') != RIDING_ACK:
+    from cleanup_obsolete_riding import POLICY as RIDING_POLICY, POLICIES as RIDING_POLICIES, ACK as RIDING_ACK, INVALID_ITEMS_POLICY, INVALID_ITEMS_ACK
+    if manifest.get('policy') in RIDING_POLICIES:
+        riding_ack = INVALID_ITEMS_ACK if manifest.get('policy') == INVALID_ITEMS_POLICY else RIDING_ACK
+        if manifest.get('riding_ack') != riding_ack:
             fail('OBSOLETE_RIDING_ACK_INVALID','Obsolete riding spell/skill acknowledgement differs')
-        configuration_ack += f"SET @obsolete_riding_ack='{RIDING_ACK}';\n"
+        configuration_ack += f"SET @obsolete_riding_ack='{riding_ack}';\n"
         configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
     if manifest.get('policy') == SHAMAN_POLICY:
         if manifest.get('shaman_ack') != SHAMAN_ACK:
@@ -706,7 +707,7 @@ def command_action(settings, work, args):
                 text in str(error) for text in ('DELETE command denied','INSERT command denied')):
             error.hint=('This history policy needs DELETE on character_spell for apply and INSERT for exact restore. '
                 'Have the preparation administrator grant only those source privileges to the configured writer, then retry; no source grants were added automatically.')
-        if manifest.get('policy') in (SHAMAN_POLICY,RIDING_POLICY) and any(text in str(error) for text in ('DELETE command denied','INSERT command denied')):
+        if manifest.get('policy') in (SHAMAN_POLICY,*RIDING_POLICIES) and any(text in str(error) for text in ('DELETE command denied','INSERT command denied')):
             error.hint=('Coupled repair requires DELETE/INSERT on character_spell AND character_skills for apply/exact restore. No source grants were added automatically.')
         if manifest.get('policy')=='tc-active-build-native-reset-v1' and any(
                 text in str(error) for text in ('DELETE command denied','INSERT command denied','UPDATE command denied')):
@@ -828,6 +829,7 @@ def parser():
     ownership_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows printed by this policy preview')
     riding=types.add_parser('obsolete-riding',help='Archived paired retirement of forbidden Wolf Riding 825 and skill 149; retain modern Riding and mounts')
     riding.set_defaults(obsolete_riding=True,inspection=None,audit=None)
+    riding.add_argument('--native-invalid-items',action='store_true',help='Separate v2: retain verified missing-instance references and zero-entry instances unchanged; unknown nonzero templates still defer')
     riding.add_argument('--migration-inspection',required=True,help='Current sealed migration-blocker inspection ID or latest')
     riding_review=riding.add_mutually_exclusive_group(required=True)
     riding_review.add_argument('--preview',action='store_true',help='Read-only spell/skill/item requirement review; no SQL package')

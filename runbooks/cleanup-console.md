@@ -24,6 +24,11 @@ retires forbidden spell `825` **and skill `149` together**, requiring retained
 modern Riding `762` and clear owned/inventory/mail item requirements in both
 worlds. Other eligibility and skill policies keep their original scope.
 
+Its explicit [`--native-invalid-items` v2 mode](obsolete-riding-repair.md#opt-in-native-invalid-item-evidence-v2)
+can retain verified missing-instance references and entry-zero instances while
+checking every valid item requirement. Unknown nonzero templates still defer;
+no item/reference is repaired or deleted.
+
 The opt-in `plan spell-eligibility --reviewed-racials` v3 mode reviews four fixed
 stock racial spells on verified wrong races. It grants no replacement racial and
 preserves stored skills, talents and items. See the
