@@ -50,6 +50,9 @@ no replacement racial. Languages and old riding skills remain outside its scope.
 The separate [inactive foreign Swipe mode](spell-eligibility-repair.md#opt-in-inactive-foreign-swipe-v4)
 retires only inactive Swipe ranks on non-druids with absent Bear Form and Feral
 skill; it grants no prerequisite and leaves all skills and ownership unchanged.
+The separate [inactive foreign class action mode](spell-eligibility-repair.md#opt-in-inactive-foreign-class-actions-v5)
+retires only inactive Lockpicking on non-rogues without its skill or any rank of
+its old teacher chain. It leaves enabled actions and all profession state intact.
 
 For retained Master Axesmith with a missing Weaponsmith parent, the separately
 reviewed [parent-specialization repair](specialization-parent-repair.md) restores
@@ -223,14 +226,14 @@ Bloodthirst history after earlier approved repairs. It keeps active spells and
 builds, records discarded known history and never invents a missing rank chain.
 Ordinary profession states remain blocked for their own review.
 
-Current implementation: the console provides the individual reviewed
-inspection, plan, archive, apply/status and restore operations. The migrator
-provides its separate phased loader and validation. **A single orchestrator
-that applies a reviewed recipe to all current source characters and then runs
-the migration is not implemented yet.** Individual policy tests and offline
-replays are not evidence that this complete fresh-snapshot process has passed.
-The remaining blockers, repeatable orchestration and complete rehearsal remain
-required work; release approval stays **UNREVIEWED**.
+The [preparation replay runner](preparation-replay.md) executes an explicitly
+reviewed recipe from the original snapshot, regenerates evidence and archives,
+and repeats eligible policies to a fixed point. It can then call the existing
+migration phases with fresh targets and a new run ID. Character-specific resets
+and container recovery remain separate reviewed exceptions. The runner stops on
+failed guards, missing final audit coverage or migration failures. Its existence
+is not evidence that the complete original-snapshot rehearsal or gameplay
+acceptance has passed; release approval stays **UNREVIEWED**.
 
 During policy development, a verified captured state plus exact confirmed batch
 results can be replayed locally. Label that state as derived evidence rather

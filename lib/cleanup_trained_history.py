@@ -7,6 +7,8 @@ from cleanup_talent_relations import Relations, validate_stored, MAX_ROWS
 
 POLICY = 'tc-disabled-unselected-trained-talent-history-v6'
 CHILD_POLICY = 'tc-disabled-unselected-talent-child-history-v7'
+PENDING_POLICY = 'tc-pending-reset-unselected-disabled-talents-v8'
+PENDING_ACK = 'RETAIN_PENDING_RESET_REMOVE_ONLY_WHOLLY_DISABLED_UNOWNED_FAMILIES'
 
 
 def inspection(settings, work, inspection_id):
@@ -86,11 +88,21 @@ def child_candidates(stored, meta, graph):
     return candidates,related,catalog
 
 
-def select(state, meta, expected, *, orphan_children=False, preview=False):
+def select(state, meta, expected, *, orphan_children=False, preview=False,pending_history=False):
+    if pending_history and not orphan_children:fail('PENDING_HISTORY_SCOPE','Pending history requires whole-family review')
     stored=state['character_spell'];validate_stored(stored)
     graph=Relations(meta)
     if orphan_children:
         candidates,related,catalog=child_candidates(stored,meta,graph)
+        if pending_history:
+            # Include direct and trained rows in the SAME wholly-disabled family
+            # test; no selected owner or enabled sibling can be retired.
+            for spell in {r[1]for r in stored}:
+                root=spell if spell in meta.talents else meta.first(spell)
+                if root in meta.talents:related[spell].add(meta.talents[root][0])
+            pending_guids={r[0]for r in state['characters']if r[7]&4}
+            candidates=[r for r in stored if r[0]in pending_guids and r[3]==1 and related.get(r[1])]
+
     else:
         candidates=[r for r in stored if r[3]==1 and r[1] not in meta.talents and meta.first(r[1]) in meta.talents]
     if preview and orphan_children:
@@ -134,7 +146,7 @@ def select(state, meta, expected, *, orphan_children=False, preview=False):
         if char is None or char[2] not in (1,2,3,4,5,6,7,8,9,11) or char[5] not in (1,2) or not 0<=char[4]<char[5]:
             reason='DEFER_INVALID_CHARACTER_STATE'
         elif char[6]:reason='DEFER_ONLINE_CHARACTER'
-        elif char[7]&4:reason='DEFER_PENDING_NATIVE_RESET'
+        elif char[7]&4 and not pending_history:reason='DEFER_PENDING_NATIVE_RESET'
         elif guid in invalid:reason='DEFER_INVALID_TALENT_SELECTION'
         else:
             for root in graph.families[family]:
@@ -175,4 +187,7 @@ def select(state, meta, expected, *, orphan_children=False, preview=False):
                        selected_characters=len({g for g,s in selected}),
                        deferred_candidate_rows=len(excluded),
                        native_policy='Archive wholly disabled unselected TC talent-child families even with absent direct and trained roots; never remove enabled spells or selected ownership, or change skills')
+    if pending_history:
+        summary.update(pending_native_reset_preserved=True,reset_executed=False)
+        summary['native_policy']='Archive only wholly disabled unselected talent families on already pending-reset characters; retain every selected talent, enabled spell, skill and login flag; no reset or login performed'
     return sorted(selected.values()),sorted(excluded),proof,summary,sorted(graph.edges)

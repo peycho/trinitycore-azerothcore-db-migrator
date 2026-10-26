@@ -13,7 +13,11 @@ from spells import Unsupported
 
 POLICY='tc-inactive-competing-specialization-retirement-v1'
 PARENT_POLICY='tc-reviewed-weaponsmith-parent-repair-v2'
-POLICIES=(POLICY,PARENT_POLICY)
+INVALID_ITEMS_POLICY='tc-inactive-specialization-native-invalid-items-v2'
+PARENT_INVALID_ITEMS_POLICY='tc-weaponsmith-parent-native-invalid-items-v3'
+PARENT_POLICIES=(PARENT_POLICY,PARENT_INVALID_ITEMS_POLICY)
+POLICIES=(POLICY,PARENT_POLICY,INVALID_ITEMS_POLICY,PARENT_INVALID_ITEMS_POLICY)
+ITEM_CATALOG=ROOT/'lib/cleanup_obsolete_riding_item_catalog.json'
 ACK='RETIRE_INACTIVE_COMPETITORS_RETAIN_VERIFIED_ACTIVE_CHOICE'
 CATALOG=ROOT/'lib/cleanup_specialization_catalog.json'
 RULES=json.loads(CATALOG.read_text())
@@ -22,13 +26,16 @@ EQUIPPED_SLOTS=set(range(23))|set(range(67,74))
 FIELDS=('guid','slot','item','item_guid','entry','tc_entry','tc_required','ac_entry','ac_required')
 
 
-def native_sources(paths):
-    for core,files in RULES['native_sources'].items():
+def native_sources(paths, *, native_invalid_items=False):
+    sources={core:dict(files)for core,files in RULES['native_sources'].items()}
+    if native_invalid_items:
+        for core,files in json.loads(ITEM_CATALOG.read_text())['native_sources'].items():sources[core].update(files)
+    for core,files in sources.items():
         for name,expected in files.items():
             path=paths[core+'_source']/name
             if not path.is_file()or hashlib.sha256(path.read_bytes()).hexdigest()!=expected:
                 fail('SPECIALIZATION_NATIVE_SOURCE_DRIFT','Pinned specialization/equipment consumer differs: '+core+':'+name)
-    return RULES['native_sources']
+    return sources
 
 
 def contract(meta,family):
@@ -64,7 +71,22 @@ def ordinary_anchors(book,skills,tc,ac,rule):
     return anchors
 
 
-def select(state,tc,ac,expected=None,*,preview=False,equipment):
+def inert_equipment(row):
+    """Exact native missing instance or zero entry; never an unknown nonzero item."""
+    if row[2] and all(v is None for v in row[3:]):return 'MISSING_INSTANCE_REFERENCE'
+    if row[2] and row[3]==row[2] and row[4]==0 and all(v is None for v in row[5:]):
+        return 'ZERO_ENTRY_INSTANCE_WITHOUT_TEMPLATE'
+    return None
+
+
+def equipment_policy(equipment, native_invalid_items, zero_template_counts):
+    if native_invalid_items and zero_template_counts!={'tc':0,'ac':0}:
+        fail('SPECIALIZATION_ZERO_TEMPLATE','Both native worlds must lack item template zero')
+    inert=[(r,inert_equipment(r))for r in equipment]if native_invalid_items else []
+    return [r for r in equipment if not native_invalid_items or not inert_equipment(r)], inert
+
+
+def select(state,tc,ac,expected=None,*,preview=False,equipment,native_invalid_items=False,zero_template_counts=None):
     validate_stored(state['character_spell'])
     if not 1<=len(state['characters'])<=40000 or sum(map(len,state.values()))>MAX_ROWS:
         fail('SPECIALIZATION_BOUND','Captured scope exceeds reviewed bounds')
@@ -76,6 +98,9 @@ def select(state,tc,ac,expected=None,*,preview=False,equipment):
                 or row[0]not in chars or row[1]is None or row[1]not in EQUIPPED_SLOTS):
             fail('SPECIALIZATION_EQUIPMENT_INVALID','Expected complete scoped equipment and item requirement evidence')
         equipped[row[0]].append(row)
+    valid_equipment,inert=equipment_policy(equipment,native_invalid_items,zero_template_counts)
+    equipped=defaultdict(list)
+    for row in valid_equipment:equipped[row[0]].append(row)
     invalid,seen=set(),set()
     for g,s,k in state['character_talent']:
         c=chars.get(g);identity=tc.talents.get(s);row=tc.talent_rows.get(s,[])
@@ -126,6 +151,8 @@ def select(state,tc,ac,expected=None,*,preview=False,equipment):
                         infos=[r for r in m.stores['SkillRaceClassInfo'].values()if r[1]==skill
                                and(not r[2]or r[2]&(1<<(c[1]-1)))and(not r[3]or r[3]&(1<<(c[2]-1)))]
                         if not infos:reason=reason or 'DEFER_SPECIALIZATION_RACE_CLASS'
+                    raw=[r for r in equipment if r[0]==g]
+                    if len(raw)>30 or len({r[1]for r in raw})!=len(raw):reason=reason or 'DEFER_DUPLICATE_EQUIPMENT_SLOT'
                     rows=equipped[g]
                     if len(rows)>30 or len({r[1]for r in rows})!=len(rows):reason=reason or 'DEFER_DUPLICATE_EQUIPMENT_SLOT'
                     for row in rows:
@@ -149,6 +176,10 @@ def select(state,tc,ac,expected=None,*,preview=False,equipment):
         'enabled_rows_removed':len(selected),'active_rows_removed':0,'disabled_rows_removed':0,'spell_rows_inserted':0,'skill_rows_changed':0,
         'deferred_candidate_rows':len(excluded),'eligibility_proofs':proofs,'deferred':dict(Counter(r[2]for r in excluded)),
         'native_policy':'Retire only inactive/non-disabled competitors to one retained enabled verified specialization; explicit known-specialization eligibility correction; preserve stored recipes, skills/caps, talents, items and login flags; defer ambiguity, missing prerequisites and affected/unknown equipped item requirements; no grants or native unlearn casts'}
+    if native_invalid_items:
+        retained=[{'guid':r[0],'item_guid':r[2],'reason':kind}for r,kind in inert if kind and r[0]in {x[0]for x in selected}]
+        summary.update(native_invalid_item_rows_retained=len(retained),native_invalid_item_reasons=dict(Counter(r['reason']for r in retained)),native_invalid_items_retained=retained)
+        summary['native_policy']+='; retain exact native missing-instance/zero-entry rows unchanged; unknown nonzero templates and every valid item requirement still defer'
     return selected,excluded,[],summary,[]
 
 
@@ -175,7 +206,7 @@ def equipment_shape(meta,table,fields):
         fail('SPECIALIZATION_EQUIPMENT_LAYOUT','Native integer equipment/item identifiers and requirements required: '+table)
 
 
-def read_equipment(settings,guids):
+def read_equipment(settings,guids,*,native_invalid_items=False):
     from cleanup_plans import metadata,snapshot
     names=[('source',settings.schemas['characters'],['character_inventory','item_instance']),
            ('tc',settings.schemas['world'],['item_template']),('ac',settings.get('target','world'),['item_template'])]
@@ -193,17 +224,29 @@ def read_equipment(settings,guids):
     for key,schema,tables in names:
         view=copy(settings);view.schemas={**settings.schemas,'characters':schema}
         if dict(metadata(view,tables))!=layouts[key]['meta']:fail('SPECIALIZATION_EQUIPMENT_DRIFT','Equipment or item template layout changed during capture')
-    return {'layouts':layouts,'rows':rows}
+    result={'layouts':layouts,'rows':rows}
+    if native_invalid_items:
+        counts={core:int(settings.sql(f'SELECT COUNT(*) FROM `{schema}`.item_template WHERE entry=0;','audit').strip())
+                for core,schema in (('tc',settings.schemas['world']),('ac',settings.get('target','world')))}
+        equipment_policy([],True,counts)
+        result['zero_template_counts']=counts
+    return result
 
 
 def restricted(capture,guids):
     ids=set(guids)
-    return {'layouts':capture['layouts'],'rows':[r for r in capture['rows']if r[0]in ids]}
+    result={'layouts':capture['layouts'],'rows':[r for r in capture['rows']if r[0]in ids]}
+    if 'zero_template_counts'in capture:result['zero_template_counts']=capture['zero_template_counts']
+    return result
 
 
 def equipment_guard(settings,capture,guids):
     from cleanup_plans import planner
     checks=[]
+    if 'zero_template_counts'in capture:
+        equipment_policy([],True,capture['zero_template_counts'])
+        for schema in (settings.schemas['world'],settings.get('target','world')):
+            checks.append(f"IF EXISTS(SELECT 1 FROM `{schema}`.item_template WHERE entry=0) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Native-invalid equipment requires no template zero'; END IF;")
     for entry in capture['layouts'].values():
         schema=entry['schema'];meta=entry['meta'];tables=','.join("'"+r[0]+"'"for r in meta['tables'])
         checks.append(f"""IF (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME IN ({tables})

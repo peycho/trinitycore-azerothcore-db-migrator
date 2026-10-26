@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -17,6 +18,7 @@ def main():
     defaults=os.environ.get('REHEARSAL_MYSQL_DEFAULTS_FILE','')
     base=([f'--defaults-extra-file={defaults}']if defaults else['--no-defaults'])+['--host=127.0.0.1','--port='+str(int(port)),'--protocol=TCP','--batch','--raw','--skip-column-names','--skip-force','--default-character-set=utf8mb4']
     def sql(query,database=None):
+        if query.startswith('CREATE TRIGGER '):query='DELIMITER //\n'+query+'//\nDELIMITER ;\n'
         result=subprocess.run(['mysql',*base,'--user=root',*([database]if database else[])],input=query,text=True,capture_output=True)
         assert result.returncode==0,result.stderr
         return result.stdout.strip()
@@ -298,6 +300,60 @@ backup_reference=dedicated-disposable-native-skill-fixture
             sql(f'UPDATE `{source}`.character_skills SET value=400 WHERE guid=6 AND skill=183')
             run('restore');run('restore');assert checksum()==v3baseline;run('apply',code=2)
             passed('v3 explicit known-switch Generic insertion independent of spec count; old-policy rejecting control, no second spec, existing skills/spells/talents unchanged; fractional source/world/layout drift, direct SQL acknowledgement, deferred-scope drift, late/disconnect rollback, reruns and exact full restore')
+            for g,login in ((55,36),(56,32)):
+                sql(f"INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,activeTalentGroup,talentGroupsCount,at_login) VALUES({g},1,'Pending{g}','',1,1,80,0,1,{login})")
+                sql(f"INSERT INTO `{source}`.character_spell(guid,spell,active,disabled,custom_blob) VALUES({g},2382,1,0,0xff00)")
+                sql(f"INSERT INTO `{source}`.character_talent VALUES({g},12282,0)")
+            pending_report=work/'pending-generic.tsv';pending_report.write_text('guid\tspell\treason_code\tdetail\n55\t*\tSPELL_WOULD_ADD_SKILL\t2382: skill=183\n56\t*\tSPELL_WOULD_ADD_SKILL\t2382: skill=183\n')
+            captured=run('inspect-migration-blockers','--report',str(pending_report));pending_inspection=Path(captured.stdout.split('Reports: ',1)[1].strip()).name
+            pending_plan=['plan','native-skills','--migration-inspection',pending_inspection,'--skills','generic','--pending-generic']
+            preview=run(*pending_plan,'--preview');assert '"selected_rows": 1'in preview.stdout,preview.stdout
+            pending_baseline=checksum();non_skills=sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')
+            run(*pending_plan,'--expect-rows','1')
+            pending_package=session/'batches'/json.loads((session/'active-batch.json').read_text())['batch']
+            pm=json.loads((pending_package/'manifest.json').read_text());owned.append(pm['archive_schema'])
+            assert pm['policy']=='tc-pending-reset-known-generic-skill-v4'
+            run('prepare','--batch',pending_package.name);assert checksum()==pending_baseline
+            run('apply','--batch',pending_package.name);run('apply','--batch',pending_package.name)
+            assert sql(f'SELECT value,`max` FROM `{source}`.character_skills WHERE guid=55 AND skill=183')=='400\t400'
+            assert sql(f'SELECT at_login FROM `{source}`.characters WHERE guid=55')=='36'
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==non_skills
+            run('restore','--batch',pending_package.name);run('restore','--batch',pending_package.name)
+            assert checksum()==pending_baseline
+            passed('pending-reset Generic repair inserts only known-2382 native skill; reset bit and every talent/spell/custom row preserved; exact inverse and reruns')
+            config.write_text(config.read_text().replace('[source]\n','[source]\nplayer_start_all_spells=0\n')+f'\n[target]\nworld={aworld}\nplayer_start_custom_spells=0\n')
+            fixture_spec=importlib.util.spec_from_file_location('native_racial_assets',ROOT/'tests/racial-skill-fixtures.py')
+            racial_assets=importlib.util.module_from_spec(fixture_spec);fixture_spec.loader.exec_module(racial_assets)
+            native_stores=assets.base.stores;assets.base.stores=lambda p:racial_assets.extend(native_stores(p),p)
+            for name in ('tc-dbc','ac-dbc'):shutil.rmtree(work/name)
+            assets.base.write_assets(work,profile)
+            sql(f"INSERT INTO `{world}`.spell_learn_spell VALUES(58984,21009,1); INSERT INTO `{world}`.spell_script_names VALUES(59752,'spell_pvp_trinket_shared_cd')")
+            for user in(writer,reader):sql(f"GRANT SELECT ON `{aworld}`.* TO '{user}'@'%'")
+            for g in(55,56):sql(f"INSERT INTO `{source}`.character_spell(guid,spell,active,disabled,custom_blob) VALUES({g},20597,1,0,0xff00)")
+            racial_report=work/'racial-skills.tsv';racial_report.write_text('guid\tspell\treason_code\tdetail\n55\t*\tSPELL_WOULD_ADD_SKILL\t20597: skill=754\n56\t*\tSPELL_WOULD_ADD_SKILL\t20597: skill=754\n')
+            captured=run('inspect-migration-blockers','--report',str(racial_report));racial_inspection=Path(captured.stdout.split('Reports: ',1)[1].strip()).name
+            racial_plan=['plan','native-skills','--migration-inspection',racial_inspection,'--skills','racial','--known-racials']
+            racial_before=checksum();racial_other=sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')
+            preview=run(*racial_plan,'--preview');assert '"selected_rows": 2'in preview.stdout,preview.stdout
+            run(*racial_plan,'--expect-rows','2')
+            rp=session/'batches'/json.loads((session/'active-batch.json').read_text())['batch']
+            rm=json.loads((rp/'manifest.json').read_text());ra=rm['archive_schema'];owned.append(ra)
+            assert rm['policy']=='tc-known-racial-native-skills-v5'
+            assert any(59752 in p['missing_native_reward_spells']for p in rm['native_skill_proofs'])
+            run('prepare','--batch',rp.name);assert checksum()==racial_before
+            denied=subprocess.run(['mysql',*base,'--user='+writer],text=True,capture_output=True,input=f"SET @skill_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY';CALL `{ra}`.apply_batch();")
+            assert denied.returncode and 'Explicit native racial'in denied.stderr,denied.stderr
+            sql(f"INSERT INTO `{aworld}`.spell_script_names VALUES(20597,'unknown')")
+            changed=checksum();run('apply','--batch',rp.name,code=2);assert checksum()==changed
+            sql(f"DELETE FROM `{aworld}`.spell_script_names WHERE spell_id=20597")
+            sql(f"CREATE TRIGGER `{ra}`.fail_commit BEFORE UPDATE ON `{ra}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='racial-late'; END IF; END")
+            assert 'racial-late'in run('apply','--batch',rp.name,code=2).stderr;assert checksum()==racial_before
+            sql(f'DROP TRIGGER `{ra}`.fail_commit')
+            run('apply','--batch',rp.name);run('apply','--batch',rp.name)
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_skills WHERE guid IN(55,56)AND skill=754 AND value=400 AND max=400')=='2'
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==racial_other
+            run('restore','--batch',rp.name);run('restore','--batch',rp.name);assert checksum()==racial_before
+            passed('fixed native racial skill reconstruction with explicit stock reward proof; both normal/pending flags and spells/talents/custom state unchanged; target metadata/direct acknowledgement guards, late rollback, reruns and exact inverse')
             original=(package/'02-apply.sql').read_text();(package/'02-apply.sql').write_text(original+'SELECT 1;\n')
             assert 'PACKAGE_CHANGED'in run('apply','--batch',package.name,code=2).stderr
             passed('sealed-package tampering rejected; archives retained until owned-fixture teardown')

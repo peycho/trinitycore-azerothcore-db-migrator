@@ -15,8 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main():
-    invalid_items = '--native-invalid-items' in sys.argv[1:]
-    if any(a != '--native-invalid-items' for a in sys.argv[1:]): raise SystemExit('Unknown test mode')
+    horse='--horse'in sys.argv[1:]
+    legacy_spell,legacy_skill=(824,148)if horse else(825,149)
+    invalid_items = horse or '--native-invalid-items' in sys.argv[1:]
+    if any(a not in('--native-invalid-items','--horse') for a in sys.argv[1:]): raise SystemExit('Unknown test mode')
     port = os.environ.get('REHEARSAL_MYSQL_PORT','33317')
     if (os.environ.get('MIGRATOR_DISPOSABLE_MYSQL') != '1' or not port.isascii()
             or not port.isdigit() or not 1 <= int(port) <= 65535 or int(port) == 3306):
@@ -50,7 +52,7 @@ def main():
             CREATE TABLE `{source}`.unrelated(id INT PRIMARY KEY,note TEXT);
             INSERT INTO `{source}`.unrelated VALUES(1,'Keep Ω');
             CREATE TABLE `{auth}`.account(id INT PRIMARY KEY); INSERT INTO `{auth}`.account VALUES(1);''')
-        spec = importlib.util.spec_from_file_location('riding_assets',ROOT/'tests/obsolete-riding-fixtures.py')
+        spec = importlib.util.spec_from_file_location('riding_assets',ROOT/('tests/obsolete-horse-fixtures.py'if horse else'tests/obsolete-riding-fixtures.py'))
         assets = importlib.util.module_from_spec(spec); spec.loader.exec_module(assets)
         profile = json.loads((ROOT/'compatibility/tc335-acwotlk-v2/spell-metadata.json').read_text())
         assets.seed(sql,tc,ac,world,aworld,profile)
@@ -59,12 +61,12 @@ def main():
         for schema in (world,aworld):
             sql('CREATE TABLE playercreateinfo_skills(raceMask INT UNSIGNED,classMask INT UNSIGNED,skill SMALLINT UNSIGNED,`rank` SMALLINT UNSIGNED,comment TEXT) ENGINE=InnoDB;',schema)
             sql('CREATE TABLE item_template(entry INT UNSIGNED PRIMARY KEY,RequiredSkill INT UNSIGNED,RequiredSkillRank INT UNSIGNED,requiredspell INT UNSIGNED,description TEXT) ENGINE=InnoDB;',schema)
-            sql("INSERT INTO item_template VALUES(10001,762,300,0,'mount'),(10002,149,1,0,'legacy requirement');",schema)
+            sql(f"INSERT INTO item_template VALUES(10001,762,300,0,'mount'),(10002,{legacy_skill},1,0,'legacy requirement');",schema)
         for g in range(1,6):
             sql(f"INSERT INTO `{source}`.characters(guid,account,name,taximask,race,class,level,online,activeTalentGroup,talentGroupsCount,at_login,position_x,custom_decimal,created) "
                 f"VALUES({g},1,'Rider{g}','',{2 if g==4 else 10},5,{20 if g==5 else 80},0,1,2,{4 if g==5 else 32},0.1,0.100001,'2010-01-02 03:04:05');")
-            sql(f'INSERT INTO `{source}`.character_spell VALUES({g},825,1,0,0x00ff,0.100001),({g},34091,1,0,0x00ff,0.100001),({g},6603,1,0,0x00ff,0.100001);')
-            sql(f'INSERT INTO `{source}`.character_skills VALUES({g},149,1,75,0x0001,0.100001),({g},762,300,300,0x0002,0.100002),({g},171,375,450,0x0003,0.100003);')
+            sql(f'INSERT INTO `{source}`.character_spell VALUES({g},{legacy_spell},1,0,0x00ff,0.100001),({g},34091,1,0,0x00ff,0.100001),({g},6603,1,0,0x00ff,0.100001);')
+            sql(f'INSERT INTO `{source}`.character_skills VALUES({g},{legacy_skill},1,75,0x0001,0.100001),({g},762,300,300,0x0002,0.100002),({g},171,375,450,0x0003,0.100003);')
         sql(f"INSERT INTO `{source}`.item_instance(guid,itemEntry,owner_guid,enchantments) VALUES(101,10001,1,''),(102,10001,0,''),(103,10002,3,'');")
         sql(f'INSERT INTO `{source}`.character_inventory VALUES(1,0,23,101),(3,0,23,103);')
         sql(f"INSERT INTO `{source}`.mail(id,receiver,subject,body) VALUES(1,2,'retained mount','');")
@@ -127,7 +129,7 @@ backup_reference=disposable-obsolete-riding-fixture
             run('init','--label','obsolete-riding')
             session = work/'workspace/sessions'/json.loads((work/'workspace/current.json').read_text())['session']
             report = work/'blockers.tsv'
-            report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(f'{g}\t*\tAC_WOULD_DELETE_SPELL\t825\n' for g in range(1,6)))
+            report.write_text('guid\tspell\treason_code\tdetail\n'+''.join(f'{g}\t*\tAC_WOULD_DELETE_SPELL\t{legacy_spell}\n' for g in range(1,6)))
             result = run('inspect-migration-blockers','--report',str(report))
             inspection = Path(result.stdout.split('Reports: ',1)[1].strip()).name
             plan = ['plan','obsolete-riding','--migration-inspection',inspection]
@@ -135,10 +137,10 @@ backup_reference=disposable-obsolete-riding-fixture
                 control = run(*plan,'--preview')
                 control_review = json.loads(Path(control.stdout.split('Details: ',1)[1].strip()).read_text())
                 assert not control_review['selected'], control_review
-                plan.append('--native-invalid-items')
+                plan.append('--horse'if horse else'--native-invalid-items')
             preview = run(*plan,'--preview')
             review = json.loads(Path(preview.stdout.split('Details: ',1)[1].strip()).read_text())
-            assert review['selected'] == [[1,825,1,0],[2,825,1,0]], review
+            assert review['selected'] == [[1,legacy_spell,1,0],[2,legacy_spell,1,0]], review
             assert review['summary']['skill_rows_removed'] == 2
             assert {r[2] for r in review['excluded']} == {'DEFER_ITEM_REQUIRES_LEGACY_RIDING','DEFER_LEGACY_RIDING_ELIGIBLE','DEFER_PENDING_NATIVE_RESET'}
             assert not (session/'active-batch.json').exists() and checksum() == baseline
@@ -146,7 +148,7 @@ backup_reference=disposable-obsolete-riding-fixture
             run(*plan,'--expect-rows','2')
             package = session/'batches'/json.loads((session/'active-batch.json').read_text())['batch']
             manifest = json.loads((package/'manifest.json').read_text()); archive = manifest['archive_schema']; owned.append(archive)
-            assert manifest['policy'] == ('tc-obsolete-wolf-riding-native-invalid-items-v2' if invalid_items else 'tc-obsolete-wolf-riding-spell-skill-retirement-v1')
+            assert manifest['policy'] == ('tc-obsolete-horse-riding-native-invalid-items-v3'if horse else'tc-obsolete-wolf-riding-native-invalid-items-v2' if invalid_items else 'tc-obsolete-wolf-riding-spell-skill-retirement-v1')
             if invalid_items:
                 assert manifest['native_invalid_items_retained'] == 3
                 assert manifest['riding_items']['zero_template_counts'] == {'tc':0,'ac':0}
@@ -157,7 +159,7 @@ backup_reference=disposable-obsolete-riding-fixture
             assert checksum() == baseline
             sql(f"GRANT INSERT,DELETE ON `{source}`.character_skills TO '{writer}'@'%'")
             ack = "SET @talent_cleanup_ack='STOPPED_PREPARATION_COPY_ONLY'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;"
-            explicit = ("SET @obsolete_riding_ack='RETAIN_NATIVE_INVALID_ITEM_ROWS_CHECK_ALL_VALID_REQUIREMENTS';" if invalid_items
+            explicit = ("SET @obsolete_riding_ack='RETIRE_FORBIDDEN_HORSE_RIDING_PAIR_RETAIN_MODERN_RIDING';"if horse else "SET @obsolete_riding_ack='RETAIN_NATIVE_INVALID_ITEM_ROWS_CHECK_ALL_VALID_REQUIREMENTS';" if invalid_items
                         else "SET @obsolete_riding_ack='RETIRE_FORBIDDEN_WOLF_RIDING_PAIR_RETAIN_MODERN_RIDING';")
             def direct(extra=''):
                 return subprocess.run(['mysql',*options,'--user='+writer],input=ack+extra+f'CALL `{archive}`.apply_batch();',text=True,capture_output=True)
@@ -178,11 +180,11 @@ backup_reference=disposable-obsolete-riding-fixture
                     assert denied.returncode and checksum() == changed
                     sql(undo)
             for update,undo in (
-                (f'UPDATE `{world}`.item_template SET RequiredSkill=149 WHERE entry=10001',f'UPDATE `{world}`.item_template SET RequiredSkill=762 WHERE entry=10001'),
-                (f'UPDATE `{aworld}`.item_template SET requiredspell=825 WHERE entry=10001',f'UPDATE `{aworld}`.item_template SET requiredspell=0 WHERE entry=10001'),
-                (f'UPDATE `{source}`.character_skills SET custom_decimal=0.100009 WHERE guid=1 AND skill=149',f'UPDATE `{source}`.character_skills SET custom_decimal=0.100001 WHERE guid=1 AND skill=149'),
+                (f'UPDATE `{world}`.item_template SET RequiredSkill={legacy_skill} WHERE entry=10001',f'UPDATE `{world}`.item_template SET RequiredSkill=762 WHERE entry=10001'),
+                (f'UPDATE `{aworld}`.item_template SET requiredspell={legacy_spell} WHERE entry=10001',f'UPDATE `{aworld}`.item_template SET requiredspell=0 WHERE entry=10001'),
+                (f'UPDATE `{source}`.character_skills SET custom_decimal=0.100009 WHERE guid=1 AND skill={legacy_skill}',f'UPDATE `{source}`.character_skills SET custom_decimal=0.100001 WHERE guid=1 AND skill={legacy_skill}'),
                 (f'INSERT INTO `{source}`.mail_items VALUES(3,103,1)',f'DELETE FROM `{source}`.mail_items WHERE mail_id=3 AND item_guid=103'),
-                (f"INSERT INTO `{aworld}`.playercreateinfo_skills VALUES(0,0,149,0,'new route')",f'DELETE FROM `{aworld}`.playercreateinfo_skills'),
+                (f"INSERT INTO `{aworld}`.playercreateinfo_skills VALUES(0,0,{legacy_skill},0,'new route')",f'DELETE FROM `{aworld}`.playercreateinfo_skills'),
                 (f'UPDATE `{world}`.spell_dbc SET EffectRealPointsPerLevel1=0.2 WHERE Id=900099',f'UPDATE `{world}`.spell_dbc SET EffectRealPointsPerLevel1=0.1 WHERE Id=900099')):
                 sql(update); changed = checksum(); denied = direct(explicit)
                 assert denied.returncode != 0, update
@@ -202,7 +204,7 @@ backup_reference=disposable-obsolete-riding-fixture
                 time.sleep(.1)
             assert connection, 'Fixture did not reach atomic checkpoint'
             blocked = subprocess.run(['mysql',*options,'--user=root'],
-                input=f'SET SESSION innodb_lock_wait_timeout=1; UPDATE `{aworld}`.item_template SET requiredspell=825 WHERE entry=10001;',
+                input=f'SET SESSION innodb_lock_wait_timeout=1; UPDATE `{aworld}`.item_template SET requiredspell={legacy_spell} WHERE entry=10001;',
                 text=True,capture_output=True)
             assert blocked.returncode and ('1205' in blocked.stderr or '1213' in blocked.stderr), blocked.stderr
             sql('KILL CONNECTION '+connection); worker.communicate(timeout=10); assert worker.returncode != 0; worker = None
@@ -211,8 +213,8 @@ backup_reference=disposable-obsolete-riding-fixture
             retained = [t for t in tables if t not in (f'`{source}`.`character_spell`',f'`{source}`.`character_skills`')]
             retained_hash = sql('CHECKSUM TABLE '+','.join(retained)+' EXTENDED')
             run('apply'); run('apply'); assert 'APPLIED' in run('status').stdout
-            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid IN (1,2) AND spell=825') == '0'
-            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_skills WHERE guid IN (1,2) AND skill=149') == '0'
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid IN (1,2) AND spell={legacy_spell}') == '0'
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_skills WHERE guid IN (1,2) AND skill={legacy_skill}') == '0'
             assert sql(f'SELECT COUNT(*) FROM `{source}`.character_skills WHERE skill=762 AND value=300 AND max=300') == '5'
             assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE spell=34091 AND active=1 AND disabled=0') == '5'
             assert sql('CHECKSUM TABLE '+','.join(retained)+' EXTENDED') == retained_hash
@@ -221,7 +223,7 @@ backup_reference=disposable-obsolete-riding-fixture
             sql(f'UPDATE `{source}`.character_skills SET value=300 WHERE guid=1 AND skill=762')
             run('restore'); run('restore'); assert checksum() == baseline
             run('apply',code=2)
-        print('PASS obsolete riding MySQL '+('v2 native-invalid-items' if invalid_items else 'v1')+': full console preview/prepare/apply/status/restore; item and mail requirements in both worlds; missing grants; direct SQL acknowledgement and source/world/default drift; late failure and disconnected transaction rollback; concurrent item requirement write blocked; paired reruns and exact custom inverse; modern riding and all unrelated tables preserved; '+('invalid references/zero instances retained, zero-template and resolved-reference drift rejected. ' if invalid_items else '')+'Gameplay NOT TESTED.',flush=True)
+        print('PASS obsolete riding MySQL '+('v3 Horse'if horse else'v2 native-invalid-items' if invalid_items else 'v1')+': full console preview/prepare/apply/status/restore; item and mail requirements in both worlds; missing grants; direct SQL acknowledgement and source/world/default drift; late failure and disconnected transaction rollback; concurrent item requirement write blocked; paired reruns and exact custom inverse; modern riding and all unrelated tables preserved; '+('invalid references/zero instances retained, zero-template and resolved-reference drift rejected. ' if invalid_items else '')+'Gameplay NOT TESTED.',flush=True)
     finally:
         if worker is not None and worker.poll() is None: worker.terminate(); worker.wait()
         for schema in reversed(owned): sql(f'DROP DATABASE `{schema}`')

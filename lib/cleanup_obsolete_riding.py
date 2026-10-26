@@ -16,17 +16,20 @@ from spells import Unsupported
 
 POLICY = 'tc-obsolete-wolf-riding-spell-skill-retirement-v1'
 INVALID_ITEMS_POLICY = 'tc-obsolete-wolf-riding-native-invalid-items-v2'
-POLICIES = (POLICY, INVALID_ITEMS_POLICY)
+HORSE_POLICY='tc-obsolete-horse-riding-native-invalid-items-v3'
+HORSE_ACK='RETIRE_FORBIDDEN_HORSE_RIDING_PAIR_RETAIN_MODERN_RIDING'
+POLICIES = (POLICY, INVALID_ITEMS_POLICY,HORSE_POLICY)
 ACK = 'RETIRE_FORBIDDEN_WOLF_RIDING_PAIR_RETAIN_MODERN_RIDING'
 INVALID_ITEMS_ACK = 'RETAIN_NATIVE_INVALID_ITEM_ROWS_CHECK_ALL_VALID_REQUIREMENTS'
 CATALOG = ROOT/'lib/cleanup_obsolete_riding_catalog.json'
+HORSE_CATALOG=ROOT/'lib/cleanup_obsolete_horse_catalog.json'
 ITEM_CATALOG = ROOT/'lib/cleanup_obsolete_riding_item_catalog.json'
 RANKS = (33388, 33391, 34090, 34091)
 RETIRED_SPELL, RETIRED_SKILL = 825, 149
 
 
-def native_sources(paths, *, native_invalid_items=False):
-    rules = json.loads(CATALOG.read_text())
+def native_sources(paths, *, native_invalid_items=False,legacy_horse=False):
+    rules = json.loads((HORSE_CATALOG if legacy_horse else CATALOG).read_text())
     sources = rules['native_sources']
     if native_invalid_items:
         for core,files in json.loads(ITEM_CATALOG.read_text())['native_sources'].items():
@@ -59,8 +62,9 @@ def info(meta, skill, race, cls):
             and (not r[3] or r[3] & (1 << (cls-1)))]
 
 
-def contract(meta):
-    rules = json.loads(CATALOG.read_text())[meta.core]
+def contract(meta,*,legacy_horse=False):
+    retired_spell,retired_skill,teacher=(824,148,6743)if legacy_horse else(825,149,6746)
+    rules = json.loads((HORSE_CATALOG if legacy_horse else CATALOG).read_text())[meta.core]
     for key, expected in rules['spells'].items():
         spell = int(key)
         row = meta.spells.get(spell, [])
@@ -89,30 +93,37 @@ def contract(meta):
             return False
     # Only the exact absent teacher can recreate the old action; reject new
     # learn/requirement edges even when not reached by the current spellbook.
-    if (meta.skill_effect(825) != (149,1,1,75) or meta.learn_parents[825] != {6746}
-            or meta.learns[6746] != [(825,1,True)] or meta.effect_learns[6746] != [(825,1,True)]):
+    if (meta.skill_effect(retired_spell) != (retired_skill,1,1,75) or meta.learn_parents[retired_spell] != {teacher}
+            or meta.learns[teacher] != [(retired_spell,1,True)] or meta.effect_learns[teacher] != [(retired_spell,1,True)]):
         return False
     for spell, row in meta.spells.items():
-        if spell in (825,6746):
+        if spell in (retired_spell,teacher):
             continue
-        if any(row[71+i] in (44,118) and row[110+i] == 149 for i in range(3)):
+        if any(row[71+i] in (44,118) and row[110+i] == retired_skill for i in range(3)):
             return False
     return True
 
 
-def default_blocks(capture, race, cls):
+def default_blocks(capture, race, cls,skill=149):
     for world in capture.values():
         fields = [r[1] for r in world['layout']['columns']]
         for row in world['rows']['playercreateinfo_skills']:
             r = dict(zip(fields,row))
-            if (r['skill'] == 149 and (not r['raceMask'] or r['raceMask'] & (1 << (race-1)))
+            if (r['skill'] == skill and (not r['raceMask'] or r['raceMask'] & (1 << (race-1)))
                     and (not r['classMask'] or r['classMask'] & (1 << (cls-1)))):
                 return True
     return False
 
 
+def candidate_guids(state,*,legacy_horse=False):
+    characters={r[0] for r in state['characters']}
+    return sorted({r[0] for r in state['character_spell'] if r[1]==(824 if legacy_horse else RETIRED_SPELL) and r[0] in characters})
+
+
 def select(state, tc, ac, expected=None, *, preview=False, items, default_skills,
-           native_invalid_items=False, zero_template_counts=None):
+           native_invalid_items=False, zero_template_counts=None,legacy_horse=False):
+    retired_spell,retired_skill,teacher=(824,148,6743)if legacy_horse else(825,149,6746)
+    if legacy_horse and not native_invalid_items:fail('HORSE_ITEM_POLICY_REQUIRED','Horse policy requires full native-invalid item review')
     if native_invalid_items and zero_template_counts != {'tc':0,'ac':0}:
         fail('OBSOLETE_RIDING_ZERO_TEMPLATE', 'Native-invalid item policy requires verified absence of item template zero in both worlds')
     validate_stored(state['character_spell'])
@@ -144,10 +155,10 @@ def select(state, tc, ac, expected=None, *, preview=False, items, default_skills
                 or ac.stores['TalentTab'].get(rank[1],[0]*21)[20] != tab[20]
                 or k not in (0,1) or k >= c[5] or key in seen): invalid.add(g)
         seen.add(key)
-    safe = contract(tc) and contract(ac)
+    safe = contract(tc,legacy_horse=legacy_horse) and contract(ac,legacy_horse=legacy_horse)
     selected, excluded, proofs = [], [], []
     for g,c in sorted(chars.items()):
-        if 825 not in books[g]: continue
+        if retired_spell not in books[g]: continue
         book = books[g]; stored = skills[g].get(762); anchors = []
         inert = [(r,native_invalid_item(r)) for r in owned[g]] if native_invalid_items else []
         inert = [(r,kind) for r,kind in inert if kind]
@@ -160,8 +171,8 @@ def select(state, tc, ac, expected=None, *, preview=False, items, default_skills
             reason = 'DEFER_RIDING_CHARACTER_STATE'
         elif g in invalid: reason = 'DEFER_INVALID_TALENT_SELECTION'
         elif not safe: reason = 'DEFER_OBSOLETE_RIDING_NATIVE_CONTRACT'
-        elif any(info(m,149,c[1],c[2]) for m in (tc,ac)): reason = 'DEFER_LEGACY_RIDING_ELIGIBLE'
-        elif book[825] != (1,0) or skills[g].get(149) != (1,75): reason = 'DEFER_OBSOLETE_RIDING_PAIR_STATE'
+        elif any(info(m,retired_skill,c[1],c[2]) for m in (tc,ac)): reason = 'DEFER_LEGACY_RIDING_ELIGIBLE'
+        elif book[retired_spell] != (1,0) or skills[g].get(retired_skill) != (1,75): reason = 'DEFER_OBSOLETE_RIDING_PAIR_STATE'
         elif any(not info(m,762,c[1],c[2]) for m in (tc,ac)): reason = 'DEFER_MODERN_RIDING_ELIGIBILITY'
         elif (stored is None or stored[0] != stored[1] or stored[1] not in (75,150,225,300)):
             reason = 'DEFER_MODERN_RIDING_SKILL_STATE'
@@ -172,19 +183,19 @@ def select(state, tc, ac, expected=None, *, preview=False, items, default_skills
             anchors = [s for s in RANKS if book.get(s) == (1,0)
                        and tc.skill_effect(s) == ac.skill_effect(s) == (762,RANKS.index(s)+1,*stored)]
             if len(anchors) != 1: reason = 'DEFER_MODERN_RIDING_ANCHOR'
-            elif any(s in book for s in tc.learn_parents[825] | ac.learn_parents[825]):
+            elif any(s in book for s in tc.learn_parents[retired_spell] | ac.learn_parents[retired_spell]):
                 reason = 'DEFER_STORED_LEGACY_RIDING_TEACHER'
-            elif default_blocks(default_skills,c[1],c[2]): reason = 'DEFER_LEGACY_DEFAULT_SKILL_ROUTE'
+            elif default_blocks(default_skills,c[1],c[2],retired_skill): reason = 'DEFER_LEGACY_DEFAULT_SKILL_ROUTE'
             elif any(x is None for r in valid_items for x in r[2:]): reason = 'DEFER_UNKNOWN_ITEM_REQUIREMENT'
-            elif any(r[6] == 149 or r[8] == 825 or r[10] == 149 or r[12] == 825 for r in valid_items):
+            elif any(r[6] == retired_skill or r[8] == retired_spell or r[10] == retired_skill or r[12] == retired_spell for r in valid_items):
                 reason = 'DEFER_ITEM_REQUIRES_LEGACY_RIDING'
         if reason:
-            excluded.append((g,825,reason)); continue
-        selected.append((g,825,1,0))
-        proofs.append({'guid':g,'retired_spell':825,'retired_skill':[149,1,75],
+            excluded.append((g,retired_spell,reason)); continue
+        selected.append((g,retired_spell,1,0))
+        proofs.append({'guid':g,'retired_spell':retired_spell,'retired_skill':[retired_skill,1,75],
                        'retained_riding_skill':[762,*stored], 'retained_enabled_anchor':anchors[0],
                        'legacy_forbidden_both_cores':True,'owned_inventory_mail_items_checked':len(owned[g]),
-                       'teacher_6746_absent':True,'items_changed':0,'mounts_granted':0})
+                       ('teacher_'+str(teacher)+'_absent'):True,'items_changed':0,'mounts_granted':0})
         if native_invalid_items:
             proofs[-1].update(native_invalid_items_retained=[{'item_guid':r[1],'reason':kind} for r,kind in inert],
                              valid_items_checked=len(valid_items),zero_templates_absent_both_worlds=True)
@@ -196,7 +207,7 @@ def select(state, tc, ac, expected=None, *, preview=False, items, default_skills
         'skill_rows_changed':len(selected),'skill_rows_removed':len(selected),'spell_rows_inserted':0,
         'deferred_candidate_rows':len(excluded),'deferred':dict(Counter(r[2] for r in excluded)),
         'eligibility_proofs':proofs,
-        'native_policy':'Retire forbidden Wolf Riding 825 AND skill 149 together only with an existing enabled matching modern Riding 762 anchor; preserve modern riding, mounts/items, both builds, other skills/caps, profession slots and flags; defer unknown item requirements, legacy dependencies and pending resets; no grants'}
+        'native_policy':f'Retire forbidden {"Horse"if legacy_horse else"Wolf"} Riding {retired_spell} AND skill {retired_skill} together only with an existing enabled matching modern Riding 762 anchor; preserve modern riding, mounts/items, both builds, other skills/caps, profession slots and flags; defer unknown item requirements, legacy dependencies and pending resets; no grants'}
     if native_invalid_items:
         counts = Counter(x['reason'] for p in proofs for x in p['native_invalid_items_retained'])
         summary.update(native_invalid_item_rows_retained=sum(counts.values()),native_invalid_item_reasons=dict(counts))
@@ -234,7 +245,9 @@ def read_items(settings, guids, *, native_invalid_items=False):
         for table in tables: equipment_shape(meta,table,shapes[table])
         layouts[key] = {'schema':schema,'meta':dict(meta)}
     ids = ','.join(map(str,sorted(guids))) or '0'
-    fields,query = items_query(settings,f'l.guid IN ({ids})')
+    # Owner zero is real data (for example mail attachments), never a sentinel
+    # empty character roster. A zero-candidate preview must read no item rows.
+    fields,query = items_query(settings,f'l.guid IN ({ids})'if guids else'FALSE')
     rows = snapshot(settings,[('items', f"SELECT JSON_ARRAY({','.join(fields)}) row_value {query} ORDER BY l.guid,l.item LIMIT 400001")])['items']
     zero_counts = None
     if native_invalid_items:

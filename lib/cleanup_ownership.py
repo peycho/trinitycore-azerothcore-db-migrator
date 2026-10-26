@@ -23,7 +23,11 @@ AURA_ALIAS_POLICY = 'tc-unselected-reviewed-aura-alias-retirement-v4'
 AURA_ALIAS_ACK = 'UNSELECTED_REVIEWED_AURA_ALIASES_ONLY'
 REKEY_POLICY = 'tc-selected-known-passive-rank-rekey-v5'
 REKEY_ACK = 'ONLY_ALREADY_KNOWN_SELECTED_LOWER_PASSIVES'
-POLICIES = (POLICY, FOREIGN_POLICY, PREFIX_POLICY, AURA_ALIAS_POLICY, REKEY_POLICY)
+PENDING_POLICY='tc-pending-reset-selected-talent-authority-v6'
+PENDING_ACK='KEEP_PENDING_RESET_SELECTED_TALENTS_AUTHORITATIVE'
+OVERLEVEL_POLICY='tc-unselected-overlevel-talent-history-v7'
+OVERLEVEL_ACK='RETAIN_LEVEL_RETIRE_ISOLATED_UNSELECTED_TALENT_HISTORY'
+POLICIES = (POLICY, FOREIGN_POLICY, PREFIX_POLICY, AURA_ALIAS_POLICY, REKEY_POLICY,PENDING_POLICY,OVERLEVEL_POLICY)
 
 # Literal registration aliases of a single protected implementation. No alias
 # discovery, arbitrary constructor arguments or transitive script inference.
@@ -222,10 +226,10 @@ def passive_rekeys(meta, owned, book, nodes, candidates, cls, active):
 
 def select(state, meta, expected=None, *, preview=False, source_dir=None, foreign_class_families=False,
            native_passive_prefixes=False, reviewed_aura_aliases=False, native_passive_rekey=False,
-           selected_direct_passives=False, target=None):
+           selected_direct_passives=False, target=None,pending_ownership=False,overlevel_unselected=False):
     """Return deterministic old rows and proofs, never mutate source inputs."""
     stored = state['character_spell']
-    if sum((foreign_class_families,native_passive_prefixes,reviewed_aura_aliases,native_passive_rekey,selected_direct_passives)) > 1:
+    if sum((foreign_class_families,native_passive_prefixes,reviewed_aura_aliases,native_passive_rekey,selected_direct_passives,pending_ownership,overlevel_unselected)) > 1:
         fail('OWNERSHIP_POLICY_CONFLICT', 'Ownership extensions are separate policies')
     validate_stored(stored)
     if len(stored) > MAX_ROWS or not 1 <= len(state['characters']) <= 40000:
@@ -269,6 +273,8 @@ def select(state, meta, expected=None, *, preview=False, source_dir=None, foreig
     grouped, native_cache = defaultdict(list), {}
     relation_work = native_work = prefix_work = 0
     for g, s, a, d in stored:
+        if overlevel_unselected and not 81<=chars[g][3]<=255:continue
+        if pending_ownership and not chars[g][7]&4:continue
         for family in sorted(related[s]):
             relation_work += 1
             if relation_work > MAX_ROWS:
@@ -296,12 +302,14 @@ def select(state, meta, expected=None, *, preview=False, source_dir=None, foreig
         owned = sorted(choices[g, family])
         candidate_spells = {row[1] for row in candidates}
         foreign_mask = foreign_class_mask(meta,graph.families[family],c[2]) if c[2] in (1,2,3,4,5,6,7,8,9,11) else 0
-        if c[2] not in (1,2,3,4,5,6,7,8,9,11) or c[1] not in (1,2,3,4,5,6,7,8,10,11) or not 1 <= c[3] <= 80 or c[5] not in (1,2) or not 0 <= c[4] < c[5]:
+        if c[2] not in (1,2,3,4,5,6,7,8,9,11) or c[1] not in (1,2,3,4,5,6,7,8,10,11) or not (81<=c[3]<=255 if overlevel_unselected else 1<=c[3]<=80) or c[5] not in (1,2) or not 0 <= c[4] < c[5]:
             reason = 'DEFER_OWNERSHIP_CHARACTER_STATE'
         elif c[6]:
             reason = 'DEFER_ONLINE_CHARACTER'
-        elif c[7] & 4:
+        elif c[7] & 4 and not pending_ownership:
             reason = 'DEFER_PENDING_NATIVE_RESET'
+        elif overlevel_unselected and any(row[0]==g for row in state['character_talent']):
+            reason='DEFER_OVERLEVEL_SELECTED_TALENTS'
         elif g in invalid:
             reason = 'DEFER_INVALID_TALENT_SELECTION'
         elif any(len(related[s]) != 1 for s in nodes):
@@ -490,4 +498,10 @@ def select(state, meta, expected=None, *, preview=False, source_dir=None, foreig
         summary.update(rekeys=sorted(rekeys),spell_rows_rekeyed=len(result),
             enabled_rows_removed=0,disabled_rows_removed=0,
             native_policy='Rekey only enabled higher non-talent passive children to already-known lower ranks authorized by the active selected talent; exact reviewed native families only; both builds, flags, skills/caps, profession slots and unrelated state preserved; no higher grants or inserted/deleted rows')
+    if overlevel_unselected:
+        summary.update(character_levels_preserved=True,reset_executed=False)
+        summary['native_policy']+='; only level 81..255 with no selected talent rows in either group; retain exact level, skills and flags; native overlevel gameplay not certified'
+    if pending_ownership:
+        summary.update(pending_native_reset_preserved=True,reset_executed=False)
+        summary['native_policy']+='; pending-reset characters only; every selected build and login flag retained, no native reset or login executed'
     return result, sorted(excluded.values()), proof, summary, sorted(graph.edges)

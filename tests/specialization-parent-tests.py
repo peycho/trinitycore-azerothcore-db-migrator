@@ -35,6 +35,15 @@ class ParentTests(unittest.TestCase):
         self.assertTrue({9787,17041,3275}<=reverse.keys());self.assertNotIn(17040,reverse)
         self.assertEqual(select(self.state,self.tc,self.ac,3,equipment=self.equipment)[0],rows)
         with self.assertRaises(CleanupError):select(self.state,self.tc,self.ac,1,equipment=self.equipment)
+    def test_native_invalid_equipment_requires_explicit_parent_policy_and_checks_live_items(self):
+        self.equipment=[[1,15,101,101,0,None,None,None,None]]
+        self.assertFalse(self.review()[0])
+        rows,_,_,summary,_=select(self.state,self.tc,self.ac,preview=True,equipment=self.equipment,native_invalid_items=True,zero_template_counts={'tc':0,'ac':0})
+        self.assertEqual(len(rows),3);self.assertEqual(summary['spell_rows_inserted'],1)
+        self.assertEqual(summary['native_invalid_item_rows_retained'],1)
+        self.equipment.append([1,16,102,102,10002,10002,9788,10002,0])
+        self.assertFalse(select(self.state,self.tc,self.ac,preview=True,equipment=self.equipment,native_invalid_items=True,zero_template_counts={'tc':0,'ac':0})[0])
+
     def test_existing_parent_or_different_choice_or_flags_cannot_be_inferred(self):
         self.state['character_spell'].append([1,9787,0,0]);self.assertFalse(self.review()[0]);self.state['character_spell'].pop()
         for spell in (17039,17040,17041):

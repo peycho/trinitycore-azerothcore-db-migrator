@@ -3,6 +3,9 @@
 from cleanup_console import fail
 
 POLICY = 'tc-native-death-coil-base-repair-v3'
+PENDING_POLICY = 'tc-pending-reset-native-death-coil-v5'
+POLICIES=(POLICY,PENDING_POLICY)
+PENDING_ACK='RETAIN_PENDING_RESET_ALLOW_ONLY_NATIVE_DEATH_COIL_BASE'
 CHAIN = (47541,49892,49893,49894,49895)
 SKILL = 772
 ROLE = 'NATIVE_DEATH_COIL_BASE_ROUTE'

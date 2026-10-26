@@ -7,7 +7,7 @@ root=Path(__file__).resolve().parents[1]
 for core,prefix in ((tc,'trinitycore'),(ac,'azerothcore')):
  manifest=dict((n.strip().lstrip('*'),h)for h,n in(line.split(None,1)for line in
   (root/'compatibility/tc335-acwotlk-v2'/f'{prefix}-semantic.sha256').read_text().splitlines()))
- for name in ('src/server/game/Entities/Player/Player.cpp','src/server/game/Entities/Unit/Unit.h','src/server/game/Globals/ObjectMgr.cpp'):
+ for name in ('src/server/game/Entities/Player/Player.cpp','src/server/game/Entities/Unit/Unit.h','src/server/game/Globals/ObjectMgr.cpp','src/server/game/Spells/SpellEffects.cpp','src/server/game/DataStores/DBCStores.cpp'):
   assert hashlib.sha256((core/name).read_bytes()).hexdigest()==manifest[name],'Protected skill consumer differs'
 def body(s,marker):
  start=s.index('{',s.index(marker));end=start+1;depth=1
@@ -17,6 +17,13 @@ def body(s,marker):
 acplayer=(ac/'src/server/game/Entities/Player/Player.cpp').read_text();tcplayer=(tc/'src/server/game/Entities/Player/Player.cpp').read_text()
 assert 'GetTalentGroupsCount' not in body(tcplayer,'bool Player::AddSpell(')
 assert 'GetSpecsCount' not in body(acplayer,'bool Player::_addSpell(')
+# Passive LANGUAGE effect 39 itself is a protected unused handler; no
+# teaching/skill/aura side effect is hidden behind its native passive cast.
+for repo in(tc,ac):
+    effects=(repo/'src/server/game/Spells/SpellEffects.cpp').read_text()
+    assert re.search(r'&Spell::EffectUnused,\s*// 39 SPELL_EFFECT_LANGUAGE',effects)
+    unused=body(effects,'void Spell::EffectUnused(')
+    assert not any(name in unused for name in('SetSkill','LearnSpell','CastSpell','AddAura'))
 maximums=[]
 for core,kind,name in ((tc,'uint32','TcMax'),(ac,'uint16','AcMax')):
  unit=(core/'src/server/game/Entities/Unit/Unit.h').read_text()
@@ -35,13 +42,17 @@ mock=r'''
 using uint8=uint8_t;using uint16=uint16_t;using uint32=uint32_t;using int32=int32_t;
 constexpr uint32 SKILL_CATEGORY_ARMOR=8,SKILL_CATEGORY_LANGUAGES=10,SKILL_RUNEFORGING=776,SKILL_FIST_WEAPONS=473,SKILL_UNARMED=162,SKILL_LOCKPICKING=633,SKILL_FLAG_ALWAYS_MAX_VALUE=0x10,CLASS_DEATH_KNIGHT=6,CLASS_CONTEXT_SKILL=0,CONFIG_ALWAYS_MAXSKILL=0;
 enum SkillRangeType {SKILL_RANGE_NONE,SKILL_RANGE_LANGUAGE,SKILL_RANGE_LEVEL,SKILL_RANGE_MONO,SKILL_RANGE_RANK};
-struct SkillRaceClassInfoEntry {uint32 SkillID=183,Flags=1170,SkillTierID=0;};
+struct SkillRaceClassInfoEntry {uint32 SkillID=183,Flags=1170,SkillTierID=0,RaceMask=0,ClassMask=0;};
 struct SkillLineEntry {uint32 id,ID,categoryId,CategoryID;};
 struct SkillTiersEntry {uint16 Value[16]{};};
-struct SkillLines {SkillLineEntry generic{183,183,12,12},runeforging{776,776,7,7};SkillLineEntry const* LookupEntry(uint32 id)const {if(id==183)return &generic;if(id==776)return &runeforging;return nullptr;}}sSkillLineStore;
-struct Tiers {SkillTiersEntry const* LookupEntry(uint32)const{return nullptr;}}sSkillTiersStore;
+struct SkillLines {SkillLineEntry generic{183,183,12,12},runeforging{776,776,7,7};SkillLineEntry language{109,109,10,10};SkillLineEntry racial{754,754,9,9};SkillLineEntry const* LookupEntry(uint32 id)const {if(id==109)return &language;if(id==754)return &racial;if(id==183)return &generic;if(id==776)return &runeforging;return nullptr;}}sSkillLineStore;
+SkillTiersEntry languageTier{{300}};struct Tiers {SkillTiersEntry const* LookupEntry(uint32 id)const{return id==21?&languageTier:nullptr;}}sSkillTiersStore;
 SkillRaceClassInfoEntry generic{183,1170,0},runeforging{776,128,0};
-SkillRaceClassInfoEntry const* GetSkillRaceClassInfo(uint32 id,uint8,uint8){return id==183?&generic:id==776?&runeforging:nullptr;}
+SkillRaceClassInfoEntry languageInfo{109,160,21};SkillRaceClassInfoEntry racialInfo{754,1170,0};
+using SkillRaceClassInfoMap=std::multimap<uint32,SkillRaceClassInfoEntry const*>;
+using SkillRaceClassInfoBounds=std::pair<SkillRaceClassInfoMap::iterator,SkillRaceClassInfoMap::iterator>;
+SkillRaceClassInfoMap SkillRaceClassInfoBySkill{{183,&generic},{776,&runeforging},{754,&racialInfo},{109,&languageInfo}};
+SkillRaceClassInfoEntry const* GetSkillRaceClassInfo(uint32 id,uint8 race,uint8 cls);
 struct World {bool max=false;bool getBoolConfig(uint32)const{return max;}}world;World*sWorld=&world;
 #define LOG_DEBUG(...) ((void)0)
 #define TC_LOG_DEBUG(...) ((void)0)
@@ -64,7 +75,12 @@ struct Player {
  void TcAcquire(uint32 skill,uint32 method,uint32 high);void AcAcquire(uint32 skill,uint32 method,uint32 high);
 };
 '''
-methods='\n'.join(maximums)+'\nSkillRangeType AcRange(SkillRaceClassInfoEntry const* rcEntry)'+range_body+'\nSkillRangeType TcRange(SkillRaceClassInfoEntry const* rcEntry)'+tc_range_body+'\nvoid Player::TcDefault(uint32 skillId,uint16 rank)'+t.replace('GetSkillRangeType(','TcRange(')+'\nvoid Player::AcDefault(uint32 skillId,uint16 rank)'+a.replace('GetSkillRangeType(','AcRange(')
+lookups=''
+for repo,title in((tc,'TcLookup'),(ac,'AcLookup')):
+    lookup=body((repo/'src/server/game/DataStores/DBCStores.cpp').read_text(),'SkillRaceClassInfoEntry const* GetSkillRaceClassInfo(')
+    lookups+='\nSkillRaceClassInfoEntry const* '+title+'(uint32 skill,uint8 race,uint8 class_)'+lookup
+lookups+='\nSkillRaceClassInfoEntry const* GetSkillRaceClassInfo(uint32 skill,uint8 race,uint8 cls){auto left=TcLookup(skill,race,cls),right=AcLookup(skill,race,cls);assert(left==right);return left;}\n'
+methods=lookups+'\n'.join(maximums)+'\nSkillRangeType AcRange(SkillRaceClassInfoEntry const* rcEntry)'+range_body+'\nSkillRangeType TcRange(SkillRaceClassInfoEntry const* rcEntry)'+tc_range_body+'\nvoid Player::TcDefault(uint32 skillId,uint16 rank)'+t.replace('GetSkillRangeType(','TcRange(')+'\nvoid Player::AcDefault(uint32 skillId,uint16 rank)'+a.replace('GetSkillRangeType(','AcRange(')
 
 for source,name,callee in ((tcplayer,'TcAcquire','TcDefault'),(acplayer,'AcAcquire','AcDefault')):
     snippets=re.findall(r'if \(\(_spell_idx->second->AcquireMethod.*?\n\s*LearnDefaultSkill\(.*?;',source,re.S)
@@ -74,9 +90,20 @@ for source,name,callee in ((tcplayer,'TcAcquire','TcDefault'),(acplayer,'AcAcqui
 
 main=r'''
 int main(){
- for(bool always:{false,true})for(uint8 cls:{1,6,11})for(uint16 level:{1,70,80}){
+ languageInfo.RaceMask=1;languageInfo.ClassMask=1;
+ assert(GetSkillRaceClassInfo(109,1,1)==&languageInfo);
+ assert(!GetSkillRaceClassInfo(109,2,1)&&!GetSkillRaceClassInfo(109,1,2));
+ languageInfo.RaceMask=languageInfo.ClassMask=0;
+ assert(GetSkillRaceClassInfo(109,2,2)==&languageInfo);
+
+ for(bool always:{false,true})for(uint8 cls:{1,6,11})for(uint16 level:{1,70,80,200}){
   world.max=always;Player tc,ac;tc.cls=ac.cls=cls;tc.level=ac.level=level;tc.TcDefault(183,0);ac.AcDefault(183,0);
   assert((tc.skills[183]==std::pair<uint16,uint16>{uint16(level*5),uint16(level*5)}));assert(tc.skills==ac.skills);assert(tc.slots==2&&ac.slots==2);
+ }
+ for(uint32 flag:{146u,1170u})for(uint16 level:{1,7,14,26,80}){
+  racialInfo.Flags=flag;Player left,right;left.level=right.level=level;
+  left.TcDefault(754,0);right.AcDefault(754,0);
+  assert(left.skills==right.skills);assert((left.skills[754]==std::pair<uint16,uint16>{uint16(level*5),uint16(level*5)}));
  }
  Player tc,ac;tc.cls=ac.cls=6;tc.TcDefault(776,0);ac.AcDefault(776,0);assert((tc.skills[776]==std::pair<uint16,uint16>{1,1}));assert(tc.skills==ac.skills);
  for(uint8 groups:{1,2})for(uint8 active=0;active<groups;++active)for(uint32 skill:{183,776}){
@@ -97,8 +124,15 @@ int main(){
  assert((automatic.skills[776]==std::pair<uint16,uint16>{1,1}));
  Player defaultRune;defaultRune.TcAcquire(776,1,0);assert((defaultRune.skills[776]==std::pair<uint16,uint16>{1,1}));
  Player existing;existing.skills[183]={1,400};existing.TcAcquire(183,2,0);existing.AcAcquire(183,2,0);assert((existing.skills[183]==std::pair<uint16,uint16>{1,400}));
+ for(uint16 level:{1,80,200}){
+  languageInfo.SkillTierID=21;Player left,right;left.level=right.level=level;
+  left.TcAcquire(109,2,0);right.AcAcquire(109,2,0);assert(left.skills.empty()&&right.skills.empty());
+  left.TcDefault(109,1);right.AcDefault(109,1);assert(left.skills==right.skills);assert(left.skills.count(109)==1);
+  languageInfo.SkillTierID=0;Player nativeLeft,nativeRight;nativeLeft.TcAcquire(109,2,0);nativeRight.AcAcquire(109,2,0);
+  assert((nativeLeft.skills[109]==std::pair<uint16,uint16>{300,300}));assert(nativeLeft.skills==nativeRight.skills);
+ }
  Player noSkill;noSkill.AcDefault(999999,0);assert(noSkill.skills.empty());
- std::cout<<"PASS protected TC/AC default skill bodies: Generic creates level*5 at native maximums for levels 1/70/80; Runeforging creates 1/1; unknown skill no-op; profession slots unchanged; method 0/1 high 510 recipes preserve absent Runeforging, acquiring controls create 1/1\n";
+ std::cout<<"PASS protected TC/AC default skill bodies: Generic and reviewed always-max racial flags 146/1170 create level*5 at native maximums for levels 1/70/80/200; Runeforging creates 1/1; unknown skill no-op; profession slots unchanged; method 0/1 high 510 recipes preserve absent Runeforging, acquiring controls create 1/1\n";
 }
 '''
 with tempfile.TemporaryDirectory()as d:

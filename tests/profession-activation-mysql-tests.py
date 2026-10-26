@@ -224,6 +224,23 @@ backup_reference=dedicated-disposable-profession-activation-fixture
             run('restore');run('restore');assert checksum()==baseline
             run('apply',code=2)
             passed('committed rerun, only reviewed active flags updated; existing ranks/recipes, both builds, every skill/cap, professions, worlds and unrelated state preserved; guarded full custom inverse and restore rerun')
+            pending_plan=[*plan,'--pending-reset']
+            preview=run(*pending_plan,'--preview')
+            review=json.loads(Path(preview.stdout.split('Details: ',1)[1].strip()).read_text())
+            assert review['selected']==[[3,2108,0,0]],review
+            run(*pending_plan,'--expect-rows','1')
+            pending_package=session/'batches'/json.loads((session/'active-batch.json').read_text())['batch']
+            pm=json.loads((pending_package/'manifest.json').read_text());pa=pm['archive_schema'];owned.append(pa)
+            assert pm['policy']=='tc-pending-reset-ordinary-profession-activation-v2'
+            run('prepare');assert checksum()==baseline
+            sql(f"CREATE TRIGGER `{pa}`.fail_commit BEFORE UPDATE ON `{pa}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='pending-prof-late'; END IF; END")
+            assert 'pending-prof-late'in run('apply',code=2).stderr;assert checksum()==baseline
+            sql(f'DROP TRIGGER `{pa}`.fail_commit')
+            run('apply');run('apply')
+            assert sql(f'SELECT active FROM `{source}`.character_spell WHERE guid=3 AND spell=2108')=='1'
+            assert sql(f'SELECT at_login FROM `{source}`.characters WHERE guid=3')=='4'
+            run('restore');run('restore');assert checksum()==baseline
+            passed('pending profession activation retains reset, every skill/cap, recipes and both builds; late rollback, reruns and exact inverse')
         print(f'MySQL {version}: {len(checks)} profession activation check groups PASS; native gameplay NOT TESTED.',flush=True)
     finally:
         if worker is not None and worker.poll() is None:worker.terminate();worker.wait()

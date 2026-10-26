@@ -15,7 +15,7 @@ PARENT=9787
 CHOICE=17041
 
 
-def select(state,tc,ac,expected=None,*,preview=False,equipment):
+def select(state,tc,ac,expected=None,*,preview=False,equipment,native_invalid_items=False,zero_template_counts=None):
     validate_stored(state['character_spell'])
     if not 1<=len(state['characters'])<=40000 or sum(map(len,state.values()))>MAX_ROWS:
         fail('SPECIALIZATION_PARENT_BOUND','Captured source scope exceeds reviewed bounds')
@@ -28,7 +28,9 @@ def select(state,tc,ac,expected=None,*,preview=False,equipment):
     projected={**state,'character_spell':[r for r in state['character_spell']if not(r[0]in candidate_ids and r[1]==9788)]}
     projected['character_spell'] += [[g,PARENT,1,0]for g in candidates]
     projected['character_spell'].sort()
-    rows,excluded,_,_,_=base.select(projected,tc,ac,preview=True,equipment=equipment)
+    rows,excluded,_,_,_=base.select(projected,tc,ac,preview=True,equipment=equipment,
+        native_invalid_items=native_invalid_items,zero_template_counts=zero_template_counts)
+    valid_equipment,inert=base.equipment_policy(equipment,native_invalid_items,zero_template_counts)
     allowed={tuple(r[:2])for r in rows};reasons={(g,s):why for g,s,why in excluded}
     metadata_ok=all(base.contract(m,f)for m in (tc,ac)for f in ('smith','weapon'))
     selected,deferred,proofs=[],[],[]
@@ -45,9 +47,9 @@ def select(state,tc,ac,expected=None,*,preview=False,equipment):
         elif any(user in book for m in (tc,ac)for s in OLD for user in m.prerequisite_users[s]):
             reason='DEFER_SPECIALIZATION_DEPENDENT_RECIPE'
         elif any(any(x is None for x in r)or r[2]!=r[3]or r[4]!=r[5]or r[4]!=r[7]or not r[2]or not r[4]
-                 for r in equipment if r[0]==g):
+                 for r in valid_equipment if r[0]==g):
             reason='DEFER_UNKNOWN_EQUIPPED_ITEM_REQUIREMENT'
-        elif any(r[6]in OLD or r[8]in OLD for r in equipment if r[0]==g):
+        elif any(r[6]in OLD or r[8]in OLD for r in valid_equipment if r[0]==g):
             reason='DEFER_EQUIPPED_SPECIALIZATION_REQUIREMENT'
         if reason:
             deferred.extend((g,s,reason)for s in OLD if s in book);continue
@@ -66,4 +68,8 @@ def select(state,tc,ac,expected=None,*,preview=False,equipment):
         'deferred_candidate_rows':len(deferred),'deferred':dict(Counter(r[2]for r in deferred)),
         'eligibility_proofs':proofs,
         'native_policy':'Explicitly restore missing Weaponsmith 9787 from retained verified active Master Axesmith 17041, retire exact inactive 9788/17039/17040; stock spell columns required; preserve existing skills/caps, recipes, both builds, all items and flags; known-specialization eligibility changes; no native unlearn or skill effects executed'}
+    if native_invalid_items:
+        retained=[{'guid':r[0],'item_guid':r[2],'reason':kind}for r,kind in inert if kind and r[0]in {x[0]for x in selected}]
+        summary.update(native_invalid_item_rows_retained=len(retained),native_invalid_item_reasons=dict(Counter(r['reason']for r in retained)),native_invalid_items_retained=retained)
+        summary['native_policy']+='; retain verified native-invalid item rows unchanged, check every valid equipped item and defer unknown nonzero templates'
     return selected,deferred,[],summary,[]

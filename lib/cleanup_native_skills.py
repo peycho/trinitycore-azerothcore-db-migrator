@@ -13,12 +13,14 @@ from cleanup_trained_history import inspection
 from cleanup_migration_evidence import FIELDS
 from cleanup_plans import snapshot
 from spells import Unsupported, consumed_teacher_rule
+import cleanup_racial_skills as racial
 
 POLICY = 'tc-missing-native-skills-v1'
 GENERIC_POLICY = 'tc-native-generic-skills-v2'
 SWITCH_POLICY = 'tc-known-generic-switch-skill-v3'
 SWITCH_ACK = 'KNOWN_SWITCH_SKILL_ONLY'
-POLICIES = (POLICY, GENERIC_POLICY, SWITCH_POLICY)
+PENDING_POLICY = 'tc-pending-reset-known-generic-skill-v4'
+POLICIES = (POLICY, GENERIC_POLICY, SWITCH_POLICY, PENDING_POLICY, racial.POLICY)
 ANCHORS = {183:{2382:(25,60,0),63644:(162,0,0),63645:(162,0,0)},
            776:{53428:(47,0,0),53341:(53,3,0),53343:(53,3,0)}}
 NAMES = {'generic':183,'runeforging':776}
@@ -49,8 +51,27 @@ def generic_reward_contract(effective):
     return sorted(rewards)
 
 
-def select(state, effective, requested, normalize_generic=False, *, known_generic_switch=False):
+def pending_sources(paths):
+    """Pin native reset consumers; this policy never runs or completes a reset."""
+    result={}
+    name='src/server/game/Entities/Player/Player.cpp'
+    for core,prefix in (('tc','trinitycore'),('ac','azerothcore')):
+        manifest={n.strip():h for h,n in (line.split(None,1)for line in (PROFILE/(prefix+'-semantic.sha256')).read_text().splitlines())}
+        expected=manifest[name]
+        if sha(paths[core+'_source']/name)!=expected:
+            fail('PENDING_GENERIC_NATIVE_DRIFT','Native reset consumer differs: '+core)
+        result[core]={name:expected}
+    return result
+
+
+def select(state, effective, requested, normalize_generic=False, *, known_generic_switch=False,pending_generic=False,known_racials=False,target=None):
     """V1 inserts; v2 normalizes Generic; v3 relaxes only switch spec count."""
+    if known_racials:
+        if known_generic_switch or pending_generic or normalize_generic or requested!=['racial']or target is None:
+            fail('NATIVE_RACIAL_SCOPE','Known-racial policy requires only --skills racial and both catalogs')
+        return racial.select(state,effective,target)
+    if 'racial'in requested:fail('NATIVE_RACIAL_SCOPE','--skills racial requires --known-racials')
+    if pending_generic:known_generic_switch=True
     if known_generic_switch and (normalize_generic or requested!=['generic']):
         fail('NATIVE_SKILL_POLICY_SCOPE','Known-switch policy inserts absent Generic only; no normalization or other skills')
     chosen = {NAMES[name] for name in requested}
@@ -64,11 +85,13 @@ def select(state, effective, requested, normalize_generic=False, *, known_generi
     selected,excluded,proof = [],[],[]
     for guid,c in sorted(chars.items()):
         _,race,cls,level,active,groups,online,login = c
+        if pending_generic and not login&4:continue
         for skill in sorted(chosen):
             original = skills[guid].get(skill)
             if original is not None and (not normalize_generic or skill != 183 or original == (level*5,level*5)):
                 continue
             anchors = sorted(set(books[guid]) & (set(ANCHORS[skill]) | ({63680} if normalize_generic and skill == 183 else set())))
+            if pending_generic:anchors=[s for s in anchors if s==2382]
             if not anchors:
                 continue
             reason = ''
@@ -80,7 +103,7 @@ def select(state, effective, requested, normalize_generic=False, *, known_generi
                 reason='DEFER_ZERO_VALUE_NATIVE_SKILL'
             elif online:
                 reason='DEFER_ONLINE_CHARACTER'
-            elif login & 4:
+            elif login & 4 and not pending_generic:
                 reason='DEFER_PENDING_NATIVE_RESET'
             elif skill==776 and cls!=6:
                 reason='DEFER_FOREIGN_CLASS_SKILL'
@@ -149,6 +172,7 @@ def select(state, effective, requested, normalize_generic=False, *, known_generi
                     'active_talent_group':active,'spec_ownership_change':0,
                     'native_generic_reward_spells':generic_rewards,'sql_spell_rows_inserted':0}
                    if known_generic_switch else {}),
+                **({'pending_native_reset_preserved':True,'anchor_contract':'KNOWN_GENERIC_2382_PENDING_RESET','reset_executed':False}if pending_generic else {}),
                 'native_policy':'ALWAYS_MAX_LEVEL_TIMES_FIVE' if skill==183 else 'DEATH_KNIGHT_MONO_1_1'})
     return selected,excluded,proof
 
@@ -171,10 +195,13 @@ def skill_cells(rows):
 
 def plan_native_skills(settings,work,args,output):
     normalize_generic=getattr(args,'normalize_generic',False)
-    known_switch=getattr(args,'known_generic_switch',False)
-    if known_switch and (normalize_generic or args.skills!=['generic']):
+    known_racials=getattr(args,'known_racials',False)
+    pending_generic=getattr(args,'pending_generic',False)
+    known_switch=getattr(args,'known_generic_switch',False)or pending_generic or known_racials
+    native_reset_sources=pending_sources(settings.paths)if pending_generic else None
+    if known_switch and (normalize_generic or args.skills!=(['racial']if known_racials else ['generic'])):
         fail('NATIVE_SKILL_POLICY_SCOPE','--known-generic-switch is a separate insertion-only policy requiring --skills generic')
-    policy=SWITCH_POLICY if known_switch else GENERIC_POLICY if normalize_generic else POLICY
+    policy=racial.POLICY if known_racials else PENDING_POLICY if pending_generic else SWITCH_POLICY if known_switch else GENERIC_POLICY if normalize_generic else POLICY
     selector_reader=sha(ROOT/'lib/cleanup_native_skills.py') if known_switch else None
     numeric_reader=sha(ROOT/'lib/cleanup_active_reset.py') if known_switch else None
     world_reader=sha(ROOT/'lib/cleanup_eligibility.py') if known_switch else None
@@ -193,13 +220,20 @@ def plan_native_skills(settings,work,args,output):
     same_world=all(world[k]==captured_world[k] for k in ('layout','rows')) if known_switch else world==captured_world
     if not same_world or effective.hashes!=report['dbc_sha256']:
         fail('NATIVE_SKILL_METADATA_DRIFT','Effective TC world/DBC differs from the captured migration context')
-    selected,excluded,proof=select(context,effective,args.skills,normalize_generic,known_generic_switch=known_switch)
+    target=target_world=None
+    if known_racials:
+        from cleanup_eligibility import read_target
+        target,target_world=read_target(settings)
+        racial_native_sources=racial.native_sources(settings.paths)
+    selected,excluded,proof=select(context,effective,args.skills,normalize_generic,known_generic_switch=known_switch and not known_racials,pending_generic=pending_generic,known_racials=known_racials,target=target)
     prior=[(p['guid'],p['skill'],*p['original']) for p in proof if p['original']!='ABSENT']
     inserted=len(selected)-len(prior)
     summary={'inserted_rows':inserted,'normalized_rows':len(prior),'selected_rows':len(selected),'by_skill':dict(Counter(r[1] for r in selected)),
              'deferred':dict(Counter(r[2] for r in excluded)),'scope_characters':len(context['characters'])}
     if known_switch:
         summary['native_reward_policy']='Reviewed stock Generic actions may be restored at login; SQL inserts no spells and changes no spec ownership'
+    if known_racials:summary.update(native_racial_rewards='Explicitly restore verified stock racial abilities through native skill loading; no SQL spell insertion',pending_resets_preserved=True)
+    if pending_generic:summary.update(pending_native_reset_preserved=True,reset_executed=False,anchor_spell=2382)
     (work.operation/'native-skill-review.json').write_text(json.dumps({'summary':summary,'proofs':proof,'excluded':excluded},indent=2)+'\n')
     print('Native skill review (read-only): '+json.dumps(summary,sort_keys=True),flush=True)
     if args.preview:
@@ -301,6 +335,8 @@ def plan_native_skills(settings,work,args,output):
         fields=[r[1]for r in world['layout']['columns']if r[0]==table]
         hashed="SHA2(CONCAT_WS('|',"+','.join(f"IFNULL(HEX(`{f}`),'N')"for f in fields)+'),256)'
         checks.append(f" IF (SELECT COUNT(*) FROM `{settings.schemas['world']}`.`{table}`)<>{count} OR NOT ((SELECT SHA2(COALESCE(GROUP_CONCAT({hashed} ORDER BY BINARY {hashed} SEPARATOR ''),''),256) FROM `{settings.schemas['world']}`.`{table}`)<=>'{checksum}') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Native skill world input drift'; END IF;")
+    values['ALLOWED_SKILLS']='101,125,126,754'if known_racials else '183,776'
+    values['RESET_STATE_TEST']='0'if known_racials else '(c.at_login & 4)=0'if pending_generic else '(c.at_login & 4)<>0'
     values['WORLD_CHECKS']='\n'.join(checks)
     if known_switch:
         from cleanup_eligibility import world_checks
@@ -311,6 +347,12 @@ def plan_native_skills(settings,work,args,output):
                 or sha(ROOT/'lib/cleanup_active_reset.py')!=numeric_reader
                 or sha(ROOT/'lib/cleanup_eligibility.py')!=world_reader):
             fail('NATIVE_SWITCH_POLICY_DRIFT','Native switch-skill policy or exact numeric/world guards changed during planning')
+    if known_racials:
+        from cleanup_eligibility import read_target,world_checks
+        values['WORLD_CHECKS']=f"IF NOT (BINARY @native_racial_skills_ack <=> BINARY '{racial.ACK}') OR NOT (BINARY @eligibility_tc_all_spells <=> BINARY '0') OR NOT (BINARY @eligibility_ac_custom_spells <=> BINARY '0') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit native racial skill/reward acknowledgement required'; END IF;\n"+world_checks(settings.schemas['world'],world)+world_checks(settings.get('target','world'),target_world)
+        final_target,final_target_world=read_target(settings)
+        if final_target.hashes!=target.hashes or final_target_world!=target_world or racial.native_sources(settings.paths)!=racial_native_sources:
+            fail('NATIVE_RACIAL_METADATA_DRIFT','Racial target metadata or native consumers changed')
     final_effective,final_world=read_world(settings,exact_numeric=known_switch)
     if metadata(settings,TABLES)!=meta or final_world!=world or final_effective.hashes!=effective.hashes or sha(path/'SHA256SUMS')!=inspection_sha:
         fail('NATIVE_SKILL_METADATA_DRIFT','Source metadata or sealed context changed while planning')
@@ -327,6 +369,10 @@ def plan_native_skills(settings,work,args,output):
                         numeric_fingerprint='EXACT_FRACTIONAL_V1',numeric_reader_sha256=numeric_reader,
                         world_guard_reader_sha256=world_reader,
                         skill_policy='Insert absent Generic only from verified enabled known spells; switch buttons do not require two specs for native skill acquisition; no spec, talent, spell or existing skill changes')
+    if known_racials:
+        manifest.update(native_racial_ack=racial.ACK,racial_reader_sha256=sha(ROOT/'lib/cleanup_racial_skills.py'),racial_catalog_sha256=sha(racial.CATALOG),racial_native_sources=racial_native_sources,target_world_sha256=sha_json(target_world),target_dbc_sha256=target.hashes,skill_policy='Insert only verified absent native racial skills from existing legitimate known anchors; explicitly allow exact stock racial rewards at login; no SQL spell insertion or talent/skill/flag rewrite')
+    if pending_generic:
+        manifest.update(pending_native_sources=native_reset_sources,skill_policy='Insert absent Generic 183 only from enabled known 2382 while retaining pending native reset bit and all ownership, spells, other skills and character state; no login/reset executed')
     status=f"SELECT * FROM `{archive}`.batch;\nSELECT e.*,s.value current_value,s.max current_cap FROM `{archive}`.expected_skills e LEFT JOIN `{source}`.character_skills s ON s.guid=e.guid AND s.skill=e.skill ORDER BY e.guid,e.skill;\n"
     if normalize_generic:
         status=(f"SELECT * FROM `{archive}`.batch;\n"

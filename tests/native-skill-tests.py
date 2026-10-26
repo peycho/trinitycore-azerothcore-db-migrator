@@ -140,6 +140,27 @@ class NativeSkillsTests(unittest.TestCase):
             result=select(self.state,meta,['generic'],known_generic_switch=True)
             self.assertEqual(result[0],[],kind)
             self.assertIn((1,183,'DEFER_NATIVE_GENERIC_REWARD_CATALOG'),result[1])
+    def test_pending_generic_preserves_flags_ownership_and_excludes_other_anchors(self):
+        self.state['characters'][0][7]=36
+        self.state['character_spell'][0][1]=2382
+        self.state['character_talent']=[[1,12282,0]]
+        original=copy.deepcopy(self.state)
+        self.assertFalse(select(self.state,self.meta,['generic'],known_generic_switch=True)[0])
+        rows,excluded,proof=select(self.state,self.meta,['generic'],pending_generic=True)
+        self.assertEqual(rows,[(1,183,400,400)]);self.assertEqual(self.state,original)
+        self.assertTrue(proof[0]['pending_native_reset_preserved']);self.assertFalse(proof[0]['reset_executed'])
+        for spell in (63644,63645,63680,53428):
+            self.state['character_spell'][0][1]=spell
+            self.assertFalse(select(self.state,self.meta,['generic'],pending_generic=True)[0])
+        self.state=copy.deepcopy(original);self.state['characters'][0][7]=32
+        self.assertFalse(select(self.state,self.meta,['generic'],pending_generic=True)[0])
+        self.state=copy.deepcopy(original);self.state['characters'][0][6]=1
+        self.assertFalse(select(self.state,self.meta,['generic'],pending_generic=True)[0])
+        for requested,normalize in ((['runeforging'],False),(['generic'],True)):
+            with self.assertRaises(CleanupError):select(original,self.meta,requested,normalize,pending_generic=True)
+        args=parser().parse_args(['plan','native-skills','--skills','generic','--pending-generic','--preview'])
+        self.assertTrue(args.pending_generic)
+
     def test_explicit_skill_subset_and_deterministic_merging(self):
         self.state['character_spell'].append([1,63645,1,0])
         rows,_,proof=self.selected(['generic']);self.assertEqual(rows,[(1,183,400,400)])

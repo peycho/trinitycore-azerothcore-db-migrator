@@ -22,6 +22,9 @@ import cleanup_pet_teaching as pet_teaching
 import cleanup_inactive_legacy as inactive_legacy
 import cleanup_selected_passive as direct_passive
 import cleanup_shaman_dual_wield as shaman
+import cleanup_shaman_offhand as offhand_repair
+import cleanup_dual_spec_teacher as dual_teacher
+import cleanup_foreign_skills as foreign_skills
 import cleanup_obsolete_riding as riding
 import cleanup_skill_teaching as skill_teaching
 import cleanup_professions as professions
@@ -30,7 +33,7 @@ import cleanup_specialization_parent as specialization_parent
 
 POLICY = 'tc-disabled-unselected-direct-talent-history-v1'
 SCRIPT_POLICY = 'tc-disabled-reviewed-script-talent-history-v2'
-POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, ordinary_history.TRAINING_POLICY, death_coil.POLICY, *ownership.POLICIES, *eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *riding.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES)
+POLICIES = (POLICY, SCRIPT_POLICY, relations.POLICY, relations.ROUTE_POLICY, selected_history.POLICY, trained_history.POLICY, trained_history.CHILD_POLICY, trained_history.PENDING_POLICY, ordinary_history.POLICY, ordinary_history.INACTIVE_DEFAULT_POLICY, ordinary_history.PENDING_DEFAULT_POLICY, ordinary_history.TRAINING_POLICY, *death_coil.POLICIES, *ownership.POLICIES, *eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *offhand_repair.POLICIES, *dual_teacher.POLICIES, *foreign_skills.POLICIES, *riding.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES)
 MAX_GUIDS, MAX_SELECTED, MAX_PER_GUID = 40000, 500000, 10000
 WORLD = {'spell_ranks':['first_spell_id','spell_id','rank'],
          'spell_required':['spell_id','req_spell'],
@@ -138,8 +141,21 @@ def read_world(settings, *, exact_numeric=False):
 
 
 def check_metadata(settings, manifest):
-    from cleanup_native_skills import SWITCH_POLICY, SWITCH_ACK
-    if manifest.get('policy') == SWITCH_POLICY:
+    from cleanup_native_skills import SWITCH_POLICY, SWITCH_ACK, PENDING_POLICY, pending_sources
+    import cleanup_racial_skills as racial_skills
+    if manifest.get('policy')==racial_skills.POLICY:
+        target,target_world=eligibility.read_target(settings)
+        if manifest.get('native_racial_ack')!=racial_skills.ACK or sha(ROOT/'lib/cleanup_native_skills.py')!=manifest.get('native_skill_reader_sha256') or sha(ROOT/'lib/cleanup_racial_skills.py')!=manifest.get('racial_reader_sha256') or sha(racial_skills.CATALOG)!=manifest.get('racial_catalog_sha256') or racial_skills.native_sources(settings.paths)!=manifest.get('racial_native_sources') or sha_json(target_world)!=manifest.get('target_world_sha256') or target.hashes!=manifest.get('target_dbc_sha256') or manifest.get('numeric_fingerprint')!='EXACT_FRACTIONAL_V1' or sha(ROOT/'lib/cleanup_active_reset.py')!=manifest.get('numeric_reader_sha256') or sha(ROOT/'lib/cleanup_eligibility.py')!=manifest.get('world_guard_reader_sha256'):
+            fail('RACIAL_SKILL_POLICY_DRIFT','Native racial skill/metadata/consumer contract changed')
+    if manifest.get('policy')in(trained_history.PENDING_POLICY,death_coil.PENDING_POLICY,ordinary_history.PENDING_DEFAULT_POLICY):
+        if manifest.get('numeric_fingerprint')!='EXACT_FRACTIONAL_V1' or sha(ROOT/'lib/cleanup_active_reset.py')!=manifest.get('numeric_reader_sha256') or sha(ROOT/'lib/cleanup_eligibility.py')!=manifest.get('world_guard_reader_sha256'):
+            fail('PENDING_NUMERIC_POLICY_DRIFT','Pending repair exact numeric/world guards differ')
+    if manifest.get('policy')==trained_history.PENDING_POLICY:
+        if manifest.get('pending_history_ack')!=trained_history.PENDING_ACK or pending_sources(settings.paths)!=manifest.get('pending_native_sources') or sha(ROOT/'lib/cleanup_trained_history.py')!=manifest.get('pending_history_reader_sha256'):
+            fail('PENDING_HISTORY_POLICY_DRIFT','Pending-reset family policy or native consumers changed')
+    if manifest.get('policy')==PENDING_POLICY and pending_sources(settings.paths)!=manifest.get('pending_native_sources'):
+        fail('PENDING_GENERIC_NATIVE_DRIFT','Native reset consumers changed')
+    if manifest.get('policy') in (SWITCH_POLICY,PENDING_POLICY):
         if (manifest.get('native_switch_ack') != SWITCH_ACK
                 or manifest.get('numeric_fingerprint') != 'EXACT_FRACTIONAL_V1'
                 or sha(ROOT/'lib/cleanup_native_skills.py') != manifest.get('native_skill_reader_sha256')
@@ -154,7 +170,7 @@ def check_metadata(settings, manifest):
                 or sha(ROOT/'lib/cleanup_active_reset.py') != manifest.get('numeric_reader_sha256')
                 or ordinary_history.configuration_contract(settings,training_prerequisites=True) != manifest.get('configuration_contract')):
             fail('ORDINARY_TRAINING_POLICY_DRIFT','Ordinary training policy, guards, metadata reader or configuration differs; retain original toolkit')
-    if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *riding.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES):
+    if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *offhand_repair.POLICIES, *dual_teacher.POLICIES, *foreign_skills.POLICIES, *riding.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES):
         if (manifest.get('numeric_fingerprint') != 'EXACT_FRACTIONAL_V1'
                 or sha(ROOT/'lib/cleanup_active_reset.py') != manifest.get('numeric_reader_sha256')):
             fail('ELIGIBILITY_POLICY_DRIFT','Exact numeric fingerprint contract differs from this candidate')
@@ -162,6 +178,10 @@ def check_metadata(settings, manifest):
             fail('ELIGIBILITY_POLICY_DRIFT','Eligibility selector differs; retain the original toolkit for restoration')
         if eligibility.configuration_contract(settings) != manifest.get('configuration_contract'):
             fail('ELIGIBILITY_CONFIG_DRIFT','Eligibility configuration differs from the reviewed candidate')
+    if manifest.get('policy') == eligibility.ACTION_POLICY:
+        if (manifest.get('foreign_action_ack') != eligibility.ACTION_ACK
+                or sha(eligibility.ACTION_CATALOG) != manifest.get('foreign_action_catalog_sha256')):
+            fail('FOREIGN_ACTION_POLICY_DRIFT','Inactive foreign action contract changed; retain original toolkit')
     if manifest.get('policy') == eligibility.SWIPE_POLICY:
         if (manifest.get('swipe_ack') != eligibility.SWIPE_ACK
                 or sha(eligibility.SWIPE_CATALOG) != manifest.get('swipe_catalog_sha256')):
@@ -170,25 +190,33 @@ def check_metadata(settings, manifest):
         if (manifest.get('racial_ack') != eligibility.RACIAL_ACK
                 or sha(eligibility.RACIAL_CATALOG) != manifest.get('racial_catalog_sha256')):
             fail('RACIAL_POLICY_DRIFT','Reviewed racial acknowledgement or catalog changed; retain original toolkit')
+    if manifest.get('policy')==eligibility.CAST_SCRIPT_POLICY and manifest.get('cast_script_ack')!=eligibility.CAST_SCRIPT_ACK:
+        fail('CAST_SCRIPT_ACK_INVALID','Reviewed nonlearning cast callback acknowledgement differs')
     if manifest.get('policy') == eligibility.ABSENT_TEACHER_POLICY and manifest.get('absent_teacher_ack') != eligibility.ABSENT_TEACHER_ACK:
         fail('ABSENT_TEACHER_ACK_INVALID','Absent-teacher contract differs from the reviewed batch')
     if manifest.get('policy') in pet_teaching.POLICIES and sha(ROOT/'lib/cleanup_pet_teaching.py') != manifest.get('pet_teaching_reader_sha256'):
         fail('PET_TEACHING_POLICY_DRIFT','Pet-teaching selector differs; retain the original toolkit for restoration')
     if manifest.get('policy') in specializations.POLICIES:
-        parent_policy = manifest.get('policy') == specialization_parent.POLICY
+        parent_policy = manifest.get('policy') in specializations.PARENT_POLICIES
+        invalid_equipment = manifest.get('policy') in (specializations.INVALID_ITEMS_POLICY,specializations.PARENT_INVALID_ITEMS_POLICY)
+        if invalid_equipment and sha(specializations.ITEM_CATALOG)!=manifest.get('specialization_item_catalog_sha256'):
+            fail('SPECIALIZATION_ITEM_POLICY_DRIFT','Native invalid-item contract changed')
         if (manifest.get('specialization_ack') != (specialization_parent.ACK if parent_policy else specializations.ACK)
                 or sha(ROOT/'lib/cleanup_specializations.py') != manifest.get('specialization_reader_sha256')
                 or sha(specializations.CATALOG) != manifest.get('specialization_catalog_sha256')
                 or sha(ROOT/'lib/cleanup_professions.py') != manifest.get('profession_reader_sha256')
                 or sha(professions.CATALOG) != manifest.get('profession_catalog_sha256')):
             fail('SPECIALIZATION_POLICY_DRIFT','Specialization selector or fixed catalogs changed; retain original toolkit')
-        if specializations.native_sources(settings.paths) != manifest.get('specialization_native_sources'):
+        if specializations.native_sources(settings.paths,native_invalid_items=invalid_equipment) != manifest.get('specialization_native_sources'):
             fail('SPECIALIZATION_NATIVE_SOURCE_DRIFT','Native specialization/equipment consumers changed')
         if parent_policy and sha(ROOT/'lib/cleanup_specialization_parent.py') != manifest.get('specialization_parent_reader_sha256'):
             fail('SPECIALIZATION_PARENT_POLICY_DRIFT','Parent-specialization reader changed; retain original toolkit')
-        if specializations.read_equipment(settings,manifest['character_guids']) != manifest.get('specialization_equipment'):
+        if specializations.read_equipment(settings,manifest['character_guids'],native_invalid_items=invalid_equipment) != manifest.get('specialization_equipment'):
             fail('SPECIALIZATION_EQUIPMENT_DRIFT','Equipment or item requirement evidence changed')
-    if manifest.get('policy') == professions.POLICY:
+    if manifest.get('policy')==professions.PENDING_POLICY:
+        if manifest.get('pending_profession_ack')!=professions.PENDING_ACK or pending_sources(settings.paths)!=manifest.get('pending_native_sources'):
+            fail('PENDING_PROFESSION_POLICY_DRIFT','Pending profession repair or native reset consumers changed')
+    if manifest.get('policy') in professions.POLICIES:
         if (manifest.get('profession_activation_ack') != professions.ACK
                 or sha(ROOT/'lib/cleanup_professions.py') != manifest.get('profession_reader_sha256')
                 or sha(professions.CATALOG) != manifest.get('profession_catalog_sha256')):
@@ -199,12 +227,14 @@ def check_metadata(settings, manifest):
                 or sha(skill_teaching.CATALOG) != manifest.get('skill_teaching_catalog_sha256')):
             fail('SKILL_TEACHER_POLICY_DRIFT','Skill-teaching selector or fixed catalog differs; retain original toolkit')
     if manifest.get('policy') in riding.POLICIES:
-        invalid_items = manifest.get('policy') == riding.INVALID_ITEMS_POLICY
-        if (manifest.get('riding_ack') != (riding.INVALID_ITEMS_ACK if invalid_items else riding.ACK)
+        legacy_horse=manifest.get('policy')==riding.HORSE_POLICY
+        invalid_items = manifest.get('policy')in(riding.INVALID_ITEMS_POLICY,riding.HORSE_POLICY)
+        catalog=riding.HORSE_CATALOG if legacy_horse else riding.CATALOG
+        if (manifest.get('riding_ack') != (riding.HORSE_ACK if legacy_horse else riding.INVALID_ITEMS_ACK if invalid_items else riding.ACK)
                 or sha(ROOT/'lib/cleanup_obsolete_riding.py') != manifest.get('riding_reader_sha256')
-                or sha(riding.CATALOG) != manifest.get('riding_catalog_sha256')
+                or sha(catalog) != manifest.get('riding_catalog_sha256')
                 or sha(ROOT/'lib/cleanup_shaman_dual_wield.py') != manifest.get('starting_skill_reader_sha256')
-                or riding.native_sources(settings.paths,native_invalid_items=invalid_items) != manifest.get('riding_native_sources')
+                or riding.native_sources(settings.paths,native_invalid_items=invalid_items,legacy_horse=legacy_horse) != manifest.get('riding_native_sources')
                 or invalid_items and sha(riding.ITEM_CATALOG) != manifest.get('riding_item_catalog_sha256')):
             fail('OBSOLETE_RIDING_POLICY_DRIFT','Obsolete riding contract differs; retain the original toolkit')
         if riding.defaults(settings) != manifest.get('riding_default_skills'):
@@ -212,12 +242,25 @@ def check_metadata(settings, manifest):
         guids = manifest['character_guids']
         if riding.read_items(settings,guids,native_invalid_items=invalid_items) != manifest.get('riding_items'):
             fail('OBSOLETE_RIDING_ITEM_DRIFT','Owned/inventory/mail item requirements changed')
-    if manifest.get('policy') == shaman.POLICY:
-        if (manifest.get('shaman_ack') != shaman.ACK
+    if manifest.get('policy')in(*shaman.POLICIES,*offhand_repair.POLICIES):
+        offhand_mode=manifest['policy']==offhand_repair.POLICY
+        if offhand_mode and (sha(ROOT/'lib/cleanup_shaman_offhand.py')!=manifest.get('offhand_reader_sha256')or offhand_repair.native_sources(settings.paths)!=manifest.get('offhand_native_sources')):
+            fail('SHAMAN_OFFHAND_POLICY_DRIFT','Off-hand reconciliation selector/consumers changed')
+        if (manifest.get('shaman_ack') != (offhand_repair.ACK if offhand_mode else shaman.ACK)
                 or sha(ROOT/'lib/cleanup_shaman_dual_wield.py') != manifest.get('shaman_reader_sha256')):
             fail('SHAMAN_POLICY_DRIFT','Shaman coupled repair contract differs; retain original toolkit')
         if shaman.defaults(settings) != manifest.get('shaman_default_skills'):
             fail('SHAMAN_DEFAULT_DRIFT','Native starting-skill metadata changed')
+    if manifest.get('policy')in foreign_skills.POLICIES:
+        expected_ack=foreign_skills.policy_ack(manifest['policy'])
+        if manifest.get('foreign_skill_ack')!=expected_ack or foreign_skills.reader_hashes()!=manifest.get('foreign_skill_readers')or foreign_skills.native_sources(settings.paths)!=manifest.get('foreign_skill_sources'):
+            fail('FOREIGN_SKILL_POLICY_DRIFT','Foreign skill selector, dependencies or native consumers changed')
+        ids=manifest['character_guids']
+        if riding.read_items(settings,ids,native_invalid_items=True)!=manifest.get('foreign_skill_items')or (manifest['policy']!=foreign_skills.native_actions.POLICIES['forbidden-pairs-stowing'][0]and offhand_repair.read(settings,ids,equipment_slots=range(19))!=manifest.get('foreign_skill_equipment'))or shaman.defaults(settings)!=manifest.get('foreign_skill_defaults'):
+            fail('FOREIGN_SKILL_ITEM_DRIFT','Native defaults, inventory or owned item evidence changed')
+    if manifest.get('policy')==dual_teacher.POLICY:
+        if manifest.get('dual_teacher_ack')!=dual_teacher.ACK or sha(ROOT/'lib/cleanup_dual_spec_teacher.py')!=manifest.get('dual_reader_sha256')or pending_sources(settings.paths)!=manifest.get('dual_native_sources'):
+            fail('DUAL_TEACHER_POLICY_DRIFT','Unavailable dual-spec teacher policy or native consumer changed')
     if manifest.get('policy') == direct_passive.POLICY:
         if (manifest.get('direct_passive_ack') != direct_passive.ACK
                 or sha(ROOT/'lib/cleanup_selected_passive.py') != manifest.get('direct_passive_reader_sha256')
@@ -233,6 +276,12 @@ def check_metadata(settings, manifest):
             fail('COWER_NATIVE_CONTRACT_DRIFT','Native Cower contract differs from the reviewed batch')
     if manifest.get('policy') in ownership.POLICIES and sha(ROOT/'lib/cleanup_ownership.py') != manifest.get('ownership_reader_sha256'):
         fail('OWNERSHIP_POLICY_DRIFT','Ownership selection code differs from this reviewed batch; retain its original toolkit for restore')
+    if manifest.get('policy')==ownership.OVERLEVEL_POLICY:
+        if manifest.get('overlevel_ownership_ack')!=ownership.OVERLEVEL_ACK or sha(ROOT/'lib/cleanup_ownership.py')!=manifest.get('ownership_reader_sha256') or manifest.get('numeric_fingerprint')!='EXACT_FRACTIONAL_V1' or sha(ROOT/'lib/cleanup_active_reset.py')!=manifest.get('numeric_reader_sha256') or sha(ROOT/'lib/cleanup_eligibility.py')!=manifest.get('world_guard_reader_sha256'):
+            fail('OVERLEVEL_OWNERSHIP_POLICY_DRIFT','Overlevel unselected-history repair or native numeric readers changed')
+    if manifest.get('policy')==ownership.PENDING_POLICY:
+        if manifest.get('pending_ownership_ack')!=ownership.PENDING_ACK or pending_sources(settings.paths)!=manifest.get('pending_native_sources') or sha(ROOT/'lib/cleanup_ownership.py')!=manifest.get('ownership_reader_sha256') or manifest.get('numeric_fingerprint')!='EXACT_FRACTIONAL_V1' or sha(ROOT/'lib/cleanup_active_reset.py')!=manifest.get('numeric_reader_sha256') or sha(ROOT/'lib/cleanup_eligibility.py')!=manifest.get('world_guard_reader_sha256'):
+            fail('PENDING_OWNERSHIP_POLICY_DRIFT','Pending ownership repair or native/numeric consumers changed')
     if manifest.get('policy') == ownership.FOREIGN_POLICY:
         if (manifest.get('foreign_family_ack') != ownership.FOREIGN_ACK
                 or manifest.get('numeric_fingerprint') != 'EXACT_FRACTIONAL_V1'
@@ -257,10 +306,16 @@ def check_metadata(settings, manifest):
                 or sha(ROOT/'lib/cleanup_active_reset.py') != manifest.get('numeric_reader_sha256')
                 or sha(ROOT/'lib/cleanup_eligibility.py') != manifest.get('world_guard_reader_sha256')):
             fail('OWNERSHIP_ALIAS_POLICY_DRIFT','Aura-alias policy or exact numeric/world guards differ; retain original toolkit')
-    if manifest.get('policy') == ordinary_history.INACTIVE_DEFAULT_POLICY:
+    if manifest.get('policy')==ordinary_history.PENDING_DEFAULT_POLICY:
+        if manifest.get('pending_default_ack')!=ordinary_history.PENDING_DEFAULT_ACK or pending_sources(settings.paths)!=manifest.get('pending_native_sources') or sha(ROOT/'lib/cleanup_ordinary_history.py')!=manifest.get('pending_ordinary_reader_sha256'):
+            fail('PENDING_DEFAULT_POLICY_DRIFT','Pending ordinary default policy or native consumers changed')
+    if manifest.get('policy') in (ordinary_history.INACTIVE_DEFAULT_POLICY,ordinary_history.PENDING_DEFAULT_POLICY):
         if ordinary_history.configuration_contract(settings) != manifest.get('configuration_contract'):
             fail('ORDINARY_HISTORY_CONFIG_DRIFT','Configuration contract differs from the reviewed ordinary-history batch')
-    if manifest.get('policy') == death_coil.POLICY:
+    if manifest.get('policy')==death_coil.PENDING_POLICY:
+        if manifest.get('pending_death_coil_ack')!=death_coil.PENDING_ACK or pending_sources(settings.paths)!=manifest.get('pending_native_sources') or sha(ROOT/'lib/cleanup_ordinary_history.py')!=manifest.get('pending_ordinary_reader_sha256') or sha(ROOT/'lib/cleanup_death_coil.py')!=manifest.get('pending_death_coil_reader_sha256'):
+            fail('PENDING_DEATH_COIL_POLICY_DRIFT','Pending Death Coil policy or native consumers changed')
+    if manifest.get('policy') in death_coil.POLICIES:
         if death_coil.configuration_contract(settings) != manifest.get('configuration_contract'):
             fail('DEATH_COIL_CONFIG_DRIFT','Configuration contract differs from the reviewed Death Coil batch')
     settings.check_paths()
@@ -269,10 +324,10 @@ def check_metadata(settings, manifest):
     for key,entry in manifest.get('core_compatibility',{}).items():
         if settings.compatibility.get(key,{}).get('manifest_sha256') != entry.get('manifest_sha256'):
             fail('CORE_PROFILE_MISMATCH','Core compatibility manifests differ from the reviewed history batch')
-    effective, world = read_world(settings,exact_numeric=manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *riding.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES, ordinary_history.TRAINING_POLICY, ownership.FOREIGN_POLICY, ownership.PREFIX_POLICY, ownership.AURA_ALIAS_POLICY, ownership.REKEY_POLICY, SWITCH_POLICY))
+    effective, world = read_world(settings,exact_numeric=manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *offhand_repair.POLICIES, *dual_teacher.POLICIES, *foreign_skills.POLICIES, *riding.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES, ordinary_history.TRAINING_POLICY, ordinary_history.PENDING_DEFAULT_POLICY, trained_history.PENDING_POLICY, death_coil.PENDING_POLICY, ownership.FOREIGN_POLICY, ownership.PREFIX_POLICY, ownership.AURA_ALIAS_POLICY, ownership.REKEY_POLICY, ownership.PENDING_POLICY, ownership.OVERLEVEL_POLICY, SWITCH_POLICY, PENDING_POLICY, racial_skills.POLICY))
     if sha_json(world) != manifest.get('world_sha256') or effective.hashes != manifest.get('semantic_dbc_sha256'):
         fail('HISTORY_METADATA_DRIFT','Effective TC world/DBC metadata differs from this reviewed history batch')
-    if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *riding.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES):
+    if manifest.get('policy') in (*eligibility.POLICIES, *pet_teaching.POLICIES, *inactive_legacy.POLICIES, *direct_passive.POLICIES, *shaman.POLICIES, *offhand_repair.POLICIES, *dual_teacher.POLICIES, *foreign_skills.POLICIES, *riding.POLICIES, *skill_teaching.POLICIES, *professions.POLICIES, *specializations.POLICIES):
         target, captured = eligibility.read_target(settings)
         if sha_json(captured) != manifest.get('target_world_sha256') or target.hashes != manifest.get('target_dbc_sha256'):
             fail('ELIGIBILITY_TARGET_DRIFT','Effective AC world/DBC metadata differs from the reviewed candidate')
@@ -383,6 +438,20 @@ def aggregate(meta, table, database, scope, alias='s', *, exact_numeric=False, j
             f'WHERE {scope} GROUP BY {alias}.guid')
 
 
+def retirement_join(selected):
+    """Bound exact keys as a relation, avoiding thousands of per-row OR tests."""
+    pairs=[list(row[:2]) for row in selected]
+    if (not 1<=len(pairs)<=MAX_SELECTED or len({tuple(p) for p in pairs})!=len(pairs)
+            or any(len(p)!=2 or any(type(v)is not int or not 1<=v<=0xffffffff for v in p) for p in pairs)):
+        fail('HISTORY_SELECTION_INVALID','Retirement projection needs distinct native character/spell keys')
+    keys=json.dumps(pairs,separators=(',',':'))
+    # DISTINCT prevents derived-table merging. Without materialization MySQL
+    # estimates JSON_TABLE at two rows and scans every key for every source row.
+    return (f"LEFT JOIN (SELECT DISTINCT k.guid,k.spell FROM JSON_TABLE('{keys}','$[*]' COLUMNS("
+            "guid INT UNSIGNED PATH '$[0]',spell INT UNSIGNED PATH '$[1]')) k) retired "
+            'ON retired.guid=s.guid AND retired.spell=s.spell')
+
+
 def enabled_ids_query(source):
     return (f'SELECT JSON_ARRAY(spell) row_value FROM (SELECT DISTINCT spell FROM `{source}`.character_spell '
             'WHERE disabled=0) enabled_spells ORDER BY spell')
@@ -415,43 +484,67 @@ def check_sets(meta, source, archive, counts, changed_table='character_spell', *
 
 
 def plan_history(settings, work, args, output):
+    foreign_skill_mode=getattr(args,'foreign_skill_families',False)
+    foreign_training=foreign_skill_mode and getattr(args,'absent_training_actions',False)
+    native_action=getattr(args,'native_action',None)
+    foreign_inventory_mode=native_action=='forbidden-pairs-stowing'
     riding_mode = getattr(args,'obsolete_riding',False)
-    riding_invalid_items = riding_mode and getattr(args,'native_invalid_items',False)
+    riding_horse=riding_mode and getattr(args,'horse',False)
+    riding_invalid_items = riding_mode and(getattr(args,'native_invalid_items',False)or riding_horse)
+    riding_catalog_file=riding.HORSE_CATALOG if riding_horse else riding.CATALOG
     riding_reader = sha(ROOT/'lib/cleanup_obsolete_riding.py') if riding_mode else None
-    riding_catalog = sha(riding.CATALOG) if riding_mode else None
+    riding_catalog = sha(riding_catalog_file) if riding_mode else None
     riding_item_catalog = sha(riding.ITEM_CATALOG) if riding_invalid_items else None
     specialization_mode = getattr(args,'specialization_retirement',False)
     parent_mode = specialization_mode and getattr(args,'parent_specialization',False)
+    invalid_equipment = specialization_mode and getattr(args,'native_invalid_items',False)
     parent_reader = sha(ROOT/'lib/cleanup_specialization_parent.py') if parent_mode else None
     specialization_reader = sha(ROOT/'lib/cleanup_specializations.py') if specialization_mode else None
     specialization_catalog = sha(specializations.CATALOG) if specialization_mode else None
     profession_mode = getattr(args,'profession_activation',False)
+    pending_professions=profession_mode and getattr(args,'pending_reset',False)
+    if pending_professions:
+        from cleanup_native_skills import pending_sources
+        pending_native_sources=pending_sources(settings.paths)
     profession_reader = sha(ROOT/'lib/cleanup_professions.py') if profession_mode or specialization_mode else None
     profession_catalog = sha(professions.CATALOG) if profession_mode or specialization_mode else None
     skill_teaching_mode = getattr(args,'skill_teaching',False)
     teaching_reader = sha(ROOT/'lib/cleanup_skill_teaching.py') if skill_teaching_mode else None
     teaching_catalog = sha(skill_teaching.CATALOG) if skill_teaching_mode else None
-    shaman_mode = getattr(args,'unselected_shaman_dual_wield',False)
+    dual_mode=getattr(args,'dual_spec_teacher',False)
+    if dual_mode:
+        from cleanup_native_skills import pending_sources
+        dual_sources=pending_sources(settings.paths)
+    offhand_mode=getattr(args,'reconcile_shaman_offhand',False)
+    shaman_mode = getattr(args,'unselected_shaman_dual_wield',False)or offhand_mode
     shaman_reader = sha(ROOT/'lib/cleanup_shaman_dual_wield.py') if shaman_mode else None
     direct_mode = getattr(args,'selected_direct_passives',False)
     direct_reader = sha(ROOT/'lib/cleanup_selected_passive.py') if direct_mode else None
     direct_ownership_reader = sha(ROOT/'lib/cleanup_ownership.py') if direct_mode else None
     pet_mode = getattr(args,'pet_teaching',False)
     legacy_mode = getattr(args,'inactive_legacy',False)
-    two_world_mode = getattr(args,'spell_eligibility',False) or pet_mode or legacy_mode or direct_mode or shaman_mode or skill_teaching_mode or profession_mode or specialization_mode or riding_mode
+    two_world_mode = getattr(args,'spell_eligibility',False) or pet_mode or legacy_mode or direct_mode or shaman_mode or dual_mode or foreign_skill_mode or skill_teaching_mode or profession_mode or specialization_mode or riding_mode
     legacy_reader = sha(ROOT/'lib/cleanup_inactive_legacy.py') if legacy_mode else None
     pet_reader = sha(ROOT/'lib/cleanup_pet_teaching.py') if pet_mode else None
     reviewed_cower = pet_mode and getattr(args,'reviewed_cower',False)
+    cast_script_mode=getattr(args,'spell_eligibility',False)and getattr(args,'reviewed_cast_scripts',False)
     absent_teachers = getattr(args,'spell_eligibility',False) and getattr(args,'absent_teachers',False)
+    action_mode = getattr(args,'spell_eligibility',False) and getattr(args,'inactive_foreign_actions',False)
+    action_catalog = sha(eligibility.ACTION_CATALOG) if action_mode else None
     swipe_mode = getattr(args,'spell_eligibility',False) and getattr(args,'inactive_foreign_swipes',False)
     swipe_catalog = sha(eligibility.SWIPE_CATALOG) if swipe_mode else None
     racial_mode = getattr(args,'spell_eligibility',False) and getattr(args,'reviewed_racials',False)
     racial_catalog = sha(eligibility.RACIAL_CATALOG) if racial_mode else None
     cower_proof = pet_teaching.cower_sources(settings.paths) if reviewed_cower else None
-    native_selector = riding if riding_mode else specialization_parent if parent_mode else specializations if specialization_mode else professions if profession_mode else skill_teaching if skill_teaching_mode else shaman if shaman_mode else direct_passive if direct_mode else inactive_legacy if legacy_mode else pet_teaching if pet_mode else eligibility
+    native_selector = foreign_skills if foreign_skill_mode else dual_teacher if dual_mode else riding if riding_mode else specialization_parent if parent_mode else specializations if specialization_mode else professions if profession_mode else skill_teaching if skill_teaching_mode else offhand_repair if offhand_mode else shaman if shaman_mode else direct_passive if direct_mode else inactive_legacy if legacy_mode else pet_teaching if pet_mode else eligibility
     eligibility_reader = sha(ROOT/'lib/cleanup_eligibility.py') if two_world_mode else None
     ownership_mode = getattr(args,'talent_ownership',False) and not (direct_mode or shaman_mode)
     ownership_reader = sha(ROOT/'lib/cleanup_ownership.py') if ownership_mode else None
+    overlevel_unselected=ownership_mode and getattr(args,'unselected_overlevel_talents',False)
+    pending_ownership = ownership_mode and getattr(args,'pending_reset_ownership',False)
+    if pending_ownership:
+        from cleanup_native_skills import pending_sources
+        pending_native_sources=pending_sources(settings.paths)
     foreign_mode = ownership_mode and getattr(args,'foreign_class_families',False)
     prefix_mode = ownership_mode and getattr(args,'native_passive_prefixes',False)
     alias_mode = ownership_mode and getattr(args,'reviewed_aura_aliases',False)
@@ -463,12 +556,25 @@ def plan_history(settings, work, args, output):
     if sum((prefix_mode,foreign_mode,alias_mode,rekey_mode)) > 1:
         fail('HISTORY_POLICY_CONFLICT','Ownership extensions are separate policies')
     trained_mode = bool(getattr(args,'migration_inspection',None))
-    child_mode = getattr(args,'orphaned_talent_children',False)
+    pending_history = getattr(args,'pending_reset_history',False)
+    child_mode = getattr(args,'orphaned_talent_children',False)or pending_history
+    if pending_history and getattr(args,'orphaned_talent_children',False):fail('HISTORY_POLICY_CONFLICT','Choose one whole-family history policy')
+    if pending_history:
+        from cleanup_native_skills import pending_sources
+        pending_native_sources=pending_sources(settings.paths)
     ordinary_mode = getattr(args,'ordinary_spell_history',False)
-    inactive_defaults = getattr(args,'inactive_custom_defaults',False)
-    native_death_coil = getattr(args,'native_death_coil',False)
+    pending_defaults=getattr(args,'pending_inactive_defaults',False)
+    if pending_defaults:
+        from cleanup_native_skills import pending_sources
+        pending_native_sources=pending_sources(settings.paths)
+    inactive_defaults = getattr(args,'inactive_custom_defaults',False)or pending_defaults
+    pending_death_coil = getattr(args,'pending_native_death_coil',False)
+    native_death_coil = getattr(args,'native_death_coil',False)or pending_death_coil
+    if pending_death_coil:
+        from cleanup_native_skills import pending_sources
+        pending_native_sources=pending_sources(settings.paths)
     training_prerequisites = getattr(args,'training_prerequisites',False)
-    strong_history_mode = training_prerequisites or foreign_mode or prefix_mode or alias_mode or rekey_mode
+    strong_history_mode = training_prerequisites or foreign_mode or prefix_mode or alias_mode or rekey_mode or pending_ownership or overlevel_unselected or pending_history or pending_death_coil or pending_defaults
     exact_mode = two_world_mode or strong_history_mode
     ordinary_reader = sha(ROOT/'lib/cleanup_ordinary_history.py') if training_prerequisites else None
     world_guard_reader = sha(ROOT/'lib/cleanup_eligibility.py') if strong_history_mode else None
@@ -522,16 +628,16 @@ def plan_history(settings, work, args, output):
     include_scripts = getattr(args,'include_reviewed_scripts',False) or include_relations or selected_mode
     policy = trained_history.POLICY if trained_mode else selected_history.POLICY if selected_mode else relations.ROUTE_POLICY if include_routes else relations.POLICY if include_relations else SCRIPT_POLICY if include_scripts else POLICY
     if child_mode:
-        policy = trained_history.CHILD_POLICY
+        policy = trained_history.PENDING_POLICY if pending_history else trained_history.CHILD_POLICY
     if ordinary_mode:
-        policy = (ordinary_history.TRAINING_POLICY if training_prerequisites else death_coil.POLICY if native_death_coil else
+        policy = (ordinary_history.PENDING_DEFAULT_POLICY if pending_defaults else ordinary_history.TRAINING_POLICY if training_prerequisites else death_coil.PENDING_POLICY if pending_death_coil else death_coil.POLICY if native_death_coil else
                   ordinary_history.INACTIVE_DEFAULT_POLICY if inactive_defaults else ordinary_history.POLICY)
     if ownership_mode:
-        policy = ownership.REKEY_POLICY if rekey_mode else ownership.AURA_ALIAS_POLICY if alias_mode else ownership.PREFIX_POLICY if prefix_mode else ownership.FOREIGN_POLICY if foreign_mode else ownership.POLICY
+        policy = ownership.OVERLEVEL_POLICY if overlevel_unselected else ownership.PENDING_POLICY if pending_ownership else ownership.REKEY_POLICY if rekey_mode else ownership.AURA_ALIAS_POLICY if alias_mode else ownership.PREFIX_POLICY if prefix_mode else ownership.FOREIGN_POLICY if foreign_mode else ownership.POLICY
     if two_world_mode:
-        policy = (riding.INVALID_ITEMS_POLICY if riding_invalid_items else pet_teaching.COWER_POLICY if reviewed_cower else
+        policy = (foreign_skills.native_actions.POLICIES[native_action][0]if native_action else foreign_skills.TRAINING_POLICY if foreign_training else professions.PENDING_POLICY if pending_professions else specializations.PARENT_INVALID_ITEMS_POLICY if parent_mode and invalid_equipment else specializations.INVALID_ITEMS_POLICY if invalid_equipment else riding.HORSE_POLICY if riding_horse else riding.INVALID_ITEMS_POLICY if riding_invalid_items else pet_teaching.COWER_POLICY if reviewed_cower else
                   eligibility.ABSENT_TEACHER_POLICY if absent_teachers else
-                  eligibility.RACIAL_POLICY if racial_mode else eligibility.SWIPE_POLICY if swipe_mode else native_selector.POLICY)
+                  eligibility.CAST_SCRIPT_POLICY if cast_script_mode else eligibility.RACIAL_POLICY if racial_mode else eligibility.SWIPE_POLICY if swipe_mode else eligibility.ACTION_POLICY if action_mode else native_selector.POLICY)
         print('Capturing effective AC world/DBC eligibility inputs (read-only)',flush=True)
         target_effective, target_world = eligibility.read_target(settings)
     relation_rows,relation_proof,relation_summary,relation_edges = [],[],{},[]
@@ -541,28 +647,39 @@ def plan_history(settings, work, args, output):
     ownership_native_proofs = []
     rekeys = []
     if specialization_mode:
-        specialization_native_sources = specializations.native_sources(settings.paths)
-        equipment = specializations.read_equipment(settings,[r[0] for r in context['characters']])
+        specialization_native_sources = specializations.native_sources(settings.paths,native_invalid_items=invalid_equipment)
+        equipment = specializations.read_equipment(settings,[r[0] for r in context['characters']],native_invalid_items=invalid_equipment)
+    if foreign_skill_mode:
+        foreign_scope=foreign_skills.scope(context,effective,target_effective,training_actions=foreign_training,native_action=native_action)
+        foreign_items=riding.read_items(settings,foreign_scope,native_invalid_items=True)
+        foreign_equipment=offhand_repair.read(settings,foreign_scope,equipment_slots=range(19))
+        foreign_defaults=shaman.defaults(settings)
+        foreign_sources=foreign_skills.native_sources(settings.paths)
+        foreign_readers=foreign_skills.reader_hashes()
     if riding_mode:
-        riding_sources = riding.native_sources(settings.paths,native_invalid_items=riding_invalid_items)
-        riding_items = riding.read_items(settings,[r[0] for r in context['characters']],native_invalid_items=riding_invalid_items)
+        riding_sources = riding.native_sources(settings.paths,native_invalid_items=riding_invalid_items,legacy_horse=riding_horse)
+        riding_scope = riding.candidate_guids(context,legacy_horse=riding_horse)
+        riding_items = riding.read_items(settings,riding_scope,native_invalid_items=riding_invalid_items)
         riding_defaults = riding.defaults(settings)
     if shaman_mode:
         inventory_meta, offhand_rows = shaman.inventory(settings,context)
         default_skills = shaman.defaults(settings)
+        if offhand_mode:
+            offhand_sources=offhand_repair.native_sources(settings.paths)
+            offhand_capture=offhand_repair.read(settings,offhand_repair.candidate_guids(context))
     if trained_mode:
         check_retained_scripts(state,effective)
         relation_rows=context['character_spell']
         if two_world_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=native_selector.select(
                 context,effective,target_effective,args.expect_review_rows,preview=preview,
-                **({'items':riding_items['rows'],'default_skills':riding_defaults,'native_invalid_items':riding_invalid_items,
-                    'zero_template_counts':riding_items.get('zero_template_counts')} if riding_mode else {'equipment':equipment['rows']} if specialization_mode else {'offhand':{r[0] for r in offhand_rows},'default_skills':default_skills} if shaman_mode else {'reviewed_cower':True} if reviewed_cower else {'absent_teachers':True} if absent_teachers else {'reviewed_racials':True} if racial_mode else {'inactive_foreign_swipes':True} if swipe_mode else {}))
+                **({'items':foreign_items,'equipment':foreign_equipment,'default_skills':foreign_defaults,'training_actions':foreign_training,'native_action':native_action}if foreign_skill_mode else {'items':riding_items['rows'],'default_skills':riding_defaults,'native_invalid_items':riding_invalid_items,
+                    'zero_template_counts':riding_items.get('zero_template_counts'),'legacy_horse':riding_horse} if riding_mode else {'pending_reset':pending_professions} if profession_mode else {'equipment':equipment['rows'],'native_invalid_items':invalid_equipment,'zero_template_counts':equipment.get('zero_template_counts')} if specialization_mode else {'capture':offhand_capture,'default_skills':default_skills} if offhand_mode else {'offhand':{r[0] for r in offhand_rows},'default_skills':default_skills} if shaman_mode else {'reviewed_cower':True} if reviewed_cower else {'reviewed_cast_scripts':True}if cast_script_mode else {'absent_teachers':True} if absent_teachers else {'reviewed_racials':True} if racial_mode else {'inactive_foreign_swipes':True} if swipe_mode else {'inactive_foreign_actions':True} if action_mode else {}))
             eligibility_proofs = relation_summary.pop('eligibility_proofs')
         elif ownership_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ownership.select(
                 context,effective,args.expect_review_rows,preview=preview,source_dir=settings.paths['tc_source'],
-                foreign_class_families=foreign_mode,native_passive_prefixes=prefix_mode,reviewed_aura_aliases=alias_mode,native_passive_rekey=rekey_mode)
+                foreign_class_families=foreign_mode,native_passive_prefixes=prefix_mode,reviewed_aura_aliases=alias_mode,native_passive_rekey=rekey_mode,pending_ownership=pending_ownership,overlevel_unselected=overlevel_unselected)
             ownership_native_proofs = relation_summary.pop('native_owner_proofs')
             rekeys = relation_summary.pop('rekeys',[])
             if rekey_mode:
@@ -570,15 +687,15 @@ def plan_history(settings, work, args, output):
         elif ordinary_mode:
             selected,excluded,relation_proof,relation_summary,relation_edges=ordinary_history.select(
                 context,effective,args.expect_review_rows,preview=preview,inactive_custom_defaults=inactive_defaults,
-                native_death_coil=native_death_coil,training_prerequisites=training_prerequisites)
+                native_death_coil=native_death_coil,training_prerequisites=training_prerequisites,pending_death_coil=pending_death_coil,pending_defaults=pending_defaults)
             native_base_proofs = relation_summary.pop('native_base_proofs',[])
             training_proofs = relation_summary.pop('training_prerequisite_proofs',[])
         else:
             selected,excluded,relation_proof,relation_summary,relation_edges=trained_history.select(
-                context,effective,args.expect_review_rows,orphan_children=child_mode,preview=preview)
+                context,effective,args.expect_review_rows,orphan_children=child_mode,preview=preview,pending_history=pending_history)
         if child_mode or ordinary_mode or ownership_mode or two_world_mode:
-            review_name = 'specialization-parent-review.json' if parent_mode else 'obsolete-riding-review.json' if riding_mode else 'specialization-retirement-review.json' if specialization_mode else 'profession-activation-review.json' if profession_mode else 'skill-teaching-review.json' if skill_teaching_mode else 'shaman-dual-wield-review.json' if shaman_mode else 'selected-passive-review.json' if direct_mode else 'inactive-legacy-review.json' if legacy_mode else 'pet-teaching-review.json' if pet_mode else 'spell-eligibility-review.json' if two_world_mode else 'talent-ownership-review.json' if ownership_mode else 'ordinary-spell-review.json' if ordinary_mode else 'talent-child-review.json'
-            review_label = 'Weaponsmith parent-specialization' if parent_mode else 'Obsolete riding spell/skill' if riding_mode else 'Inactive specialization retirement' if specialization_mode else 'Ordinary profession activation' if profession_mode else 'Redundant skill-teaching' if skill_teaching_mode else 'Coupled Shaman spell/skill' if shaman_mode else 'Selected direct passive' if direct_mode else 'Inactive legacy' if legacy_mode else 'Pet-teaching' if pet_mode else 'Spell-eligibility' if two_world_mode else 'Talent-ownership' if ownership_mode else 'Ordinary-spell' if ordinary_mode else 'Talent-child'
+            review_name = 'native-action-review.json'if native_action else 'foreign-skill-review.json'if foreign_skill_mode else 'dual-spec-teacher-review.json'if dual_mode else 'specialization-parent-review.json' if parent_mode else 'obsolete-riding-review.json' if riding_mode else 'specialization-retirement-review.json' if specialization_mode else 'profession-activation-review.json' if profession_mode else 'skill-teaching-review.json' if skill_teaching_mode else 'shaman-dual-wield-review.json' if shaman_mode else 'selected-passive-review.json' if direct_mode else 'inactive-legacy-review.json' if legacy_mode else 'pet-teaching-review.json' if pet_mode else 'spell-eligibility-review.json' if two_world_mode else 'talent-ownership-review.json' if ownership_mode else 'ordinary-spell-review.json' if ordinary_mode else 'talent-child-review.json'
+            review_label = 'Native action'if native_action else 'Forbidden skill family'if foreign_skill_mode else 'Unavailable dual-spec teacher'if dual_mode else 'Weaponsmith parent-specialization' if parent_mode else 'Obsolete riding spell/skill' if riding_mode else 'Inactive specialization retirement' if specialization_mode else 'Ordinary profession activation' if profession_mode else 'Redundant skill-teaching' if skill_teaching_mode else 'Coupled Shaman spell/skill' if shaman_mode else 'Selected direct passive' if direct_mode else 'Inactive legacy' if legacy_mode else 'Pet-teaching' if pet_mode else 'Spell-eligibility' if two_world_mode else 'Talent-ownership' if ownership_mode else 'Ordinary-spell' if ordinary_mode else 'Talent-child'
             review={'policy':policy,'migration_inspection':path.name,'scope_characters':len(context['characters']),
                     'summary':relation_summary,'selected':selected,'excluded':excluded,
                     'deferred':dict(Counter(row[2] for row in excluded)),
@@ -635,6 +752,14 @@ def plan_history(settings, work, args, output):
     scripted_families = {entry[0] for entry in reviewed}
     guids = sorted({row[0] for row in selected})
     guid_set = set(guids)
+    if foreign_skill_mode:
+        retired_skill_rows=relation_summary['retired_skills']
+        foreign_inventory_moves=relation_summary.get('inventory_moves',[])
+        foreign_selected_items=riding.restricted(foreign_items,guids)
+        foreign_selected_equipment=offhand_repair.restrict(foreign_equipment,guids)
+    if offhand_mode:
+        selected_offhand_capture=offhand_repair.restrict(offhand_capture,guids)
+        inventory_moves=relation_summary['inventory_moves']
     print(f'Fingerprinting complete spell/talent/skill/character state for {len(guids)} characters (read-only)',flush=True)
     selector = ','.join(map(str,guids))
     source = settings.schemas['characters']
@@ -677,14 +802,11 @@ def plan_history(settings, work, args, output):
             column_sql=','.join('`'+field+'`' for field in fields)
             keys={'characters':'guid','character_spell':'guid,spell','character_talent':'guid,talentGroup,spell','character_skills':'guid,skill'}[table]
             queries.append(('context_'+table,f'SELECT JSON_ARRAY({column_sql}) row_value FROM `{source}`.`{table}`{scope} ORDER BY {keys} LIMIT {relations.MAX_ROWS+1}'))
-    # Generate the post-delete digest by excluding exact selected pairs using
-    # bounded row-valued IN lists grouped by GUID, never a spell-wide DELETE.
-    by_guid = defaultdict(list)
-    for guid,spell,_,_ in selected:
-        by_guid[guid].append(spell)
-    exclusion = ' OR '.join('(s.guid='+str(guid)+' AND s.spell IN ('+','.join(map(str,spells))+'))'
-                            for guid,spells in sorted(by_guid.items()))
-    query = aggregate(meta,'character_spell',source,f's.guid IN ({selector}) AND NOT ({exclusion})',exact_numeric=exact_mode)
+    # Project exact per-character removals with one bounded key relation.
+    # Large OR trees made whole-snapshot planning quadratic in character count.
+    retired_join=retirement_join(selected)
+    remaining=f's.guid IN ({selector}) AND retired.guid IS NULL'
+    query = aggregate(meta,'character_spell',source,remaining,exact_numeric=exact_mode,join=retired_join)
     if rekey_mode:
         # Hash projected stock rows in NEW-key order. Materialize one bounded
         # mapping relation rather than evaluating every mapping for every row.
@@ -707,13 +829,18 @@ def plan_history(settings, work, args, output):
         parent_ids = json.dumps(guids,separators=(',',':'))
         parents = (f"SELECT p.guid,9787 spell,1 active,0 disabled FROM JSON_TABLE('{parent_ids}',"
                    "'$[*]' COLUMNS(guid INT UNSIGNED PATH '$')) p")
-        projected_source = (f'(SELECT guid,spell,active,disabled FROM `{source}`.character_spell s '
-                            f'WHERE s.guid IN ({selector}) AND NOT ({exclusion}) UNION ALL {parents})')
+        projected_source = (f'(SELECT s.guid,s.spell,s.active,s.disabled FROM `{source}`.character_spell s '
+                            f'{retired_join} WHERE {remaining} UNION ALL {parents})')
         query = aggregate(meta,'character_spell',source,f's.guid IN ({selector})',exact_numeric=True)
         query = query.replace(f'`{source}`.`character_spell` s',projected_source+' s')
     queries.append(('after',f"SELECT JSON_ARRAY('character_spell',guid,n,h) row_value FROM ({query}) a ORDER BY guid"))
+    if foreign_skill_mode:
+        skill_projection=json.dumps([[g,k]for g,k,v,c in retired_skill_rows],separators=(',',':'))
+        skill_join=(f"LEFT JOIN (SELECT DISTINCT k.guid,k.skill FROM JSON_TABLE('{skill_projection}','$[*]' COLUMNS(guid INT UNSIGNED PATH '$[0]',skill SMALLINT UNSIGNED PATH '$[1]')) k) retired_skills ON retired_skills.guid=s.guid AND retired_skills.skill=s.skill")
+        query=aggregate(meta,'character_skills',source,f's.guid IN ({selector}) AND retired_skills.guid IS NULL',exact_numeric=True,join=skill_join)
+        queries.append(('after',f"SELECT JSON_ARRAY('character_skills',guid,n,h) row_value FROM ({query}) a ORDER BY guid"))
     if shaman_mode or riding_mode:
-        retired_skill = 149 if riding_mode else 118
+        retired_skill = (148 if riding_horse else 149)if riding_mode else 118
         query=aggregate(meta,'character_skills',source,f's.guid IN ({selector}) AND s.skill<>{retired_skill}',exact_numeric=True)
         queries.append(('after',f"SELECT JSON_ARRAY('character_skills',guid,n,h) row_value FROM ({query}) a ORDER BY guid"))
     # Each digest is bounded per character, not one concatenation of millions
@@ -742,7 +869,7 @@ def plan_history(settings, work, args, output):
     counts = {table:sum(row[2] for row in cells if row[0]==table) for table in TABLES}
     if counts['characters'] != len(guids) or sum(counts.values())>5_000_000:
         fail('HISTORY_SNAPSHOT_BOUND','Missing affected characters or more than 5000000 archived rows')
-    template = ROOT/('tools/specialization-parent-repair.sql.in' if parent_mode else 'tools/obsolete-riding-repair.sql.in' if riding_mode else 'tools/profession-activation-repair.sql.in' if profession_mode else 'tools/shaman-dual-wield-repair.sql.in' if shaman_mode else 'tools/inactive-legacy-repair.sql.in' if legacy_mode else 'tools/pet-teaching-repair.sql.in' if pet_mode else 'tools/spell-eligibility-repair.sql.in' if two_world_mode else
+    template = ROOT/('tools/foreign-skill-stowing.sql.in'if foreign_inventory_mode else 'tools/foreign-skill-repair.sql.in'if foreign_skill_mode else 'tools/dual-spec-teacher-repair.sql.in' if dual_mode else 'tools/specialization-parent-repair.sql.in' if parent_mode else 'tools/obsolete-horse-repair.sql.in' if riding_horse else 'tools/obsolete-riding-repair.sql.in' if riding_mode else 'tools/profession-activation-repair.sql.in' if profession_mode else 'tools/shaman-offhand-repair.sql.in' if offhand_mode else 'tools/shaman-dual-wield-repair.sql.in' if shaman_mode else 'tools/inactive-legacy-repair.sql.in' if legacy_mode else 'tools/pet-teaching-repair.sql.in' if pet_mode else 'tools/spell-eligibility-repair.sql.in' if two_world_mode else
                     'tools/passive-rekey-repair.sql.in' if rekey_mode else 'tools/talent-ownership-repair.sql.in' if ownership_mode else 'tools/disabled-talent-history.sql.in')
     batch_inputs = {'policy':policy,'inspection':sha(path/'SHA256SUMS'),'snapshot':cells,'after':after,
                     'selection':selected,'world':world,'meta':meta,'template':sha(template),'id':output.name}
@@ -750,7 +877,7 @@ def plan_history(settings, work, args, output):
         batch_inputs.update(training_prerequisite_proofs=training_proofs,ordinary_reader_sha256=ordinary_reader,
                             numeric_reader_sha256=numeric_reader,
                             world_guard_reader_sha256=world_guard_reader)
-    if foreign_mode or prefix_mode or alias_mode or rekey_mode:
+    if strong_history_mode:
         batch_inputs.update(numeric_reader_sha256=numeric_reader,world_guard_reader_sha256=world_guard_reader)
     if ownership_mode:
         batch_inputs.update(ownership_reader_sha256=ownership_reader,ownership_proofs=relation_proof,
@@ -759,6 +886,8 @@ def plan_history(settings, work, args, output):
         batch_inputs.update(eligibility_reader_sha256=eligibility_reader,eligibility_proofs=eligibility_proofs,
                             target_world=target_world,target_dbc_sha256=target_effective.hashes,
                             numeric_reader_sha256=sha(ROOT/'lib/cleanup_active_reset.py'))
+    if action_mode:
+        batch_inputs.update(foreign_action_catalog_sha256=action_catalog,foreign_action_ack=eligibility.ACTION_ACK)
     if swipe_mode:
         batch_inputs.update(swipe_catalog_sha256=swipe_catalog,swipe_ack=eligibility.SWIPE_ACK)
     if racial_mode:
@@ -771,12 +900,20 @@ def plan_history(settings, work, args, output):
         batch_inputs.update(specialization_reader_sha256=specialization_reader,specialization_catalog_sha256=specialization_catalog,
                             profession_reader_sha256=profession_reader,profession_catalog_sha256=profession_catalog,
                             equipment=specializations.restricted(equipment,guids),native_sources=specialization_native_sources)
+    if invalid_equipment:
+        batch_inputs['specialization_item_catalog_sha256']=sha(specializations.ITEM_CATALOG)
     if profession_mode:
         batch_inputs.update(profession_reader_sha256=profession_reader,profession_catalog_sha256=profession_catalog)
     if skill_teaching_mode:
         batch_inputs.update(skill_teaching_reader_sha256=teaching_reader,skill_teaching_catalog_sha256=teaching_catalog)
     if shaman_mode:
         batch_inputs.update(shaman_reader_sha256=shaman_reader,inventory_metadata=inventory_meta,shaman_default_skills=default_skills)
+    if foreign_skill_mode:
+        batch_inputs.update(retired_skills=retired_skill_rows,foreign_items=foreign_selected_items,foreign_equipment=foreign_selected_equipment,foreign_defaults=foreign_defaults,foreign_native_sources=foreign_sources,foreign_readers=foreign_readers)
+    if dual_mode:
+        batch_inputs.update(dual_reader_sha256=sha(ROOT/'lib/cleanup_dual_spec_teacher.py'),dual_native_sources=dual_sources)
+    if offhand_mode:
+        batch_inputs.update(offhand_capture=selected_offhand_capture,offhand_native_sources=offhand_sources,offhand_reader_sha256=sha(ROOT/'lib/cleanup_shaman_offhand.py'),inventory_moves=inventory_moves)
     if riding_mode:
         batch_inputs.update(riding_reader_sha256=riding_reader,riding_catalog_sha256=riding_catalog,
                             riding_items=riding.restricted(riding_items,guids),riding_default_skills=riding_defaults,
@@ -797,7 +934,7 @@ def plan_history(settings, work, args, output):
         batch_inputs['rekeys'] = rekeys
     batch = sha_json(batch_inputs)
     archive = ('tc_obsolete_riding_' if riding_mode else 'tc_specialization_' if specialization_mode else 'tc_profession_' if profession_mode else 'tc_skill_teacher_' if skill_teaching_mode else 'tc_shaman_dual_' if shaman_mode else 'tc_direct_passive_' if direct_mode else 'tc_inactive_legacy_' if legacy_mode else 'tc_pet_teaching_' if pet_mode else 'tc_eligibility_' if two_world_mode else 'tc_ownership_' if ownership_mode else 'tc_disabled_history_')+uuid.uuid4().hex[:20]
-    blocks = check_sets(meta,source,archive,counts,changed_table=('character_spell','character_skills') if shaman_mode or riding_mode else 'character_spell',exact_numeric=exact_mode)
+    blocks = check_sets(meta,source,archive,counts,changed_table=('character_spell','character_skills') if shaman_mode or riding_mode or foreign_skill_mode else 'character_spell',exact_numeric=exact_mode)
     values = {'SOURCE':source,'ARCHIVE':archive,'UUID':work.current()['identity']['uuid'],
         'BATCH':batch,'AUDIT':audit['audited_results_sha256'],'COUNT':len(selected),'GUID_COUNT':len(guids),
         'EXPECTED_HASH':planner.key_hash(selected),'SNAPSHOT_COUNT':len(cells),'SNAPSHOT_HASH':planner.key_hash(cells),
@@ -811,6 +948,9 @@ def plan_history(settings, work, args, output):
         'GUID_INSERT':planner.insert_values('affected',[(guid,) for guid in guids]),
         'CHECK_ORIGINAL':blocks['original'],'CHECK_ARCHIVE':blocks['archive'],'CHECK_APPLIED':blocks['applied'],
         'ARCHIVE_INSERT':'\n'.join(f'  INSERT INTO {table}_before SELECT s.* FROM `{source}`.{table} s JOIN affected g ON g.guid=s.guid;' for table in TABLES)}
+    if foreign_skill_mode:
+        skill_keys=[(g,k)for g,k,v,c in retired_skill_rows]
+        values.update(SKILL_INSERT=planner.insert_values('expected_skills',skill_keys),SKILL_COUNT=len(skill_keys),SKILL_HASH=planner.key_hash(skill_keys))
     if parent_mode:
         parent_rows = [(g,9787,1,0) for g in guids]
         values.update(PARENT_INSERT=planner.insert_values('expected_parents',parent_rows),
@@ -871,18 +1011,35 @@ def plan_history(settings, work, args, output):
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit native Death Coil rank 1 availability assertion required'; END IF;
 """ + values['WORLD_CHECKS']
     if two_world_mode:
-        ack_var = 'obsolete_riding_ack' if riding_mode else 'specialization_retirement_ack' if specialization_mode else 'profession_activation_ack' if profession_mode else 'skill_teaching_ack' if skill_teaching_mode else 'shaman_dual_wield_ack' if shaman_mode else 'direct_passive_ack' if direct_mode else 'inactive_legacy_ack' if legacy_mode else 'pet_teaching_ack' if pet_mode else 'spell_eligibility_ack'
-        native_ack = riding.INVALID_ITEMS_ACK if riding_invalid_items else native_selector.ACK
+        ack_var = 'foreign_skill_family_ack'if foreign_skill_mode else 'obsolete_riding_ack' if riding_mode else 'specialization_retirement_ack' if specialization_mode else 'profession_activation_ack' if profession_mode else 'skill_teaching_ack' if skill_teaching_mode else 'shaman_dual_wield_ack' if shaman_mode else 'direct_passive_ack' if direct_mode else 'inactive_legacy_ack' if legacy_mode else 'pet_teaching_ack' if pet_mode else 'spell_eligibility_ack'
+        native_ack = foreign_skills.policy_ack(policy)if foreign_skill_mode else riding.HORSE_ACK if riding_horse else riding.INVALID_ITEMS_ACK if riding_invalid_items else native_selector.ACK
         config_prefix = 'pet_teaching' if pet_mode else 'eligibility'
         values['WORLD_CHECKS'] = f"""IF NOT (BINARY @{ack_var} <=> BINARY '{native_ack}')
  OR NOT (BINARY @{config_prefix}_tc_all_spells <=> BINARY '0')
  OR NOT (BINARY @{config_prefix}_ac_custom_spells <=> BINARY '0') THEN
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit {"pet-teaching" if pet_mode else "eligibility"} repair and native custom-start-off assertions required'; END IF;
 """ + eligibility.world_checks(settings.schemas['world'],world) + '\n' + eligibility.world_checks(config_contract['target_world'],target_world)
+    if foreign_skill_mode:
+        values['WORLD_CHECKS']=riding.items_guard(settings,foreign_selected_items,guids,native_invalid_items=True)+'\n'+offhand_repair.evidence_guard(settings,foreign_selected_equipment)+'\n'+(''if foreign_inventory_mode else offhand_repair.inventory_check(source,'character_inventory',foreign_selected_equipment['inventory'],guids,'Foreign skill source'))+'\n'+values['WORLD_CHECKS']
+        values['WORLD_CHECKS']+='\n'+'\n'.join(eligibility.world_checks(w['schema'],w)for w in foreign_defaults.values())
+        if foreign_inventory_mode:
+            move_sql=offhand_repair.sql_parts(settings,foreign_selected_equipment,guids,foreign_inventory_moves,archive)
+            values['WORLD_CHECKS']=move_sql['guard']+'\n'+values['WORLD_CHECKS']
+            for name,phase in(('CHECK_ORIGINAL','original'),('CHECK_ARCHIVE','archive'),('CHECK_APPLIED','applied')):values[name]+='\n'+move_sql[phase]
+            values['ARCHIVE_INSERT']+=f'\n INSERT INTO inventory_before SELECT i.* FROM `{source}`.character_inventory i JOIN affected g ON g.guid=i.guid;'
+            values.update(MOVE_INSERT=planner.insert_values('expected_moves',foreign_inventory_moves),MOVE_COUNT=len(foreign_inventory_moves),MOVE_HASH=planner.key_hash(foreign_inventory_moves))
+
     if specialization_mode:
         values['WORLD_CHECKS'] = specializations.equipment_guard(settings,equipment,guids) + '\n' + values['WORLD_CHECKS']
     if shaman_mode:
-        values['WORLD_CHECKS'] = shaman.inventory_guard(source,inventory_meta) + values['WORLD_CHECKS']
+        if offhand_mode:
+            offhand_sql=offhand_repair.sql_parts(settings,selected_offhand_capture,guids,inventory_moves,archive)
+            values['WORLD_CHECKS']=offhand_sql['guard']+values['WORLD_CHECKS']
+            for name,phase in (('CHECK_ORIGINAL','original'),('CHECK_ARCHIVE','archive'),('CHECK_APPLIED','applied')):values[name]+='\n'+offhand_sql[phase]
+            values['ARCHIVE_INSERT']+=f'\n INSERT INTO inventory_before SELECT i.* FROM `{source}`.character_inventory i JOIN affected g ON g.guid=i.guid;'
+            values.update(MOVE_INSERT=planner.insert_values('expected_moves',inventory_moves),MOVE_COUNT=len(inventory_moves),MOVE_HASH=planner.key_hash(inventory_moves))
+        else:
+            values['WORLD_CHECKS'] = shaman.inventory_guard(source,inventory_meta) + values['WORLD_CHECKS']
         values['WORLD_CHECKS'] += '\n' + '\n'.join(eligibility.world_checks(w['schema'],w) for w in default_skills.values())
     if riding_mode:
         values['WORLD_CHECKS'] = riding.items_guard(settings,riding_items,guids,native_invalid_items=riding_invalid_items) + values['WORLD_CHECKS']
@@ -891,9 +1048,15 @@ def plan_history(settings, work, args, output):
         values['WORLD_CHECKS'] = """IF NOT (BINARY @talent_ownership_ack <=> BINARY 'SELECTED_TALENTS_AUTHORITATIVE') THEN
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit selected-talent ownership repair acknowledgement required'; END IF;
 """ + values['WORLD_CHECKS']
+    if cast_script_mode:
+        values['WORLD_CHECKS']=f"IF NOT(BINARY @eligibility_cast_scripts_ack <=> BINARY '{eligibility.CAST_SCRIPT_ACK}') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit reviewed nonlearning callback acknowledgement required'; END IF;\n"+values['WORLD_CHECKS']
     if racial_mode:
         values['WORLD_CHECKS'] = """IF NOT (BINARY @eligibility_racials_ack <=> BINARY 'RETIRE_ONLY_REVIEWED_WRONG_RACE_RACIALS') THEN
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit reviewed racial retirement acknowledgement required'; END IF;
+""" + values['WORLD_CHECKS']
+    if action_mode:
+        values['WORLD_CHECKS'] = f"""IF NOT (BINARY @eligibility_foreign_action_ack <=> BINARY '{eligibility.ACTION_ACK}') THEN
+ SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit inactive foreign action acknowledgement required'; END IF;
 """ + values['WORLD_CHECKS']
     if swipe_mode:
         values['WORLD_CHECKS'] = f"""IF NOT (BINARY @eligibility_swipe_ack <=> BINARY '{eligibility.SWIPE_ACK}') THEN
@@ -926,6 +1089,7 @@ def plan_history(settings, work, args, output):
         final_target, final_target_world = eligibility.read_target(settings)
         if (final_target_world != target_world or final_target.hashes != target_effective.hashes
                 or sha(ROOT/'lib/cleanup_eligibility.py') != eligibility_reader
+                or action_mode and sha(eligibility.ACTION_CATALOG) != action_catalog
                 or swipe_mode and sha(eligibility.SWIPE_CATALOG) != swipe_catalog
                 or racial_mode and sha(eligibility.RACIAL_CATALOG) != racial_catalog
                 or pet_mode and sha(ROOT/'lib/cleanup_pet_teaching.py') != pet_reader
@@ -935,20 +1099,22 @@ def plan_history(settings, work, args, output):
                                             or sha(specializations.CATALOG) != specialization_catalog
                                             or sha(ROOT/'lib/cleanup_professions.py') != profession_reader
                                             or sha(professions.CATALOG) != profession_catalog
-                                            or specializations.native_sources(settings.paths) != specialization_native_sources
-                                            or specializations.read_equipment(settings,[r[0] for r in context['characters']]) != equipment)
+                                            or specializations.native_sources(settings.paths,native_invalid_items=invalid_equipment) != specialization_native_sources
+                                            or specializations.read_equipment(settings,[r[0] for r in context['characters']],native_invalid_items=invalid_equipment) != equipment)
                 or profession_mode and (sha(ROOT/'lib/cleanup_professions.py') != profession_reader
                                         or sha(professions.CATALOG) != profession_catalog)
                 or skill_teaching_mode and (sha(ROOT/'lib/cleanup_skill_teaching.py') != teaching_reader
                                            or sha(skill_teaching.CATALOG) != teaching_catalog)
                 or shaman_mode and (sha(ROOT/'lib/cleanup_shaman_dual_wield.py') != shaman_reader
                                     or shaman.inventory(settings,context) != (inventory_meta,offhand_rows)
+                                    or offhand_mode and(offhand_repair.read(settings,offhand_repair.candidate_guids(context))!=offhand_capture or offhand_repair.native_sources(settings.paths)!=offhand_sources)
                                     or shaman.defaults(settings) != default_skills)
+                or foreign_skill_mode and(foreign_skills.reader_hashes()!=foreign_readers or foreign_skills.native_sources(settings.paths)!=foreign_sources or riding.read_items(settings,foreign_scope,native_invalid_items=True)!=foreign_items or offhand_repair.read(settings,foreign_scope,equipment_slots=range(19))!=foreign_equipment or shaman.defaults(settings)!=foreign_defaults)
                 or riding_mode and (sha(ROOT/'lib/cleanup_obsolete_riding.py') != riding_reader
-                                    or sha(riding.CATALOG) != riding_catalog
+                                    or sha(riding_catalog_file) != riding_catalog
                                     or riding_invalid_items and sha(riding.ITEM_CATALOG) != riding_item_catalog
-                                    or riding.native_sources(settings.paths,native_invalid_items=riding_invalid_items) != riding_sources
-                                    or riding.read_items(settings,[r[0] for r in context['characters']],native_invalid_items=riding_invalid_items) != riding_items
+                                    or riding.native_sources(settings.paths,native_invalid_items=riding_invalid_items,legacy_horse=riding_horse) != riding_sources
+                                    or riding.read_items(settings,riding_scope,native_invalid_items=riding_invalid_items) != riding_items
                                     or riding.defaults(settings) != riding_defaults)
                 or direct_mode and (sha(ROOT/'lib/cleanup_selected_passive.py') != direct_reader
                                     or sha(ROOT/'lib/cleanup_ownership.py') != direct_ownership_reader)):
@@ -1025,6 +1191,8 @@ def plan_history(settings, work, args, output):
                         profession_catalog_sha256=profession_catalog,specialization_equipment=specializations.restricted(equipment,guids),
                         specialization_native_sources=specialization_native_sources,native_policy=relation_summary['native_policy'],
                         script_contract='Fixed inactive competitors only; retain verified active choice; exact equipped item requirements in both worlds')
+    if invalid_equipment:
+        manifest['specialization_item_catalog_sha256']=sha(specializations.ITEM_CATALOG)
     if profession_mode:
         manifest.update(profession_activation_ack=professions.ACK,profession_reader_sha256=profession_reader,
                         profession_catalog_sha256=profession_catalog,native_policy=relation_summary['native_policy'],
@@ -1034,15 +1202,23 @@ def plan_history(settings, work, args, output):
                         skill_teaching_catalog_sha256=teaching_catalog,native_policy=relation_summary['native_policy'],
                         script_contract='Exact redundant skill-step teacher; every child has a retained enabled known anchor; skills and recipes preserved')
     if shaman_mode:
-        manifest.update(shaman_ack=shaman.ACK,shaman_reader_sha256=shaman_reader,inventory_metadata=inventory_meta,shaman_default_skills=default_skills,
+        manifest.update(shaman_ack=native_selector.ACK,shaman_reader_sha256=shaman_reader,inventory_metadata=inventory_meta,shaman_default_skills=default_skills,
                         native_policy=relation_summary['native_policy'],
                         script_contract='Paired unselected Shaman 674/118 retirement; no alternate native routes; empty off-hand required')
+    if foreign_skill_mode:
+        manifest.update(foreign_skill_ack=foreign_skills.policy_ack(policy),foreign_skill_readers=foreign_readers,foreign_skill_sources=foreign_sources,foreign_skill_items=foreign_selected_items,foreign_skill_equipment=foreign_selected_equipment,foreign_skill_defaults=foreign_defaults,retired_skills=retired_skill_rows,skill_rows_removed=len(retired_skill_rows),native_policy=relation_summary['native_policy'])
+    if foreign_inventory_mode:manifest.update(inventory_moves=foreign_inventory_moves,inventory_rows_moved=len(foreign_inventory_moves))
+    if cast_script_mode:manifest['cast_script_ack']=eligibility.CAST_SCRIPT_ACK
+    if dual_mode:
+        manifest.update(dual_teacher_ack=dual_teacher.ACK,dual_reader_sha256=sha(ROOT/'lib/cleanup_dual_spec_teacher.py'),dual_native_sources=dual_sources,native_policy=relation_summary['native_policy'])
+    if offhand_mode:
+        manifest.update(offhand_capture=selected_offhand_capture,offhand_native_sources=offhand_sources,offhand_reader_sha256=sha(ROOT/'lib/cleanup_shaman_offhand.py'),inventory_moves=inventory_moves,inventory_rows_moved=len(inventory_moves),script_contract='Paired unselected Shaman spell/skill retirement; verified native placement; pending resets preserved')
     if parent_mode:
         manifest.update(specialization_parent_reader_sha256=parent_reader,
                         parent_spells_inserted=len(guids),
                         script_contract='Explicit missing Weaponsmith parent restoration; retained active Master Axesmith; three inactive competitors retired; no native casts')
     if riding_mode:
-        manifest.update(riding_ack=riding.INVALID_ITEMS_ACK if riding_invalid_items else riding.ACK,riding_reader_sha256=riding_reader,riding_catalog_sha256=riding_catalog,
+        manifest.update(riding_ack=riding.HORSE_ACK if riding_horse else riding.INVALID_ITEMS_ACK if riding_invalid_items else riding.ACK,riding_reader_sha256=riding_reader,riding_catalog_sha256=riding_catalog,
                         riding_items=riding.restricted(riding_items,guids),riding_default_skills=riding_defaults,
                         riding_native_sources=riding_sources,starting_skill_reader_sha256=sha(ROOT/'lib/cleanup_shaman_dual_wield.py'),
                         native_policy=relation_summary['native_policy'],
@@ -1058,6 +1234,10 @@ def plan_history(settings, work, args, output):
     if legacy_mode:
         manifest.update(inactive_legacy_ack=inactive_legacy.ACK,inactive_legacy_reader_sha256=legacy_reader,
                         script_contract='Exact scriptless singleton legacy catalog; only inactive/non-disabled removals; retained active spells and all native talent/skill data unchanged; no inferred ranks')
+    if action_mode:
+        manifest.update(foreign_action_ack=eligibility.ACTION_ACK,foreign_action_catalog_sha256=action_catalog,
+                        native_policy=relation_summary['native_policy'],
+                        script_contract='Fixed inactive foreign Lockpicking 1804; skill 633 and whole teacher chain 1809/1810/6460 absent; no grants')
     if swipe_mode:
         manifest.update(swipe_ack=eligibility.SWIPE_ACK,swipe_catalog_sha256=swipe_catalog,
                         native_policy=relation_summary['native_policy'],
@@ -1100,6 +1280,14 @@ SELECT e.guid,e.spell,e.active AS original_active,s.active AS current_active,s.d
 FROM `{archive}`.expected_spells e LEFT JOIN `{source}`.character_spell s ON s.guid=e.guid AND s.spell=e.spell
 ORDER BY e.guid,e.spell LIMIT 100;
 '''
+    if foreign_skill_mode:
+        status+=f'''SELECT COUNT(*) selected_skill_rows,COALESCE(SUM(s.skill IS NOT NULL),0) still_stored,
+COALESCE(SUM(s.skill IS NULL),0) absent FROM `{archive}`.expected_skills e
+LEFT JOIN `{source}`.character_skills s ON s.guid=e.guid AND s.skill=e.skill;
+SELECT e.guid,e.skill,a.value AS archived_value,a.max AS archived_cap,s.skill IS NOT NULL AS still_stored
+FROM `{archive}`.expected_skills e JOIN `{archive}`.character_skills_before a ON a.guid=e.guid AND a.skill=e.skill
+LEFT JOIN `{source}`.character_skills s ON s.guid=e.guid AND s.skill=e.skill ORDER BY e.guid,e.skill LIMIT 100;
+'''
     if shaman_mode:
         status += f'''SELECT a.guid,a.skill,a.value,a.max AS archived_cap,s.skill IS NOT NULL AS still_stored
 FROM `{archive}`.character_skills_before a JOIN `{archive}`.affected g ON g.guid=a.guid
@@ -1108,7 +1296,7 @@ LEFT JOIN `{source}`.character_skills s ON s.guid=a.guid AND s.skill=a.skill WHE
     if riding_mode:
         status += f'''SELECT a.guid,a.skill,a.value,a.max AS archived_cap,s.skill IS NOT NULL AS still_stored
 FROM `{archive}`.character_skills_before a JOIN `{archive}`.affected g ON g.guid=a.guid
-LEFT JOIN `{source}`.character_skills s ON s.guid=a.guid AND s.skill=a.skill WHERE a.skill=149 ORDER BY a.guid LIMIT 100;
+LEFT JOIN `{source}`.character_skills s ON s.guid=a.guid AND s.skill=a.skill WHERE a.skill={148 if riding_horse else 149} ORDER BY a.guid LIMIT 100;
 SELECT s.guid,s.skill,s.value,s.max AS current_cap FROM `{source}`.character_skills s
 JOIN `{archive}`.affected g ON g.guid=s.guid WHERE s.skill=762 ORDER BY s.guid LIMIT 100;
 '''
@@ -1123,6 +1311,27 @@ JOIN `{archive}`.affected g ON g.guid=s.guid WHERE s.spell=17041 ORDER BY s.guid
 FROM `{archive}`.expected_rekeys e LEFT JOIN `{source}`.character_spell s
 ON s.guid=e.guid AND s.spell=e.to_spell ORDER BY e.guid,e.from_spell LIMIT 100;
 '''
+    if pending_history or pending_death_coil or pending_defaults:
+        manifest.update(numeric_fingerprint='EXACT_FRACTIONAL_V1',numeric_reader_sha256=numeric_reader,world_guard_reader_sha256=world_guard_reader)
+    values['RESET_STATE_TEST']='(c.at_login & 4)=0'if pending_history or pending_death_coil or pending_ownership or pending_professions or pending_defaults else '(c.at_login & 4)<>0'
+    if pending_history:
+        manifest.update(pending_history_ack=trained_history.PENDING_ACK,pending_native_sources=pending_native_sources,pending_history_reader_sha256=sha(ROOT/'lib/cleanup_trained_history.py'))
+        values['WORLD_CHECKS']=f"IF NOT (BINARY @pending_history_ack <=> BINARY '{trained_history.PENDING_ACK}') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit pending-history acknowledgement required'; END IF;\n"+values['WORLD_CHECKS']
+    if pending_death_coil:
+        manifest.update(pending_death_coil_ack=death_coil.PENDING_ACK,pending_native_sources=pending_native_sources,pending_ordinary_reader_sha256=sha(ROOT/'lib/cleanup_ordinary_history.py'),pending_death_coil_reader_sha256=sha(ROOT/'lib/cleanup_death_coil.py'))
+        values['WORLD_CHECKS']=f"IF NOT (BINARY @pending_death_coil_ack <=> BINARY '{death_coil.PENDING_ACK}') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit pending Death Coil acknowledgement required'; END IF;\n"+values['WORLD_CHECKS']
+    if pending_ownership:
+        manifest.update(pending_ownership_ack=ownership.PENDING_ACK,pending_native_sources=pending_native_sources,numeric_fingerprint='EXACT_FRACTIONAL_V1',numeric_reader_sha256=numeric_reader,world_guard_reader_sha256=world_guard_reader)
+        values['WORLD_CHECKS']=f"IF NOT (BINARY @pending_ownership_ack <=> BINARY '{ownership.PENDING_ACK}') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit pending-ownership acknowledgement required'; END IF;\n"+values['WORLD_CHECKS']
+    if pending_professions:
+        manifest.update(pending_profession_ack=professions.PENDING_ACK,pending_native_sources=pending_native_sources)
+        values['WORLD_CHECKS']=f"IF NOT (BINARY @pending_profession_ack <=> BINARY '{professions.PENDING_ACK}') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit pending-profession acknowledgement required'; END IF;\n"+values['WORLD_CHECKS']
+    if pending_defaults:
+        manifest.update(pending_default_ack=ordinary_history.PENDING_DEFAULT_ACK,pending_native_sources=pending_native_sources,pending_ordinary_reader_sha256=sha(ROOT/'lib/cleanup_ordinary_history.py'))
+        values['WORLD_CHECKS']=f"IF NOT (BINARY @pending_default_ack <=> BINARY '{ordinary_history.PENDING_DEFAULT_ACK}') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit pending-default acknowledgement required'; END IF;\n"+values['WORLD_CHECKS']
+    if overlevel_unselected:
+        manifest.update(overlevel_ownership_ack=ownership.OVERLEVEL_ACK,numeric_fingerprint='EXACT_FRACTIONAL_V1',numeric_reader_sha256=numeric_reader,world_guard_reader_sha256=world_guard_reader)
+        values['WORLD_CHECKS']=f"IF NOT (BINARY @overlevel_ownership_ack <=> BINARY '{ownership.OVERLEVEL_ACK}') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit overlevel unselected-history acknowledgement required'; END IF;\n"+values['WORLD_CHECKS']
     rendered = render_text(template,values)
     if specialization_mode:
         rendered = rendered.replace('ineligible ordinary','inactive competing specialization')

@@ -116,7 +116,7 @@ BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='History scope or expected result fingerprints changed';
  END IF;
  IF EXISTS(SELECT 1 FROM `@SOURCE@`.characters c JOIN affected g ON c.guid=g.guid
-     WHERE c.online<>0 OR (c.at_login & 4)<>0) THEN
+     WHERE c.online<>0 OR @RESET_STATE_TEST@) THEN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Affected character online or pending native reset';
  END IF;
  @WORLD_CHECKS@

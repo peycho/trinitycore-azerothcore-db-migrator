@@ -1,0 +1,231 @@
+-- Equipment-aware Shaman repair with exact item placement inverse; separate v2 policy.
+-- Retire paired spell 674 and skill 118; exact inverse restores full originals.
+CREATE DATABASE `@ARCHIVE@` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE `@ARCHIVE@`;
+CREATE TABLE batch (
+ id TINYINT PRIMARY KEY,batch_key CHAR(64) NOT NULL,source_schema VARCHAR(64) NOT NULL,
+ source_uuid CHAR(36) NOT NULL,audit_sha256 CHAR(64) NOT NULL,expected_sha256 CHAR(64) NOT NULL,
+ state ENUM('NEW','PREPARED','APPLIED','RESTORED') NOT NULL,
+ prepared_at DATETIME NULL,applied_at DATETIME NULL,restored_at DATETIME NULL
+) ENGINE=InnoDB;
+INSERT INTO batch VALUES(1,'@BATCH@','@SOURCE@','@UUID@','@AUDIT@','@EXPECTED_HASH@','NEW',NULL,NULL,NULL);
+CREATE TABLE affected(guid INT UNSIGNED PRIMARY KEY) ENGINE=InnoDB;
+CREATE TABLE expected_spells(guid INT UNSIGNED,spell MEDIUMINT UNSIGNED,
+ active TINYINT UNSIGNED,disabled TINYINT UNSIGNED,PRIMARY KEY(guid,spell)) ENGINE=InnoDB;
+CREATE TABLE expected_snapshot(table_name VARCHAR(64),guid INT UNSIGNED,row_count INT UNSIGNED,
+ row_hash CHAR(64),PRIMARY KEY(table_name,guid)) ENGINE=InnoDB;
+CREATE TABLE expected_after LIKE expected_snapshot;
+CREATE TABLE reviewed_columns(table_name VARCHAR(64),column_name VARCHAR(64),column_type VARCHAR(512),
+ nullable VARCHAR(3),column_key VARCHAR(3),extra VARCHAR(512),generation_expression TEXT,
+ ordinal_position INT,PRIMARY KEY(table_name,column_name)) ENGINE=InnoDB;
+@GUID_INSERT@
+@EXPECTED_INSERT@
+@SNAPSHOT_INSERT@
+@AFTER_INSERT@
+@COLUMN_INSERT@
+CREATE TABLE expected_moves(guid INT UNSIGNED,item INT UNSIGNED,old_slot TINYINT UNSIGNED,new_slot TINYINT UNSIGNED,PRIMARY KEY(guid,item),UNIQUE(guid,new_slot)) ENGINE=InnoDB;
+@MOVE_INSERT@
+CREATE TABLE inventory_before LIKE `@SOURCE@`.character_inventory;
+CREATE TABLE characters_before LIKE `@SOURCE@`.characters;
+CREATE TABLE character_talent_before LIKE `@SOURCE@`.character_talent;
+CREATE TABLE character_spell_before LIKE `@SOURCE@`.character_spell;
+CREATE TABLE character_skills_before LIKE `@SOURCE@`.character_skills;
+DELIMITER //
+CREATE PROCEDURE guard_environment() SQL SECURITY DEFINER
+BEGIN
+ DECLARE metadata_reader VARCHAR(512);
+ SET metadata_reader=CONCAT(QUOTE(SUBSTRING_INDEX(CURRENT_USER(),'@',1)),'@',QUOTE(SUBSTRING_INDEX(CURRENT_USER(),'@',-1)));
+ IF (SELECT COUNT(DISTINCT PRIVILEGE_TYPE) FROM information_schema.USER_PRIVILEGES WHERE GRANTEE=metadata_reader
+     AND PRIVILEGE_TYPE IN ('SELECT','TRIGGER'))<>2 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Setup administrator needs direct global SELECT/TRIGGER metadata visibility';
+ END IF;
+ IF NOT (@talent_cleanup_ack <=> 'STOPPED_PREPARATION_COPY_ONLY') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Explicit stopped preparation-copy acknowledgement required';
+ END IF;
+ IF @@server_uuid<>'@UUID@' OR @@version NOT LIKE '8.4.%' THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Server UUID/version differs from reviewed preparation copy';
+ END IF;
+ IF (SELECT COUNT(*) FROM batch WHERE id=1 AND batch_key='@BATCH@' AND source_schema='@SOURCE@'
+     AND source_uuid='@UUID@' AND audit_sha256='@AUDIT@' AND expected_sha256='@EXPECTED_HASH@')<>1 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Archive ownership/provenance differs';
+ END IF;
+ IF FIND_IN_SET('STRICT_TRANS_TABLES',@@sql_mode)=0 AND FIND_IN_SET('STRICT_ALL_TABLES',@@sql_mode)=0 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Strict SQL mode required';
+ END IF;
+ SET SESSION group_concat_max_len=@CONCAT_LIMIT@;
+ SET SESSION time_zone='+00:00';
+ IF (SELECT COUNT(*) FROM expected_moves)<>@MOVE_COUNT@
+ OR EXISTS(SELECT 1 FROM expected_moves e LEFT JOIN affected g ON g.guid=e.guid WHERE g.guid IS NULL OR e.old_slot<>16 OR e.new_slot NOT BETWEEN 23 AND 66)
+ OR NOT((SELECT SHA2(COALESCE(GROUP_CONCAT(CONCAT_WS(':',guid,item,old_slot,new_slot) ORDER BY guid,item SEPARATOR '|'),''),256) FROM expected_moves)<=>'@MOVE_HASH@') THEN
+ SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Reviewed inventory move keys changed'; END IF;
+ IF EXISTS(SELECT 1 FROM expected_spells WHERE spell<>674 OR active<>1 OR disabled<>0) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Only enabled Shaman spell 674 may be retired'; END IF;
+ IF (SELECT COUNT(*) FROM expected_spells)<>@COUNT@
+ OR EXISTS(SELECT 1 FROM expected_spells WHERE disabled NOT IN (0,1) OR active NOT IN (0,1))
+ OR NOT ((SELECT SHA2(GROUP_CONCAT(CONCAT_WS(':',guid,spell,active,disabled) ORDER BY guid,spell SEPARATOR '|'),256)
+     FROM expected_spells)<=>'@EXPECTED_HASH@')
+ OR (SELECT COUNT(*) FROM expected_snapshot)<>@SNAPSHOT_COUNT@
+ OR NOT ((SELECT SHA2(GROUP_CONCAT(CONCAT_WS(':',table_name,guid,row_count,row_hash)
+     ORDER BY BINARY table_name,guid SEPARATOR '|'),256) FROM expected_snapshot)<=>'@SNAPSHOT_HASH@') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Reviewed selection or full source snapshot fingerprints changed';
+ END IF;
+ IF (SELECT COUNT(*) FROM reviewed_columns)<>@COLUMN_COUNT@
+ OR NOT ((SELECT SHA2(GROUP_CONCAT(CONCAT_WS(':',table_name,column_name,column_type,nullable,column_key,
+     extra,generation_expression,ordinal_position) ORDER BY BINARY table_name,ordinal_position SEPARATOR '|'),256)
+     FROM reviewed_columns)<=>'@COLUMN_HASH@') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Reviewed column metadata changed';
+ END IF;
+ IF (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='@SOURCE@'
+     AND TABLE_NAME IN ('characters','character_talent','character_spell','character_skills'))<>@COLUMN_COUNT@
+ OR EXISTS(SELECT 1 FROM reviewed_columns r LEFT JOIN information_schema.COLUMNS c
+     ON c.TABLE_SCHEMA='@SOURCE@' AND c.TABLE_NAME=r.table_name AND c.COLUMN_NAME=r.column_name
+     WHERE c.COLUMN_NAME IS NULL OR BINARY c.COLUMN_TYPE<>BINARY r.column_type
+      OR c.IS_NULLABLE<>r.nullable OR c.COLUMN_KEY<>r.column_key OR BINARY c.EXTRA<>BINARY r.extra
+      OR c.ORDINAL_POSITION<>r.ordinal_position OR COALESCE(c.GENERATION_EXPRESSION,'')<>''
+      OR c.EXTRA LIKE '%INVISIBLE%' OR LOWER(c.EXTRA) LIKE '%on update%') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source columns differ or contain unsupported automatic fields';
+ END IF;
+ IF (SELECT COUNT(*) FROM information_schema.TABLES WHERE ENGINE='InnoDB' AND TABLE_TYPE='BASE TABLE'
+     AND ((TABLE_SCHEMA='@SOURCE@' AND TABLE_NAME IN ('characters','character_talent','character_spell','character_skills'))
+       OR (TABLE_SCHEMA='@ARCHIVE@' AND TABLE_NAME IN ('batch','affected','expected_spells','expected_snapshot','expected_after','reviewed_columns',
+           'characters_before','character_talent_before','character_spell_before','character_skills_before'))))<>14 THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Missing native InnoDB source/archive tables';
+ END IF;
+ IF (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='@ARCHIVE@'
+     AND TABLE_NAME IN ('characters_before','character_talent_before','character_spell_before','character_skills_before'))<>@COLUMN_COUNT@
+ OR EXISTS(SELECT 1 FROM reviewed_columns r
+     JOIN information_schema.COLUMNS c ON c.TABLE_SCHEMA='@SOURCE@' AND c.TABLE_NAME=r.table_name AND c.COLUMN_NAME=r.column_name
+     LEFT JOIN information_schema.COLUMNS a ON a.TABLE_SCHEMA='@ARCHIVE@' AND a.TABLE_NAME=CONCAT(r.table_name,'_before')
+       AND a.ORDINAL_POSITION=c.ORDINAL_POSITION
+     WHERE a.COLUMN_NAME IS NULL OR NOT (BINARY a.COLUMN_NAME<=>BINARY c.COLUMN_NAME)
+       OR NOT (BINARY a.COLUMN_TYPE<=>BINARY c.COLUMN_TYPE) OR NOT (a.IS_NULLABLE<=>c.IS_NULLABLE)
+       OR NOT (BINARY a.COLUMN_DEFAULT<=>BINARY c.COLUMN_DEFAULT) OR NOT (a.CHARACTER_SET_NAME<=>c.CHARACTER_SET_NAME)
+       OR NOT (a.COLLATION_NAME<=>c.COLLATION_NAME) OR NOT (a.EXTRA<=>c.EXTRA)
+       OR NOT (a.GENERATION_EXPRESSION<=>c.GENERATION_EXPRESSION)) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source/archive column layout drift';
+ END IF;
+ IF EXISTS(SELECT 1 FROM information_schema.TRIGGERS WHERE EVENT_OBJECT_SCHEMA='@SOURCE@')
+ OR EXISTS(SELECT 1 FROM information_schema.KEY_COLUMN_USAGE WHERE REFERENCED_TABLE_NAME IS NOT NULL
+     AND ((TABLE_SCHEMA='@SOURCE@' AND TABLE_NAME IN ('characters','character_spell','character_skills','character_inventory'))
+       OR (REFERENCED_TABLE_SCHEMA='@SOURCE@' AND REFERENCED_TABLE_NAME IN ('characters','character_spell','character_skills','character_inventory')))) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Source triggers or mutation foreign keys require separate review';
+ END IF;
+END//
+
+
+CREATE PROCEDURE guard_history() SQL SECURITY INVOKER
+BEGIN
+ CALL guard_environment();
+ IF (SELECT COUNT(*) FROM affected)<>@GUID_COUNT@
+ OR EXISTS(SELECT 1 FROM affected g LEFT JOIN expected_spells e ON e.guid=g.guid WHERE e.guid IS NULL)
+ OR EXISTS(SELECT 1 FROM expected_spells e LEFT JOIN affected g ON e.guid=g.guid WHERE g.guid IS NULL)
+ OR (SELECT COUNT(*) FROM expected_after)<>@AFTER_COUNT@
+ OR NOT ((SELECT SHA2(COALESCE(GROUP_CONCAT(CONCAT_WS(':',table_name,guid,row_count,row_hash)
+    ORDER BY BINARY table_name,guid SEPARATOR '|'),''),256) FROM expected_after)<=>'@AFTER_HASH@') THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='History scope or expected result fingerprints changed';
+ END IF;
+ IF EXISTS(SELECT 1 FROM `@SOURCE@`.characters c JOIN affected g ON c.guid=g.guid
+     WHERE c.online<>0) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Affected character online';
+ END IF;
+ @WORLD_CHECKS@
+END//
+CREATE PROCEDURE check_original() SQL SECURITY INVOKER
+BEGIN
+@CHECK_ORIGINAL@
+END//
+CREATE PROCEDURE check_archive() SQL SECURITY INVOKER
+BEGIN
+@CHECK_ARCHIVE@
+END//
+CREATE PROCEDURE check_phase(IN applied BOOLEAN) SQL SECURITY INVOKER
+BEGIN
+ CALL check_archive();
+ IF applied THEN
+@CHECK_APPLIED@
+  IF EXISTS(SELECT 1 FROM `@SOURCE@`.character_spell s JOIN expected_spells e ON e.guid=s.guid AND e.spell=s.spell) THEN
+   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='A reviewed Dual Wield spell row still exists'; END IF;
+ ELSE
+  CALL check_original();
+ END IF;
+END//
+CREATE PROCEDURE prepare_batch() SQL SECURITY INVOKER
+BEGIN
+ DECLARE current_state VARCHAR(16);
+ DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+ SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+ START TRANSACTION;
+ CALL guard_history();
+ SELECT state INTO current_state FROM batch WHERE id=1 FOR UPDATE;
+ IF current_state='NEW' THEN
+  IF (SELECT COUNT(*) FROM characters_before)+(SELECT COUNT(*) FROM character_talent_before)
+    +(SELECT COUNT(*) FROM character_spell_before)+(SELECT COUNT(*) FROM character_skills_before)+(SELECT COUNT(*) FROM inventory_before)<>0 THEN
+   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='New history archive unexpectedly contains originals'; END IF;
+  CALL check_original();
+@ARCHIVE_INSERT@
+  CALL check_phase(FALSE);
+  UPDATE batch SET state='PREPARED',prepared_at=UTC_TIMESTAMP() WHERE id=1;
+ ELSEIF current_state='PREPARED' THEN
+  CALL check_phase(FALSE);
+ ELSE
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Prepare requires NEW/PREPARED state';
+ END IF;
+ COMMIT;
+ SELECT 'PREPARED: complete affected spell/talent/skill/character originals archived; source unchanged' AS result;
+END//
+CREATE PROCEDURE apply_batch() SQL SECURITY INVOKER
+BEGIN
+ DECLARE current_state VARCHAR(16);
+ DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+ SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+ START TRANSACTION;
+ CALL guard_history();
+ SELECT state INTO current_state FROM batch WHERE id=1 FOR UPDATE;
+ IF current_state='PREPARED' THEN
+  CALL check_phase(FALSE);
+  DELETE s FROM `@SOURCE@`.character_spell s JOIN expected_spells e ON e.guid=s.guid AND e.spell=s.spell;
+  IF ROW_COUNT()<>@COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Coupled Shaman repair deletion count differs'; END IF;
+  DELETE s FROM `@SOURCE@`.character_skills s JOIN affected g ON g.guid=s.guid WHERE s.skill=118;
+  IF ROW_COUNT()<>@COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Coupled skill retirement count differs'; END IF;
+  UPDATE `@SOURCE@`.character_inventory i JOIN expected_moves e ON e.guid=i.guid AND e.item=i.item
+   SET i.slot=e.new_slot WHERE i.bag=0 AND i.slot=e.old_slot;
+  IF ROW_COUNT()<>@MOVE_COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Shaman inventory move count differs'; END IF;
+  CALL check_phase(TRUE);
+  UPDATE batch SET state='APPLIED' ,applied_at=UTC_TIMESTAMP() WHERE id=1;
+ ELSEIF current_state='APPLIED' THEN
+  CALL check_phase(TRUE);
+ ELSE
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Apply requires PREPARED/APPLIED state';
+ END IF;
+ COMMIT;
+ SELECT 'APPLIED: @COUNT@ paired Shaman spell 674 and skill 118 rows archived/removed; @MOVE_COUNT@ off-hand weapons stowed in native storage; items, both builds, other skills and pending reset flags preserved; no grants' AS result;
+END//
+CREATE PROCEDURE restore_batch() SQL SECURITY INVOKER
+BEGIN
+ DECLARE current_state VARCHAR(16);
+ DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+ SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+ START TRANSACTION;
+ CALL guard_history();
+ SELECT state INTO current_state FROM batch WHERE id=1 FOR UPDATE;
+ IF current_state='APPLIED' THEN
+  CALL check_phase(TRUE);
+  INSERT INTO `@SOURCE@`.character_spell SELECT a.* FROM character_spell_before a
+    JOIN expected_spells e ON e.guid=a.guid AND e.spell=a.spell;
+  IF ROW_COUNT()<>@COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Coupled Shaman repair restoration count differs'; END IF;
+  INSERT INTO `@SOURCE@`.character_skills SELECT a.* FROM character_skills_before a JOIN affected g ON g.guid=a.guid WHERE a.skill=118;
+  IF ROW_COUNT()<>@COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Coupled skill restoration count differs'; END IF;
+  UPDATE `@SOURCE@`.character_inventory i JOIN expected_moves e ON e.guid=i.guid AND e.item=i.item
+   SET i.slot=e.old_slot WHERE i.bag=0 AND i.slot=e.new_slot;
+  IF ROW_COUNT()<>@MOVE_COUNT@ THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Shaman inventory inverse count differs'; END IF;
+  CALL check_phase(FALSE);
+  UPDATE batch SET state='RESTORED' ,restored_at=UTC_TIMESTAMP() WHERE id=1;
+ ELSEIF current_state='RESTORED' THEN
+  CALL check_phase(FALSE);
+ ELSE
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Restore requires APPLIED/RESTORED state';
+ END IF;
+ COMMIT;
+ SELECT 'RESTORED: exact removed spell AND skill rows including custom fields; complete original inventory placement and affected state verified; archive retained' AS result;
+END//
+DELIMITER ;

@@ -7,6 +7,8 @@ from spells import Unsupported
 import cleanup_death_coil as death_coil
 
 POLICY = 'tc-isolated-disabled-ordinary-spell-history-v1'
+PENDING_DEFAULT_POLICY='tc-pending-reset-disabled-ordinary-defaults-v6'
+PENDING_DEFAULT_ACK='RETAIN_PENDING_RESET_RETIRE_ONLY_DISABLED_DASH_DEATH_PACT'
 INACTIVE_DEFAULT_POLICY = 'tc-disabled-ordinary-inactive-custom-defaults-v2'
 TRAINING_POLICY = 'tc-disabled-ordinary-training-prerequisites-v4'
 TRAINING_ACK = 'REVIEWED_TRAINING_PREREQUISITES_ONLY'
@@ -72,9 +74,13 @@ def configuration_contract(settings, *, training_prerequisites=False):
 
 
 def select(state, meta, expected, *, preview=False, inactive_custom_defaults=False, native_death_coil=False,
-           training_prerequisites=False):
+           training_prerequisites=False,pending_death_coil=False,pending_defaults=False):
     if training_prerequisites and not isinstance(getattr(meta,'history_default_spells',None),set):
         fail('ORDINARY_HISTORY_DEFAULTS_REQUIRED','Training-prerequisite review requires the explicit TC custom-start catalog')
+    if pending_defaults:
+        if native_death_coil or training_prerequisites:fail('PENDING_DEFAULT_SCOPE','Pending defaults are a separate policy')
+        inactive_custom_defaults=True
+    if pending_death_coil and not native_death_coil:fail('PENDING_DEATH_COIL_SCOPE','Separate native Death Coil contract required')
     if native_death_coil:
         inactive_custom_defaults = True  # Its separate config contract requires AllSpells=0.
     stored = state['character_spell']
@@ -94,6 +100,12 @@ def select(state, meta, expected, *, preview=False, inactive_custom_defaults=Fal
             fail('ORDINARY_HISTORY_BOUND', 'Talent ancestry exceeds the verified catalog')
     candidates = [r for r in stored if r[3] == 1 and r[1] not in meta.talents
                   and graph.component.get(r[1]) not in protected]
+    if pending_death_coil:
+        pending_guids={r[0]for r in state['characters']if r[7]&4}
+        candidates=[r for r in candidates if r[0]in pending_guids and r[1]in death_coil.CHAIN]
+    if pending_defaults:
+        pending_guids={r[0]for r in state['characters']if r[7]&4}
+        candidates=[r for r in candidates if r[0]in pending_guids and meta.chain(r[1])[0]in(1850,48743)]
     if preview:
         expected = len(candidates)
     if (expected is None or len(candidates) != expected or expected > 500000
@@ -179,7 +191,9 @@ def select(state, meta, expected, *, preview=False, inactive_custom_defaults=Fal
             reason = 'DEFER_INVALID_CHARACTER_STATE'
         elif char[6]:
             reason = 'DEFER_ONLINE_CHARACTER'
-        elif char[7] & 4:
+        elif pending_defaults and (char[2]!=(11 if root==1850 else 6)or char[3]<(26 if root==1850 else 66)):
+            reason='DEFER_PENDING_DEFAULT_CLASS_LEVEL'
+        elif char[7] & 4 and not (pending_death_coil or pending_defaults):
             reason = 'DEFER_PENDING_NATIVE_RESET'
         elif guid in invalid:
             reason = 'DEFER_INVALID_TALENT_SELECTION'
@@ -252,4 +266,7 @@ def select(state, meta, expected, *, preview=False, inactive_custom_defaults=Fal
             spell_rows_inserted=0,skill_rows_changed=0,native_base_proofs=native_proofs,
             existing_native_skill_normalizations=sum(p['existing_native_skill_normalization'] for p in native_proofs),
             native_policy='Explicitly allow native Death Coil rank 1 from existing Unholy skill after archiving exact disabled higher history; no spell insertion, higher-rank grant, skill/cap, talent/spec or login-flag change; existing native skill normalization is independent')
+    if pending_death_coil or pending_defaults:
+        summary.update(pending_native_reset_preserved=True,reset_executed=False)
+        summary['native_policy']+='; reset bit and selected talents remain unchanged; no native login/reset executed'
     return sorted(selected), sorted(excluded), proof, summary, sorted(graph.edges)

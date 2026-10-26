@@ -33,6 +33,23 @@ class OrdinaryHistoryTests(unittest.TestCase):
 
     def review(self):return ordinary.select(self.state,self.meta,None,preview=True)
 
+    def test_pending_defaults_are_fixed_disabled_families_and_keep_reset_pending(self):
+        self.meta.spells[1850]=[0]*234;self.meta.spells[48743]=[0]*234
+        self.state={'characters':[[1,4,11,44,0,1,0,20]],'character_spell':[[1,1850,1,1],[1,400,1,0]],'character_talent':[],'character_skills':[]}
+        self.meta.history_default_spells={1850}
+        before=copy.deepcopy(self.state)
+        rows,excluded,_,summary,_=ordinary.select(self.state,self.meta,None,preview=True,pending_defaults=True)
+        self.assertEqual(rows,[(1,1850,1,1)]);self.assertFalse(excluded);self.assertEqual(self.state,before)
+        self.assertTrue(summary['pending_native_reset_preserved']);self.assertFalse(summary['reset_executed'])
+        self.assertFalse(ordinary.select(self.state,self.meta,None,preview=True,inactive_custom_defaults=True)[0])
+        for field,value in((2,1),(3,25),(6,1),(7,16)):
+            old=self.state['characters'][0][field];self.state['characters'][0][field]=value
+            self.assertFalse(ordinary.select(self.state,self.meta,None,preview=True,pending_defaults=True)[0]);self.state['characters'][0][field]=old
+        self.state['character_spell'][0][3]=0
+        self.assertFalse(ordinary.select(self.state,self.meta,None,preview=True,pending_defaults=True)[0])
+        self.state['character_spell'][0]=[1,48743,1,1];self.state['characters'][0][2:4]=[6,80]
+        self.assertEqual(ordinary.select(self.state,self.meta,None,preview=True,pending_defaults=True)[0],[(1,48743,1,1)])
+
     def training(self):
         # Keep these tests self-contained; full Metadata/DBC and world parsing
         # is exercised through the real console in the disposable suite.

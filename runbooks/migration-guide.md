@@ -39,9 +39,9 @@ throughout the run. Stop every core, website job, and other writer using them.
 If the clone needs preparation cleanup, complete the
 [fresh-snapshot preparation workflow](source-preparation.md#repeat-the-complete-preparation-and-migration)
 first, then freeze the prepared source for this migration. Reuse reviewed rules,
-not old snapshot-specific batches. The cleanup console and migrator currently
-remain separate tools; a combined automatic end-to-end runner is not yet
-implemented. Final cutover requires a new consistent snapshot after source
+not old snapshot-specific batches. The [preparation replay runner](preparation-replay.md) can regenerate the
+reviewed cleanup sequence and then invoke these migration phases; it retains all
+existing gates and does not establish native gameplay acceptance. Final cutover requires a new consistent snapshot after source
 writers stop; progress written to TC after that snapshot is not synchronized.
 
 For `tc-to-ac`, this guide uses the following names:

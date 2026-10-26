@@ -23,6 +23,14 @@ class ProfessionTests(unittest.TestCase):
         self.state={'characters':[[1,4,4,32,0,2,0,32]],'character_talent':[],
             'character_spell':[[1,2108,0,0],[1,6603,1,0],[1,3275,1,0]],'character_skills':[[1,165,78,150]]}
     def review(self):return select(self.state,self.tc,self.ac,preview=True)
+    def test_pending_profession_changes_only_activation_and_retains_reset(self):
+        self.state['characters'][0][7]=36
+        before=copy.deepcopy(self.state);self.assertFalse(self.review()[0])
+        rows,excluded,_,summary,_=select(self.state,self.tc,self.ac,preview=True,pending_reset=True)
+        self.assertEqual(rows,[(1,2108,0,0)]);self.assertFalse(excluded);self.assertEqual(self.state,before)
+        self.assertTrue(summary['pending_native_reset_preserved']);self.assertFalse(summary['reset_executed'])
+        self.state['characters'][0][7]=32;self.assertFalse(select(self.state,self.tc,self.ac,preview=True,pending_reset=True)[0])
+
     def test_fixed_catalog_and_explicit_activation_native_round_trip(self):
         for m in (self.tc,self.ac):
             for root in map(int,RULES['roots']):self.assertTrue(contract(m,root),(m.core,root))

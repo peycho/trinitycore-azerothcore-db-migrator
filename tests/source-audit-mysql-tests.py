@@ -85,9 +85,9 @@ def main():
             sql(f"UPDATE `{chars}`.mail SET body='Concurrent fixture edit' WHERE id=1;")
             assert list(stream)==[['Unrelated retained payload']]
             sql(f"UPDATE `{chars}`.mail SET body='Unrelated retained payload' WHERE id=1;")
-            def run(output,scope='all',world_schema=world):
+            def run(output,scope='all',world_schema=world,auth_schema=auth):
                 return subprocess.run([sys.executable,str(ROOT/'tools/audit-tc-source.py'),
-                    '--characters-schema',chars,'--auth-schema',auth,'--world-schema',world_schema,
+                    '--characters-schema',chars,'--auth-schema',auth_schema,'--world-schema',world_schema,
                     '--tc-dbc',str(work/'tc-dbc'),'--output',str(output),'--scope',scope,'--mysql',*reader],
                     text=True,capture_output=True)
             output=work/'full'
@@ -125,6 +125,21 @@ def main():
             result=run(work/'talents',scope='talents')
             assert result.returncode==1,result.stdout+result.stderr
             assert 'UNKNOWN_SPELL_ID' not in (work/'talents/findings.tsv').read_text()
+            # Character-state preparation must work without inventing auth rows;
+            # the final all-scope audit still refuses this missing evidence.
+            scoped=work/'character-state'
+            result=run(scoped,scope='character-state',auth_schema=prefix+'_absent_auth')
+            assert result.returncode==1,result.stdout+result.stderr
+            state_status=json.loads((scoped/'audit.json').read_text())
+            assert state_status['status']=='COMPLETE' and state_status['scope']=='character-state'
+            assert set(state_status['audited_input_rows'])=={'characters','character_talent','character_spell','character_skills'}
+            assert set(state_status['dbc_sha256'])=={'Spell.dbc','Talent.dbc','TalentTab.dbc','SkillLine.dbc'}
+            scoped_findings=(scoped/'findings.tsv').read_text()
+            assert 'SKILL_VALUE_EXCEEDS_CAP' in scoped_findings and 'UNKNOWN_SPELL_ID' in scoped_findings
+            assert 'MISSING_PARENT' not in scoped_findings
+            final=work/'full-missing-auth'
+            assert run(final,auth_schema=prefix+'_absent_auth').returncode==2
+            assert 'COMPLETE_WITH_LIMITATIONS'==json.loads((final/'audit.json').read_text())['status']
             result=subprocess.run(['mysql',*reader,'-e',f'DELETE FROM `{chars}`.character_spell;'],text=True,capture_output=True)
             assert result.returncode!=0 and '1142' in result.stderr
             assert sql(checksum_query)==before,'Auditing changed source/world data'

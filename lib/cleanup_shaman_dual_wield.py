@@ -45,7 +45,7 @@ def contract(meta):
     return True
 
 
-def select(state,tc,ac,expected=None,*,preview=False,offhand,default_skills):
+def select(state,tc,ac,expected=None,*,preview=False,offhand,default_skills,allow_pending=False):
     books, talents, skills = defaultdict(dict), defaultdict(list), defaultdict(dict)
     for g,s,a,d in state['character_spell']:books[g][s]=(a,d)
     for g,s,k in state['character_talent']:talents[g].append((s,k))
@@ -55,7 +55,7 @@ def select(state,tc,ac,expected=None,*,preview=False,offhand,default_skills):
     for g,race,cls,level,active,groups,online,flags in state['characters']:
         if cls!=7 or 674 not in books[g]:continue
         reason=None
-        if flags&4:reason='DEFER_PENDING_NATIVE_RESET'
+        if flags&4 and not allow_pending:reason='DEFER_PENDING_NATIVE_RESET'
         elif online or race not in (2,6,11) or not 1<=level<=80 or groups not in (1,2) or active not in range(groups):
             reason='DEFER_SHAMAN_CHARACTER_STATE'
         elif not valid_metadata:reason='DEFER_SHAMAN_NATIVE_CONTRACT'

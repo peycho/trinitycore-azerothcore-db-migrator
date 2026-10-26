@@ -39,8 +39,8 @@ def audit_inputs(settings, work, args):
         fail('AUDIT_CHANGED','Required full audit reports are missing')
     fingerprints['SHA256SUMS']=sha(manifest)
     status=json.loads((directory/'audit.json').read_text())
-    if status.get('status')!='COMPLETE' or status.get('limitations')!=[] or status.get('scope')!='all':
-        fail('FULL_AUDIT_REQUIRED','Skill cleanup requires a complete full audit without coverage limitations')
+    if status.get('status')!='COMPLETE' or status.get('limitations')!=[] or status.get('scope') not in ('all','character-state'):
+        fail('FULL_AUDIT_REQUIRED','Skill cleanup requires a complete character-state or full audit without coverage limitations')
     if (status.get('schemas')!=settings.schemas
             or status.get('server',{}).get('uuid')!=work.current()['identity']['uuid']):
         fail('AUDIT_SESSION_MISMATCH','Audit source identity differs from the current session')

@@ -15,7 +15,7 @@ import struct
 import subprocess
 import sys
 
-POLICY = 'spell-state-v17'
+POLICY = 'spell-state-v18'
 LEARN, SKILL, SKILL_STEP, DUAL_WIELD = 36, 118, 44, 40
 PASSIVE, HIDDEN = 0x40, 0x80
 
@@ -460,6 +460,39 @@ class Metadata:
             if record[71 + i] == DUAL_WIELD:
                 return 118, 1, 1, 1
         return None
+
+
+def known_ranked_language_without_skill(spell,skill,character,stored,skills,tc,ac,direction):
+    """Native LearnDefaultSkill(skill, 0) is inert for a ranked language.
+
+    GetSkillRangeType checks a present SkillTiers record before the language
+    category. Rank zero exits that branch without SetSkill. Preserve only an
+    already-known singleton language, never a new learned or derived spell.
+    """
+    race,cls,active,groups=character
+    if skill in skills or spell not in stored:return None
+    flags=stored[spell]
+    if direction=='tc-to-ac':
+        if tuple(flags)!=(1,0):return None
+    elif not flags or flags[0]!=3 or any(flags[1:]):return None
+    layouts=[]
+    for m in(tc,ac):
+        row=m.spells[spell];line=m.stores['SkillLine'].get(skill,[])
+        infos=[r for _,r in sorted(m.stores['SkillRaceClassInfo'].items())if r[1]==skill
+               and(not r[2]or r[2]&(1<<(race-1)))and(not r[3]or r[3]&(1<<(cls-1)))]
+        abilities=[a[1:]for a in m.abilities[spell]]
+        if (len(line)<2 or line[1]!=10 or not infos or infos[0][6]not in m.stores['SkillTiers']
+                or m.chain(spell)!=(spell,)or set(row[71:74])!={0,39}
+                or row[4]!=192 or any(row[86:92])or any(row[95:98])or any(row[116:119])
+                or m.scripts[spell]or m.learns[spell]or m.effect_learns[spell]
+                or m.requires[spell]or m.learn_parents[spell]or spell in m.talents or m.talent_learn_owners.get(spell)
+                or len(abilities)!=1 or abilities[0][0]!=skill or abilities[0][8]!=2):return None
+        layouts.append((infos[0][1:],m.stores['SkillTiers'][infos[0][6]],abilities))
+    if layouts[0]!=layouts[1]:return None
+    return {'policy':'KNOWN_RANKED_LANGUAGE_ZERO_RANK_NOOP','skill':skill,'known_before':True,
+            'skill_present':False,'skill_granted':False,'native_default_rank':0,
+            'native_range':'RANK','native_tier':layouts[0][0][5],
+            'race_class_info':layouts[0][0],'ability':layouts[0][2][0]}
 
 
 def script_review(metadata, stored_counts, talent_counts):
@@ -1506,7 +1539,9 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
         for ability in ac.abilities[spell] if spell not in inactive_skill_proofs else ():
             skill = ability[1]
             if (ability[9] == 2 or (skill in (633, 776) and ability[10] == 0)) and skill not in skills:
-                reject('SPELL_WOULD_ADD_SKILL', f'{spell}: skill={skill}')
+                proof=known_ranked_language_without_skill(spell,skill,character,stored,skills,tc,ac,direction)
+                if proof is None:reject('SPELL_WOULD_ADD_SKILL', f'{spell}: skill={skill}')
+                row.setdefault('native_skill_noops',[]).append(proof)
         row['proofs'].sort()
         row['original'] = list(stored.get(spell, ()))
         authorized_by = ({} if spell in aura_helpers else
@@ -1523,6 +1558,8 @@ def reconstruct(character, stored, talents, skills, source, target, direction, l
             'rank_root': tc.first(spell), 'owner_masks': sorted(authorized_by.items()),
             'required_spells': requirements,
         }
+        if row.get('native_skill_noops'):
+            row['authorization']['absent_ranked_language_skill']=row.pop('native_skill_noops')
         if spell in absent_runeforging_proofs:
             row['authorization']['absent_runeforging_skill'] = absent_runeforging_proofs[spell]
         if spell in inactive_skill_proofs:

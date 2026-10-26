@@ -35,6 +35,23 @@ class TrainedHistoryTests(unittest.TestCase):
         self.assertIn((1,1,100,'DIRECT_TALENT','ABSENT_NO_GRANT','',''),proof)
         self.assertEqual(self.state,before);self.assertEqual(self.call(),self.call())
 
+    def test_pending_family_history_is_wholly_disabled_and_never_completes_reset(self):
+        self.state['characters'][0][7]=36
+        self.state['character_spell'].append([1,100,1,1])
+        original=copy.deepcopy(self.state)
+        result=history.select(self.state,self.meta,None,orphan_children=True,preview=True,pending_history=True)
+        self.assertEqual(result[0],[(1,100,1,1),(1,101,0,1),(1,102,1,1)])
+        self.assertEqual(self.state,original);self.assertTrue(result[3]['pending_native_reset_preserved']);self.assertFalse(result[3]['reset_executed'])
+        for group in (0,1):
+            self.state=copy.deepcopy(original);self.state['character_talent']=[[1,100,group]]
+            self.assertFalse(history.select(self.state,self.meta,None,orphan_children=True,preview=True,pending_history=True)[0])
+        for spell in (100,101,102):
+            self.state=copy.deepcopy(original);next(r for r in self.state['character_spell']if r[0]==1 and r[1]==spell)[3]=0
+            self.assertFalse(history.select(self.state,self.meta,None,orphan_children=True,preview=True,pending_history=True)[0])
+        self.state=copy.deepcopy(original);self.state['characters'][0][6]=1
+        self.assertFalse(history.select(self.state,self.meta,None,orphan_children=True,preview=True,pending_history=True)[0])
+        with self.assertRaises(CleanupError):history.select(original,self.meta,None,pending_history=True)
+
     def test_selected_owner_in_either_group_preserves_whole_chain(self):
         for group in (0,1):
             self.state['character_talent']=[[1,100,group]]

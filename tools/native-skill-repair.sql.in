@@ -52,7 +52,7 @@ BEGIN
  SET SESSION group_concat_max_len=@CONCAT_LIMIT@;
  SET SESSION time_zone='+00:00';
  IF (SELECT COUNT(*) FROM expected_skills)<>@COUNT@
- OR EXISTS(SELECT 1 FROM expected_skills WHERE skill NOT IN (183,776) OR value=0 OR value<>cap OR (skill=776 AND value<>1))
+ OR EXISTS(SELECT 1 FROM expected_skills WHERE skill NOT IN (@ALLOWED_SKILLS@) OR value=0 OR value<>cap OR (skill=776 AND value<>1))
  OR NOT ((SELECT SHA2(GROUP_CONCAT(CONCAT_WS(':',guid,skill,value,cap) ORDER BY guid,skill SEPARATOR '|'),256)
      FROM expected_skills)<=>'@EXPECTED_HASH@')
  OR (SELECT COUNT(*) FROM expected_snapshot)<>@SNAPSHOT_COUNT@
@@ -116,8 +116,8 @@ BEGIN
   SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Native skill scope or expected result fingerprints changed';
  END IF;
  IF EXISTS(SELECT 1 FROM `@SOURCE@`.characters c JOIN affected g ON c.guid=g.guid
-     WHERE c.online<>0 OR (c.at_login & 4)<>0) THEN
-  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Affected character online or pending native reset';
+     WHERE c.online<>0 OR @RESET_STATE_TEST@) THEN
+  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Affected character online or native reset state differs';
  END IF;
  @WORLD_CHECKS@
 END//

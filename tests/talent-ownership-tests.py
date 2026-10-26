@@ -39,6 +39,32 @@ class OwnershipTests(unittest.TestCase):
     def review(self):
         return select(self.state, self.meta, preview=True)
 
+    def test_overlevel_unselected_history_preserves_exact_level_and_skills(self):
+        self.state['characters'][0][3]=200;self.state['character_talent']=[]
+        self.state['character_spell']=[[1,12296,1,0],[1,6603,1,0]]
+        before=copy.deepcopy(self.state);self.assertFalse(self.review()[0])
+        rows,excluded,_,summary,_=select(self.state,self.meta,preview=True,overlevel_unselected=True)
+        self.assertEqual(rows,[(1,12296,1,0)]);self.assertFalse(excluded);self.assertEqual(self.state,before)
+        self.assertTrue(summary['character_levels_preserved']);self.assertFalse(summary['reset_executed'])
+        self.state['character_talent']=[[1,12282,0]]
+        self.assertFalse(select(self.state,self.meta,preview=True,overlevel_unselected=True)[0])
+        self.state=before
+        for level in(80,256):
+            self.state['characters'][0][3]=level
+            self.assertFalse(select(self.state,self.meta,preview=True,overlevel_unselected=True)[0])
+
+    def test_pending_ownership_retains_selected_builds_and_native_reset(self):
+        self.state['characters'][0][7]=36
+        before=copy.deepcopy(self.state)
+        self.assertFalse(self.review()[0])
+        rows,excluded,_,summary,_=select(self.state,self.meta,preview=True,pending_ownership=True)
+        self.assertEqual(rows,[(1,12664,1,0)]);self.assertEqual(excluded,[]);self.assertEqual(self.state,before)
+        self.assertTrue(summary['pending_native_reset_preserved']);self.assertFalse(summary['reset_executed'])
+        self.assertEqual(summary['skill_rows_changed'],0);self.assertEqual(summary['spell_rows_inserted'],0)
+        self.state['characters'][0][7]=32
+        self.assertFalse(select(self.state,self.meta,preview=True,pending_ownership=True)[0])
+        with self.assertRaises(CleanupError):select(before,self.meta,preview=True,pending_ownership=True,foreign_class_families=True)
+
     def test_old_conversion_fails_repaired_book_preserves_selected_and_unrelated(self):
         with self.assertRaises(Unsupported):
             reconstruct((1,1,0,2), {12282:(1,0),12664:(1,0),6603:(1,0)},

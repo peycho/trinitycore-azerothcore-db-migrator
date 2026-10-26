@@ -14,7 +14,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def main(parent=False):
+def main(parent=False, native_invalid_items=False):
     port = os.environ.get('REHEARSAL_MYSQL_PORT','33317')
     if (os.environ.get('MIGRATOR_DISPOSABLE_MYSQL')!='1' or not port.isascii()
             or not port.isdigit() or not 1<=int(port)<=65535 or int(port)==3306):
@@ -105,6 +105,9 @@ def main(parent=False):
             if ac_req is not None:sql(f'INSERT INTO `{aworld}`.item_template(entry,requiredspell,custom_decimal) VALUES({entry},{ac_req},0.100001);')
         if parent:
             sql(f'UPDATE `{aworld}`.item_template SET requiredspell=9788 WHERE entry=10006')
+        if native_invalid_items:
+            sql(f"INSERT INTO `{source}`.character_inventory(guid,bag,slot,item) VALUES(1,0,18,1001),(2,0,17,1002)")
+            sql(f"INSERT INTO `{source}`.item_instance(guid,itemEntry,owner_guid,enchantments) VALUES(1002,0,2,'')")
         for user in (writer,reader):
             sql(f"CREATE USER '{user}'@'%' IDENTIFIED BY '';");users.append(user)
             for schema in (source,auth,world,aworld):sql(f"GRANT SELECT ON `{schema}`.* TO '{user}'@'%';")
@@ -176,6 +179,7 @@ backup_reference=dedicated-disposable-specialization-fixture
                 result=run('inspect-migration-blockers','--report',str(report))
                 inspection=Path(result.stdout.split('Reports: ',1)[1].strip()).name
             plan=['plan','specialization-parent' if parent else 'specialization-retirement','--migration-inspection',inspection]
+            if native_invalid_items:plan+=['--native-invalid-items']
             old=run('plan','talent-ownership','--migration-inspection',inspection,'--preview')
             assert '"selected_rows": 0' in old.stdout
             preview=run(*plan,'--preview')
@@ -194,7 +198,7 @@ backup_reference=dedicated-disposable-specialization-fixture
             run(*plan,'--expect-rows','9' if parent else '4')
             package=session/'batches'/json.loads((session/'active-batch.json').read_text())['batch']
             manifest=json.loads((package/'manifest.json').read_text());archive=manifest['archive_schema'];owned.append(archive)
-            assert manifest['policy']==('tc-reviewed-weaponsmith-parent-repair-v2' if parent else 'tc-inactive-competing-specialization-retirement-v1')
+            assert manifest['policy']==(('tc-weaponsmith-parent-native-invalid-items-v3' if parent else 'tc-inactive-specialization-native-invalid-items-v2')if native_invalid_items else ('tc-reviewed-weaponsmith-parent-repair-v2' if parent else 'tc-inactive-competing-specialization-retirement-v1'))
             assert manifest['selected_rows']==(9 if parent else 4) and manifest['spell_rows_inserted']==(3 if parent else 0)
             run('prepare');run('prepare');assert checksum()==baseline
             denied=run('apply',code=2)
@@ -207,6 +211,15 @@ backup_reference=dedicated-disposable-specialization-fixture
             def direct(extra=''):
                 return subprocess.run(['mysql',*base,'--user='+writer],input=ack+extra+f'CALL `{archive}`.apply_batch();',text=True,capture_output=True)
 
+            if native_invalid_items:
+                for schema in (world,aworld):
+                    sql(f'INSERT INTO `{schema}`.item_template(entry) VALUES(0)')
+                    changed=checksum();denied=direct(extra)
+                    assert denied.returncode and 'no template zero'in denied.stderr,denied.stderr
+                    assert checksum()==changed
+                    assert 'SPECIALIZATION_ZERO_TEMPLATE'in run('apply',code=2).stderr
+                    sql(f'DELETE FROM `{schema}`.item_template WHERE entry=0')
+                passed('native-invalid item rows retained; live template zero rejects before mutation in both worlds')
             if parent:
                 old_ack=direct("SET @specialization_retirement_ack='RETIRE_INACTIVE_COMPETITORS_RETAIN_VERIFIED_ACTIVE_CHOICE';")
                 assert old_ack.returncode and checksum()==baseline
@@ -311,5 +324,5 @@ backup_reference=dedicated-disposable-specialization-fixture
 
 
 if __name__=='__main__':
-    assert sys.argv[1:] in ([],['--parent'])
-    main(parent=sys.argv[1:]==['--parent'])
+    assert set(sys.argv[1:])<={'--parent','--native-invalid-items'}
+    main(parent='--parent'in sys.argv,native_invalid_items='--native-invalid-items'in sys.argv)

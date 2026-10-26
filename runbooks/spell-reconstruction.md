@@ -7,6 +7,30 @@ already accepted player writes requires a separately reviewed repair with its
 own backup, ownership and rollback evidence. No core patch or CleanCharacterDB
 setting is used. The v2 profile remains **UNREVIEWED**.
 
+## Known ranked languages with absent skills (spell-state-v18)
+
+Native TC and AC check a valid `SkillTiers` record before the language category.
+For such a ranked language, the spellbook acquisition call uses rank zero:
+`LearnDefaultSkill(skill, 0)` returns without creating a skill. V18 corrects a
+false missing-skill blocker for an already-known enabled singleton language
+when both exact race/class entries, ability and tier records agree. It preserves
+the skill's absence in both directions. It neither grants a language skill nor
+makes that language usable through a new skill row.
+
+The exception requires a language-only effect, one matching acquisition-method-2
+ability, a valid matching native tier, ordinary stored flags and no scripts,
+learning, talent or prerequisite route. An ordinary language with no native tier
+still creates 300/300 skill and remains blocked if that skill is absent. Changed
+or missing tiers, non-language effects, metadata disagreement, new derived spells,
+inactive/disabled history and partial AC ownership do not qualify. Provenance
+records `authorization.absent_ranked_language_skill`, including the selected
+race/class entry, tier and `skill_granted=false`.
+
+Protected C++ acquisition/default/range consumers are tested at levels 1, 80 and
+200, with a real-acquisition control. Use a new migration run and schemas; older
+checkpoints cannot resume under v18. Core pins and approval remain unchanged;
+full gameplay acceptance is still required.
+
 ## Known Runeforging recipes with no skill (spell-state-v17)
 
 A stored, enabled Runeforging enchantment does not always acquire Runeforging

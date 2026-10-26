@@ -10,7 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]; sys.path.insert(0,str(ROOT/'lib'))
 from cleanup_console import CleanupError, parser
-from cleanup_obsolete_riding import contract, select, native_invalid_item
+from cleanup_obsolete_riding import contract, select, native_invalid_item, candidate_guids
 from spells import Metadata, reconstruct, Unsupported
 
 def module(name,path):
@@ -140,5 +140,9 @@ class RidingTests(unittest.TestCase):
         self.assertEqual(self.review(native_invalid_items=True,zero_template_counts={'tc':0,'ac':0})[1][0][2],
                          'DEFER_ITEM_REQUIRES_LEGACY_RIDING')
 
+
+    def test_item_capture_scope_includes_every_stored_legacy_candidate(self):
+        state={'characters':[[1],[2],[3]],'character_spell':[[1,825,1,0],[2,825,0,1],[3,6603,1,0],[99,825,1,0]]}
+        self.assertEqual(candidate_guids(state),[1,2])
 
 if __name__ == '__main__': unittest.main()

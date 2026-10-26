@@ -86,7 +86,7 @@ class Findings:
 
 def catalog(directory, profile, scope):
     stores, hashes = {}, {}
-    names = ['Spell', 'Talent', 'TalentTab'] + (['SkillLine'] if scope == 'all' else [])
+    names = ['Spell', 'Talent', 'TalentTab'] + (['SkillLine'] if scope in ('all','character-state') else [])
     for name in names:
         stores[name], hashes[name+'.dbc'] = read_dbc(directory/(name+'.dbc'), profile['stores'][name]['formats']['tc'])
     ranks = defaultdict(list)
@@ -212,14 +212,14 @@ def build_queries(args, tables, findings, coverage):
     q.add('server', "SELECT 'server',@@version,@@server_uuid,@@transaction_read_only")
     required = [(chars,'characters',['guid','race','class','activeTalentGroup','talentGroupsCount']),
                 (chars,'character_talent',['guid','spell','talentGroup'])]
-    if args.scope == 'all':
+    if args.scope in ('all','character-state'):
         required += [(chars,'character_spell',['guid','spell','active','disabled']),
                      (chars,'character_skills',['guid','skill','value','max'])]
     if not q.require('native-character-state', required):
         raise ValueError('Required native TC columns are missing; inspect coverage.tsv and schema inventory before upgrading any schema')
     selects = [f'SELECT guid,0 kind,race a,class b,activeTalentGroup c,talentGroupsCount d FROM {ident(chars)}.characters',
                f'SELECT guid,1,spell,talentGroup,0,0 FROM {ident(chars)}.character_talent']
-    if args.scope == 'all':
+    if args.scope in ('all','character-state'):
         selects += [f'SELECT guid,2,skill,value,max,0 FROM {ident(chars)}.character_skills',
                     f'SELECT guid,3,spell,active,disabled,0 FROM {ident(chars)}.character_spell']
     overlay = q.require('TC-custom-spell-catalog', [(world,'spell_dbc',['Id'])])
@@ -360,7 +360,7 @@ def main():
     parser.add_argument('--tc-dbc', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--layout-profile', type=Path, default=ROOT/'compatibility/tc335-acwotlk-v2/spell-metadata.json')
-    parser.add_argument('--scope', choices=['talents','all'], default='all')
+    parser.add_argument('--scope', choices=['talents','character-state','all'], default='all')
     parser.add_argument('--mysql', nargs=argparse.REMAINDER, required=True)
     args = parser.parse_args()
     os.umask(0o077)

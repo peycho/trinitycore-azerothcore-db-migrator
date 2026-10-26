@@ -68,7 +68,7 @@ def load_inputs(audit_dir, dbc_dir, expect_rows):
         fingerprints[path] = checksum
     audit = json.loads((audit_dir/'audit.json').read_text())
     if (audit.get('status') != 'COMPLETE' or audit.get('limitations') != []
-            or audit.get('scope') not in ('all', 'talents')):
+            or audit.get('scope') not in ('all', 'character-state', 'talents')):
         raise ValueError('A COMPLETE audit without coverage limitations is required')
     schemas = audit['schemas']
     if set(schemas) != {'characters', 'auth', 'world'} or len(set(schemas.values())) != 3:
@@ -89,7 +89,7 @@ def load_inputs(audit_dir, dbc_dir, expect_rows):
     for path in (Path(__file__), TEMPLATE, ROOT/'tools/talent-cleanup-README.md.in'):
         fingerprints[path] = sha(path)
     catalog_names = {'Spell.dbc', 'Talent.dbc', 'TalentTab.dbc'}
-    if audit['scope'] == 'all':
+    if audit['scope'] in ('all','character-state'):
         catalog_names.add('SkillLine.dbc')
     if set(audit['dbc_sha256']) != catalog_names:
         raise ValueError('Unexpected audit DBC fingerprint set')

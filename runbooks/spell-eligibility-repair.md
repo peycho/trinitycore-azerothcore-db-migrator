@@ -338,3 +338,44 @@ of blocked characters may stay unchanged. A pending native-reset flag likewise
 does not prove its reset has executed or that other blockers will disappear.
 Local native-reader and disposable SQL checks are separate from gameplay, which
 remains **NOT TESTED**. Approval remains **UNREVIEWED**.
+
+## Opt-in inactive foreign class actions (v5)
+
+`--inactive-foreign-actions` selects the separate
+`tc-inactive-foreign-action-retirement-v5` policy. Its fixed catalog contains
+only Lockpicking `1804`: an existing inactive/non-disabled (`active=0,
+disabled=0`) row on a verified non-rogue. Lockpicking skill `633` and every rank
+of its old teaching chain (`1809`, `1810`, `6460`) must be absent, including
+disabled teacher history. Rogues, enabled/disabled action rows, pending resets
+and unsupported character or talent state defer.
+
+Both effective catalogs must match the sealed action/teacher mechanics, rank
+order, skill eligibility and exact incoming learning route. Changed scripts,
+requirements, aura/talent routes or unknown metadata defer. The ordinary skill
+category guards remain active; this flag does not authorize profession removal.
+It is mutually exclusive with the other eligibility modes.
+
+```bash
+python3 console plan spell-eligibility \
+  --migration-inspection latest --inactive-foreign-actions --preview
+python3 console plan spell-eligibility \
+  --migration-inspection INSPECTION_ID --inactive-foreign-actions --expect-rows SELECTED_ROWS
+```
+
+Use the actual preview count. Review the candidate README, `selected-rows.tsv`
+and `eligibility-native-proof.json`, then use the explicit
+prepare/status/apply/status/restore sequence above. This retires inactive known
+history; it does not activate or grant an action, execute a teaching spell or
+change skills, recipes, either talent build, items or login flags. Complete
+original rows, including custom fields, support guarded exact restoration.
+
+Direct SQL additionally requires
+`@eligibility_foreign_action_ack='RETIRE_ONLY_INACTIVE_FOREIGN_ACTION_WITHOUT_SKILL_OR_TEACHER'`.
+Missing/wrong acknowledgement, catalog drift, newly stored teacher history or
+changed source/world inputs reject the sealed batch. Retain the complete
+original toolkit for existing archives. A fresh import requires a new session,
+inspection, selection and archive.
+
+Removing this row can expose another first failure on the same character.
+Native-reader and disposable SQL validation do not establish gameplay
+acceptance: gameplay remains **NOT TESTED**, approval **UNREVIEWED**.

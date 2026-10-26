@@ -119,4 +119,40 @@ class EvidenceTests(unittest.TestCase):
             self.assertFalse((output/'SHA256SUMS').exists())
 
 
+    def test_whole_source_scope_has_no_saved_guid_filter_or_failure_claim(self):
+        settings=SimpleNamespace(check_paths=lambda:None,schemas={'characters':'tc_chars'},compatibility={},sql=lambda q:'1\n2\n')
+        work=SimpleNamespace(session=self.root,operation=self.root,current=lambda:{'identity':{'uuid':'source-uuid'}})
+        state={'characters':[[1,1,1,80,0,1,0,0],[2,1,1,80,0,1,0,0]],'character_spell':[], 'character_talent':[],'character_skills':[]}
+        with patch.object(evidence,'metadata',return_value={'columns':[],'tables':[]}),patch.object(evidence,'require_shape'),\
+             patch.object(evidence,'snapshot',return_value=state),\
+             patch.object(evidence,'read_world',return_value=(SimpleNamespace(hashes={}),{'rows':{}})),redirect_stdout(io.StringIO()):
+            out=evidence.inspect(settings,work,SimpleNamespace(all_characters=True,report=None))
+        packet=verify(out);report=json.loads(packet['inspection.json'])
+        self.assertEqual(report['scope'],'ALL_SOURCE_CHARACTERS')
+        self.assertEqual(report['reported_characters'],2)
+        self.assertEqual(report['reason_counts'],{'PREPARATION_SCOPE':2})
+        self.assertIn(b'not migration failures',packet['README.md'])
+        self.assertEqual(report['cleanup_approval'],'NOT_GRANTED')
+
+    def test_whole_source_bound_and_population_drift_fail_closed(self):
+        settings=SimpleNamespace(check_paths=lambda:None,schemas={'characters':'tc_chars'},compatibility={},sql=lambda q:'1\n2\n')
+        work=SimpleNamespace(session=self.root,operation=self.root,current=lambda:{'identity':{'uuid':'source-uuid'}})
+        with patch.object(evidence,'MAX_CHARACTERS',1),self.assertRaises(CleanupError):
+            evidence.inspect(settings,work,SimpleNamespace(all_characters=True,report=None))
+        with patch.object(evidence,'metadata',return_value={'columns':[],'tables':[]}),patch.object(evidence,'require_shape'),\
+             patch.object(evidence,'snapshot',return_value={'characters':[[1,1,1,80,0,1,0,0]]}),redirect_stdout(io.StringIO()):
+            with self.assertRaises(CleanupError)as raised:evidence.inspect(settings,work,SimpleNamespace(all_characters=True,report=None))
+        self.assertEqual(raised.exception.code,'SOURCE_SCOPE_DRIFT')
+
+
+    def test_new_character_outside_initial_roster_rejects_capture(self):
+        settings=SimpleNamespace(check_paths=lambda:None,schemas={'characters':'tc_chars'},compatibility={},sql=unittest.mock.Mock(side_effect=['1\n','1\n2\n']))
+        work=SimpleNamespace(session=self.root,operation=self.root,current=lambda:{'identity':{'uuid':'source-uuid'}})
+        state={'characters':[[1,1,1,80,0,1,0,0]],'character_spell':[],'character_talent':[],'character_skills':[]}
+        with patch.object(evidence,'metadata',return_value={'columns':[],'tables':[]}),patch.object(evidence,'require_shape'),\
+             patch.object(evidence,'snapshot',return_value=state),redirect_stdout(io.StringIO()):
+            with self.assertRaises(CleanupError)as raised:evidence.inspect(settings,work,SimpleNamespace(all_characters=True,report=None))
+        self.assertEqual(raised.exception.code,'SOURCE_SCOPE_DRIFT')
+
+
 if __name__=='__main__':unittest.main()

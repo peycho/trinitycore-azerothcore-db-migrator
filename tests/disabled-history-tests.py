@@ -161,4 +161,13 @@ class DisabledHistoryTests(unittest.TestCase):
         self.assertIn('!itr->second.disabled',known)
 
 
+    def test_retirement_projection_accepts_only_distinct_exact_native_keys(self):
+        join=history.retirement_join([(1,12296,1,1),(2,12296,0,1)])
+        self.assertIn('retired.guid=s.guid AND retired.spell=s.spell',join)
+        self.assertIn('SELECT DISTINCT',join)
+        self.assertNotIn(' OR ',join)
+        for rows in ([],[(1,12296,1,1),(1,12296,0,1)],[(0,12296)],[(1,0)],[(1,True)],[(1,4294967296)],[(1,"12296;DELETE")]):
+            with self.subTest(rows=rows),self.assertRaises(CleanupError):history.retirement_join(rows)
+
+
 if __name__=='__main__':unittest.main()

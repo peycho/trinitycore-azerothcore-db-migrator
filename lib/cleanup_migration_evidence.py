@@ -61,8 +61,18 @@ def groups(rows):
 
 
 def inspect(settings, work, args):
-    data, rows = read_report(args.report)
     settings.check_paths()
+    all_characters = getattr(args,'all_characters',False)
+    if all_characters:
+        source=settings.schemas['characters']
+        guids=[int(row) for row in settings.sql(
+            f'SELECT guid FROM `{source}`.characters ORDER BY guid LIMIT {MAX_CHARACTERS+1};').splitlines()]
+        if not guids or len(guids)>MAX_CHARACTERS or any(not 1<=g<=0xffffffff for g in guids):
+            fail('BLOCKER_REPORT_BOUND','Whole-source preparation requires 1-40000 native character keys')
+        rows=[[str(g),'*','PREPARATION_SCOPE','Whole-source review; not a migration failure'] for g in guids]
+        data=('guid\tspell\treason_code\tdetail\n'+''.join('\t'.join(r)+'\n' for r in rows)).encode()
+    else:
+        data, rows = read_report(args.report)
     output = work.session/'inspections'/token('migration-blockers')
     private_dir(output)
     (output/'INCOMPLETE').touch()
@@ -86,6 +96,11 @@ def inspect(settings, work, args):
         queries.append((table,f'SELECT JSON_ARRAY({columns}) row_value FROM `{source}`.`{table}` WHERE guid IN ({selector}) ORDER BY {keys} LIMIT {MAX_ROWS+1}'))
     captured=snapshot(settings,queries)
     state={table:captured.get(table,[]) for table in FIELDS}
+    if all_characters and {r[0] for r in state['characters']} != set(guids):
+        fail('SOURCE_SCOPE_DRIFT','Character population changed during whole-source capture')
+    if all_characters and [int(row) for row in settings.sql(
+            f'SELECT guid FROM `{source}`.characters ORDER BY guid LIMIT {MAX_CHARACTERS+1};').splitlines()] != guids:
+        fail('SOURCE_SCOPE_DRIFT','Character population changed during whole-source capture')
     if sum(len(state.get(table,[])) for table in FIELDS)>MAX_ROWS:
         fail('BLOCKER_CONTEXT_BOUND','Source context exceeds 5000000 rows; no evidence is truncated')
     if metadata(settings,FIELDS)!=before:
@@ -114,6 +129,8 @@ def inspect(settings, work, args):
     write_json(output/'inspection.json',{
         'status':'COMPLETE_REVIEW_ONLY','created_utc':now(),'cleanup_approval':'NOT_GRANTED','migration_approval':'UNREVIEWED',
         'reported_characters':len(rows),'reason_counts':dict(sorted(Counter(row[2] for row in rows).items())),
+        'scope':'ALL_SOURCE_CHARACTERS' if all_characters else 'SAVED_REPORT_CHARACTERS',
+        'scope_roster_sha256':sha_json(guids) if all_characters else None,
         'source_schema':source,'source_uuid':work.current()['identity']['uuid'],
         'source_state_sha256':sha_json(state),'world_sha256':sha_json(world),
         'dbc_sha256':effective.hashes,'core_compatibility':settings.compatibility,
@@ -123,7 +140,7 @@ def inspect(settings, work, args):
             'Captures listed semantic fields, not full-row restoration archives',
             'TC world snapshot is separate from the source character snapshot; target world overlays are not captured',
             'No source writes, cleanup batch, SQL execution package, ownership authorization or gameplay acceptance']})
-    (output/'README.md').write_text('''# Migration blocker context (private)\n\nReview groups.tsv and character-context.jsonl. Source-state.json lists the exact\nfield order and captured rows for every reported character; tc-world.json retains\neffective TC input tables and their layouts/fingerprints. DBC hashes and the\nreviewed profile are retained. No database credentials are exported.\n\nThis is new read-only diagnostic evidence, not a cleanup selection or a successful\nmigration. It cannot authorize deleting enabled spells, resetting talents, adding\nskills or ignoring predecessor obligations. No active cleanup batch is changed.\nThe report is first-failure-only. No target-world overlays are captured. Source\nsemantic fields and TC world metadata use separate consistent read snapshots.\n\nRetain this private directory and SHA256SUMS. A tar archive of the whole directory\ncan be transferred for offline review; do not publish player evidence.\n''')
+    (output/'README.md').write_text(('Whole-source preparation scope; PREPARATION_SCOPE rows are review markers, not migration failures.\n\n' if all_characters else '')+'''# Migration blocker context (private)\n\nReview groups.tsv and character-context.jsonl. Source-state.json lists the exact\nfield order and captured rows for every reported character; tc-world.json retains\neffective TC input tables and their layouts/fingerprints. DBC hashes and the\nreviewed profile are retained. No database credentials are exported.\n\nThis is new read-only diagnostic evidence, not a cleanup selection or a successful\nmigration. It cannot authorize deleting enabled spells, resetting talents, adding\nskills or ignoring predecessor obligations. No active cleanup batch is changed.\nThe report is first-failure-only. No target-world overlays are captured. Source\nsemantic fields and TC world metadata use separate consistent read snapshots.\n\nRetain this private directory and SHA256SUMS. A tar archive of the whole directory\ncan be transferred for offline review; do not publish player evidence.\n''')
     (output/'INCOMPLETE').unlink()
     seal(output)
     print(f'INSPECTED {len(rows)} migration blocker characters; no database changes\nReports: {output}')

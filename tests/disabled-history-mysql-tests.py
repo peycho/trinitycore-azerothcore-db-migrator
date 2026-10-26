@@ -508,6 +508,27 @@ backup_reference=disposable-synthetic-fixture
             assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==other_before
             run('restore');run('restore');assert checksum()==trained_baseline
             passed('v6 trained history with absent/direct roots: both-spec ownership, enabled siblings, pending resets, foreign/invalid owners deferred; full context drift, custom-field guards, late rollback, rerun, exact restore and unrelated source/auth/world preservation')
+            pending_args=('plan','disabled-talent-history','--migration-inspection',evidence.name,'--pending-reset-history')
+            preview=run(*pending_args,'--preview')
+            review=json.loads(Path(preview.stdout.split('Details: ',1)[1].splitlines()[0]).read_text())
+            assert review['selected']==[[53,47827,1,1]],review
+            assert review['summary']['pending_native_reset_preserved']and not review['summary']['reset_executed']
+            run(*pending_args,'--expect-review-rows','1')
+            pending_data=json.loads((package()/'manifest.json').read_text());pending_archive=pending_data['archive_schema'];owned.append(pending_archive)
+            assert pending_data['policy']=='tc-pending-reset-unselected-disabled-talents-v8'
+            run('prepare');assert checksum()==trained_baseline
+            sql(f"CREATE TRIGGER `{pending_archive}`.fail_commit BEFORE UPDATE ON `{pending_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='pending-late-error'; END IF; END")
+            assert 'pending-late-error'in run('apply',code=2).stderr;assert checksum()==trained_baseline
+            sql(f'DROP TRIGGER `{pending_archive}`.fail_commit')
+            sql(f'UPDATE `{source}`.characters SET at_login=0 WHERE guid=53')
+            changed=checksum();run('apply',code=2);assert checksum()==changed
+            sql(f'UPDATE `{source}`.characters SET at_login=4 WHERE guid=53')
+            run('apply');run('apply')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=53')=='0'
+            assert sql(f'SELECT at_login FROM `{source}`.characters WHERE guid=53')=='4'
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==other_before
+            run('restore');run('restore');assert checksum()==trained_baseline
+            passed('pending v8 retires only wholly disabled unselected history; selected/enabled families defer, native reset stays pending, late rollback, exact source/custom inverse and reruns')
             sql(f'DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 50 AND 56; DELETE FROM `{source}`.character_talent WHERE guid BETWEEN 50 AND 56; DELETE FROM `{source}`.character_skills WHERE guid=50; DELETE FROM `{source}`.characters WHERE guid BETWEEN 50 AND 56;')
             sql(f'DELETE FROM `{world}`.spell_ranks WHERE first_spell_id=17877')
             assert checksum()==baseline
@@ -833,6 +854,23 @@ backup_reference=disposable-synthetic-fixture
             sql(f'UPDATE `{source}`.character_skills SET value=1,max=1 WHERE guid=80 AND skill=772')
             run('restore');run('restore');assert checksum()==dc_baseline;run('apply',code=2)
             passed('native Death Coil v3: explicit base-only authorization, v1/v2 refusal, both specs and overlapping anchors, absence/no grants, old skill state/normalization proof, input/world/direct-SQL guards, late/disconnect rollback, rerun and exact restoration')
+            pending_dc=('plan','disabled-spell-history','--migration-inspection',evidence.name,'--pending-native-death-coil')
+            preview=run(*pending_dc,'--preview')
+            review=json.loads(Path(preview.stdout.split('Details: ',1)[1].splitlines()[0]).read_text())
+            assert review['selected']==[[84,49894,1,1]],review
+            run(*pending_dc,'--expect-review-rows','1')
+            data=json.loads((package()/'manifest.json').read_text());pending_dc_archive=data['archive_schema'];owned.append(pending_dc_archive)
+            assert data['policy']=='tc-pending-reset-native-death-coil-v5'
+            run('prepare');assert checksum()==dc_baseline
+            sql(f"CREATE TRIGGER `{pending_dc_archive}`.fail_commit BEFORE UPDATE ON `{pending_dc_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='pending-coil-late'; END IF; END")
+            assert 'pending-coil-late'in run('apply',code=2).stderr;assert checksum()==dc_baseline
+            sql(f'DROP TRIGGER `{pending_dc_archive}`.fail_commit')
+            run('apply');run('apply')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=84')=='0'
+            assert sql(f'SELECT at_login FROM `{source}`.characters WHERE guid=84')=='4'
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==other_before
+            run('restore');run('restore');assert checksum()==dc_baseline
+            passed('pending Death Coil native-base repair retains reset bit, every skill and talent; no spell insertion, late rollback, reruns and exact inverse')
             sql(f'''DELETE FROM `{source}`.character_spell WHERE guid BETWEEN 80 AND 89;
               DELETE FROM `{source}`.character_talent WHERE guid=80;DELETE FROM `{source}`.character_skills WHERE guid BETWEEN 80 AND 89;
               DELETE FROM `{source}`.characters WHERE guid BETWEEN 80 AND 89;
@@ -940,6 +978,40 @@ backup_reference=disposable-synthetic-fixture
             sql(f'UPDATE `{source}`.character_spell SET custom_blob=0x0011 WHERE guid=90 AND spell=6603')
             run('restore');run('restore');assert checksum()==ownership_before;run('apply',code=2)
             passed('ownership v1: enabled retirement with both selected specs preserved; native exact children/no grants, legitimate TC prefixes, full deferred-scope drift, explicit acknowledgement, late/disconnect rollback, reruns and exact binary restore')
+            pending_owner=('plan','talent-ownership','--migration-inspection',evidence.name,'--pending-reset-ownership')
+            preview=run(*pending_owner,'--preview')
+            review=json.loads(Path(preview.stdout.split('Details: ',1)[1].splitlines()[0]).read_text())
+            assert review['selected']==[[92,12296,1,0]],review
+            run(*pending_owner,'--expect-rows','1')
+            data=json.loads((package()/'manifest.json').read_text());pending_owner_archive=data['archive_schema'];owned.append(pending_owner_archive)
+            assert data['policy']=='tc-pending-reset-selected-talent-authority-v6'
+            run('prepare');assert checksum()==ownership_before
+            sql(f"CREATE TRIGGER `{pending_owner_archive}`.fail_commit BEFORE UPDATE ON `{pending_owner_archive}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='pending-owner-late'; END IF; END")
+            assert 'pending-owner-late'in run('apply',code=2).stderr;assert checksum()==ownership_before
+            sql(f'DROP TRIGGER `{pending_owner_archive}`.fail_commit')
+            run('apply');run('apply')
+            assert sql(f'SELECT COUNT(*) FROM `{source}`.character_spell WHERE guid=92')=='0'
+            assert sql(f'SELECT at_login FROM `{source}`.characters WHERE guid=92')=='4'
+            assert sql('CHECKSUM TABLE '+','.join(other_tables)+' EXTENDED;')==others_before
+            run('restore');run('restore');assert checksum()==ownership_before
+            passed('pending selected authority retires enabled unowned history under original native guards; reset bit, both builds, skills and unrelated state preserved; late rollback, reruns, exact inverse')
+            sql(f'UPDATE `{source}`.characters SET level=200 WHERE guid=95')
+            high_before=checksum()
+            captured=run('inspect-migration-blockers','--report',str(ownership_report));high_evidence=Path(captured.stdout.split('Reports: ',1)[1].strip())
+            high_plan=('plan','talent-ownership','--migration-inspection',high_evidence.name,'--unselected-overlevel-talents')
+            preview=run(*high_plan,'--preview');review=json.loads(Path(preview.stdout.split('Details: ',1)[1].strip()).read_text())
+            assert review['selected']==[[95,12296,1,0]],review
+            run(*high_plan,'--expect-rows','1')
+            data=json.loads((package()/'manifest.json').read_text());ha=data['archive_schema'];owned.append(ha)
+            assert data['policy']=='tc-unselected-overlevel-talent-history-v7'
+            run('prepare');assert checksum()==high_before
+            sql(f"CREATE TRIGGER `{ha}`.fail_commit BEFORE UPDATE ON `{ha}`.batch FOR EACH ROW BEGIN IF NEW.state='APPLIED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='overlevel-late'; END IF; END")
+            assert 'overlevel-late'in run('apply',code=2).stderr;assert checksum()==high_before
+            sql(f'DROP TRIGGER `{ha}`.fail_commit')
+            run('apply');run('apply');assert sql(f'SELECT level FROM `{source}`.characters WHERE guid=95')=='200'
+            run('restore');run('restore');assert checksum()==high_before
+            sql(f'UPDATE `{source}`.characters SET level=80 WHERE guid=95');assert checksum()==ownership_before
+            passed('overlevel unselected talent repair preserves exact level 200, skills, flags and empty ownership; no level normalization/reset; late rollback, reruns and exact inverse')
             # Foreign v2 is a separate opt-in. Same-class conflicts and shared
             # Dual Wield must remain outside it; full custom originals survive.
             sql(f"UPDATE `{source}`.characters SET class=5,position_x=0.1 WHERE guid=95")

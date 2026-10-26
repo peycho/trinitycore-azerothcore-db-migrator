@@ -50,12 +50,16 @@ def sha(path):
 
 
 def toolkit_hashes():
-    names=('lib/cleanup_specialization_parent.py','tools/specialization-parent-repair.sql.in','lib/cleanup_foreign_swipe_catalog.json','lib/cleanup_racial_catalog.json','lib/cleanup_specializations.py','lib/cleanup_specialization_catalog.json','lib/cleanup_professions.py','lib/cleanup_profession_catalog.json','tools/profession-activation-repair.sql.in','lib/cleanup_skill_teaching.py','lib/cleanup_skill_teaching_catalog.json','lib/cleanup_shaman_dual_wield.py','tools/shaman-dual-wield-repair.sql.in','console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
+    names=('lib/cleanup_racial_skills.py','lib/cleanup_racial_skill_catalog.json','lib/cleanup_foreign_action_catalog.json','lib/cleanup_specialization_parent.py','tools/specialization-parent-repair.sql.in','lib/cleanup_foreign_swipe_catalog.json','lib/cleanup_racial_catalog.json','lib/cleanup_specializations.py','lib/cleanup_specialization_catalog.json','lib/cleanup_professions.py','lib/cleanup_profession_catalog.json','tools/profession-activation-repair.sql.in','lib/cleanup_skill_teaching.py','lib/cleanup_skill_teaching_catalog.json','lib/cleanup_shaman_dual_wield.py','tools/shaman-dual-wield-repair.sql.in','console','lib/cleanup_console.py','lib/cleanup_plans.py','lib/spells.py',
            'tools/audit-tc-source.py','tools/plan-talent-cleanup.py',
            'tools/talent-cleanup.sql.in','tools/single-character-talent-reset.sql.in',
            'tools/container-recovery.sql.in','lib/cleanup_active_reset.py','tools/active-talent-reset.sql.in','lib/cleanup_skills.py','tools/skill-cleanup.sql.in',
            'lib/cleanup_spell_history.py','lib/cleanup_disabled_history.py','lib/cleanup_talent_relations.py','lib/cleanup_selected_rank_history.py','lib/cleanup_migration_evidence.py','lib/cleanup_trained_history.py','tools/disabled-talent-history.sql.in',
            'lib/cleanup_native_skills.py','lib/cleanup_ordinary_history.py','lib/cleanup_death_coil.py','lib/cleanup_ownership.py','lib/cleanup_eligibility.py','lib/cleanup_pet_teaching.py','tools/pet-teaching-repair.sql.in','tools/spell-eligibility-repair.sql.in','tools/talent-ownership-repair.sql.in','tools/passive-rekey-repair.sql.in','lib/cleanup_selected_passive.py','lib/cleanup_inactive_legacy.py','tools/inactive-legacy-repair.sql.in','tools/native-skill-repair.sql.in','tools/native-generic-repair.sql.in')
+    names+=('lib/cleanup_native_actions.py','lib/cleanup_native_action_catalog.json','lib/cleanup_foreign_skills.py','tools/foreign-skill-repair.sql.in','tools/foreign-skill-stowing.sql.in')
+    names+=('lib/cleanup_dual_spec_teacher.py','tools/dual-spec-teacher-repair.sql.in')
+    names+=('lib/cleanup_shaman_offhand.py','tools/shaman-offhand-repair.sql.in')
+    names+=('lib/cleanup_obsolete_horse_catalog.json','tools/obsolete-horse-repair.sql.in')
     names+=('lib/cleanup_obsolete_riding.py','lib/cleanup_obsolete_riding_catalog.json','lib/cleanup_obsolete_riding_item_catalog.json','tools/obsolete-riding-repair.sql.in')
     hashes={}
     for name in names:
@@ -556,7 +560,7 @@ def command_action(settings, work, args):
     path,manifest=work.batch(args.batch)
     settings.safety()
     from cleanup_disabled_history import POLICIES, check_metadata
-    from cleanup_native_skills import POLICY as NATIVE_SKILLS_POLICY, POLICIES as NATIVE_SKILL_POLICIES, GENERIC_POLICY, SWITCH_POLICY, SWITCH_ACK
+    from cleanup_native_skills import POLICY as NATIVE_SKILLS_POLICY, POLICIES as NATIVE_SKILL_POLICIES, GENERIC_POLICY, SWITCH_POLICY, SWITCH_ACK, PENDING_POLICY
     if manifest.get('policy') in (*POLICIES,*NATIVE_SKILL_POLICIES):
         check_metadata(settings,manifest)
     for name,expected_hash in manifest.get('dbc_sha256',{}).items():
@@ -593,19 +597,33 @@ def command_action(settings, work, args):
     if ack not in ('talent_cleanup_ack','recovery_ack','skill_cleanup_ack'):
         fail('INVALID_POLICY','Unknown cleanup acknowledgement variable')
     configuration_ack = ''
-    if manifest.get('policy') == SWITCH_POLICY:
+    from cleanup_trained_history import PENDING_POLICY as PENDING_HISTORY_POLICY, PENDING_ACK
+    if manifest.get('policy')==PENDING_HISTORY_POLICY:
+        if manifest.get('pending_history_ack')!=PENDING_ACK:fail('PENDING_HISTORY_ACK_INVALID','Pending history acknowledgement differs')
+        configuration_ack += f"SET @pending_history_ack='{PENDING_ACK}';\n"
+    from cleanup_racial_skills import POLICY as RACIAL_SKILL_POLICY, ACK as RACIAL_SKILL_ACK
+    if manifest.get('policy')==RACIAL_SKILL_POLICY:
+        if manifest.get('native_racial_ack')!=RACIAL_SKILL_ACK:fail('RACIAL_SKILL_ACK_INVALID','Racial-skill acknowledgement differs')
+        configuration_ack += f"SET @native_racial_skills_ack='{RACIAL_SKILL_ACK}'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    if manifest.get('policy') in (SWITCH_POLICY,PENDING_POLICY):
         if manifest.get('native_switch_ack') != SWITCH_ACK:
             fail('NATIVE_SWITCH_ACK_INVALID','Known-switch skill acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @native_generic_switch_ack='KNOWN_SWITCH_SKILL_ONLY';\n"
-    from cleanup_ordinary_history import INACTIVE_DEFAULT_POLICY, TRAINING_POLICY, TRAINING_ACK
-    from cleanup_death_coil import POLICY as DEATH_COIL_POLICY
-    if manifest.get('policy') in (INACTIVE_DEFAULT_POLICY,DEATH_COIL_POLICY,TRAINING_POLICY):
-        configuration_ack = 'SET @ordinary_history_all_spells=0;\n'
+    from cleanup_ordinary_history import INACTIVE_DEFAULT_POLICY, TRAINING_POLICY, TRAINING_ACK, PENDING_DEFAULT_POLICY, PENDING_DEFAULT_ACK
+    from cleanup_death_coil import POLICY as DEATH_COIL_POLICY, PENDING_POLICY as PENDING_DEATH_COIL_POLICY, PENDING_ACK as PENDING_DEATH_COIL_ACK
+    if manifest.get('policy')==PENDING_DEFAULT_POLICY:
+        if manifest.get('pending_default_ack')!=PENDING_DEFAULT_ACK:fail('PENDING_DEFAULT_ACK_INVALID','Pending default acknowledgement differs')
+        configuration_ack += f"SET @pending_default_ack='{PENDING_DEFAULT_ACK}';\n"
+    if manifest.get('policy')==PENDING_DEATH_COIL_POLICY:
+        if manifest.get('pending_death_coil_ack')!=PENDING_DEATH_COIL_ACK:fail('PENDING_DEATH_COIL_ACK_INVALID','Pending Death Coil acknowledgement differs')
+        configuration_ack += f"SET @pending_death_coil_ack='{PENDING_DEATH_COIL_ACK}';\n"
+    if manifest.get('policy') in (INACTIVE_DEFAULT_POLICY,PENDING_DEFAULT_POLICY,DEATH_COIL_POLICY,PENDING_DEATH_COIL_POLICY,TRAINING_POLICY):
+        configuration_ack += 'SET @ordinary_history_all_spells=0;\n'
     if manifest.get('policy') == TRAINING_POLICY:
         if manifest.get('training_prerequisite_ack') != TRAINING_ACK:
             fail('ORDINARY_TRAINING_ACK_INVALID','Training-prerequisite acknowledgement differs from reviewed policy')
         configuration_ack += "SET @ordinary_training_ack='REVIEWED_TRAINING_PREREQUISITES_ONLY';\n"
-    if manifest.get('policy') == DEATH_COIL_POLICY:
+    if manifest.get('policy') in (DEATH_COIL_POLICY,PENDING_DEATH_COIL_POLICY):
         configuration_ack += 'SET @ordinary_history_native_base=47541;\n'
     from cleanup_ownership import (POLICIES as OWNERSHIP_POLICIES, ACK as OWNERSHIP_ACK,
                                    FOREIGN_POLICY, FOREIGN_ACK, PREFIX_POLICY, PREFIX_ACK,
@@ -614,6 +632,13 @@ def command_action(settings, work, args):
         if manifest.get('ownership_ack') != OWNERSHIP_ACK:
             fail('OWNERSHIP_ACK_INVALID','Ownership policy acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';\n"
+    from cleanup_ownership import PENDING_POLICY as PENDING_OWNER_POLICY, PENDING_ACK as PENDING_OWNER_ACK, OVERLEVEL_POLICY, OVERLEVEL_ACK
+    if manifest.get('policy')==OVERLEVEL_POLICY:
+        if manifest.get('overlevel_ownership_ack')!=OVERLEVEL_ACK:fail('OVERLEVEL_ACK_INVALID','Overlevel ownership acknowledgement differs')
+        configuration_ack += f"SET @overlevel_ownership_ack='{OVERLEVEL_ACK}';\n"
+    if manifest.get('policy')==PENDING_OWNER_POLICY:
+        if manifest.get('pending_ownership_ack')!=PENDING_OWNER_ACK:fail('PENDING_OWNERSHIP_ACK_INVALID','Pending ownership acknowledgement differs')
+        configuration_ack += f"SET @pending_ownership_ack='{PENDING_OWNER_ACK}';\n"
     if manifest.get('policy') == FOREIGN_POLICY:
         if manifest.get('foreign_family_ack') != FOREIGN_ACK:
             fail('OWNERSHIP_FOREIGN_ACK_INVALID','Foreign-family acknowledgement differs from the reviewed candidate')
@@ -630,12 +655,19 @@ def command_action(settings, work, args):
         if manifest.get('aura_alias_ack') != AURA_ALIAS_ACK:
             fail('OWNERSHIP_ALIAS_ACK_INVALID','Aura-alias acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @talent_aura_alias_ack='UNSELECTED_REVIEWED_AURA_ALIASES_ONLY';\n"
-    from cleanup_eligibility import POLICIES as ELIGIBILITY_POLICIES, ACK as ELIGIBILITY_ACK, ABSENT_TEACHER_POLICY, ABSENT_TEACHER_ACK, RACIAL_POLICY, RACIAL_ACK, SWIPE_POLICY, SWIPE_ACK
+    from cleanup_eligibility import POLICIES as ELIGIBILITY_POLICIES, ACK as ELIGIBILITY_ACK, ABSENT_TEACHER_POLICY, ABSENT_TEACHER_ACK, RACIAL_POLICY, RACIAL_ACK, SWIPE_POLICY, SWIPE_ACK, ACTION_POLICY, ACTION_ACK, CAST_SCRIPT_POLICY, CAST_SCRIPT_ACK
     if manifest.get('policy') in ELIGIBILITY_POLICIES:
         if manifest.get('eligibility_ack') != ELIGIBILITY_ACK:
             fail('ELIGIBILITY_ACK_INVALID','Eligibility acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS';\n"
         configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
+    if manifest.get('policy')==CAST_SCRIPT_POLICY:
+        if manifest.get('cast_script_ack')!=CAST_SCRIPT_ACK:fail('CAST_SCRIPT_ACK_INVALID','Reviewed nonlearning callback acknowledgement differs')
+        configuration_ack+=f"SET @eligibility_cast_scripts_ack='{CAST_SCRIPT_ACK}';\n"
+    if manifest.get('policy') == ACTION_POLICY:
+        if manifest.get('foreign_action_ack') != ACTION_ACK:
+            fail('FOREIGN_ACTION_ACK_INVALID','Inactive foreign action acknowledgement differs')
+        configuration_ack += f"SET @eligibility_foreign_action_ack='{ACTION_ACK}';\n"
     if manifest.get('policy') == SWIPE_POLICY:
         if manifest.get('swipe_ack') != SWIPE_ACK:
             fail('FOREIGN_SWIPE_ACK_INVALID','Inactive foreign Swipe acknowledgement differs')
@@ -649,19 +681,23 @@ def command_action(settings, work, args):
             fail('ABSENT_TEACHER_ACK_INVALID','Absent-teacher acknowledgement differs from the reviewed candidate')
         configuration_ack += "SET @eligibility_absent_teachers_ack='VERIFIED_TEACHERS_ABSENT';\n"
     from cleanup_specializations import POLICY as SPECIALIZATION_POLICY, ACK as SPECIALIZATION_ACK
-    if manifest.get('policy') == SPECIALIZATION_POLICY:
+    from cleanup_specializations import INVALID_ITEMS_POLICY, PARENT_INVALID_ITEMS_POLICY
+    if manifest.get('policy') in (SPECIALIZATION_POLICY,INVALID_ITEMS_POLICY):
         if manifest.get('specialization_ack') != SPECIALIZATION_ACK:
             fail('SPECIALIZATION_ACK_INVALID','Specialization retirement acknowledgement differs')
         configuration_ack += f"SET @specialization_retirement_ack='{SPECIALIZATION_ACK}';\n"
         configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
     from cleanup_specialization_parent import POLICY as PARENT_POLICY, ACK as PARENT_ACK
-    if manifest.get('policy') == PARENT_POLICY:
+    if manifest.get('policy') in (PARENT_POLICY,PARENT_INVALID_ITEMS_POLICY):
         if manifest.get('specialization_ack') != PARENT_ACK:
             fail('SPECIALIZATION_PARENT_ACK_INVALID','Parent-specialization acknowledgement differs')
         configuration_ack += f"SET @specialization_retirement_ack='{PARENT_ACK}';\n"
         configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
-    from cleanup_professions import POLICY as PROFESSION_POLICY, ACK as PROFESSION_ACK
-    if manifest.get('policy') == PROFESSION_POLICY:
+    from cleanup_professions import POLICY as PROFESSION_POLICY, ACK as PROFESSION_ACK, PENDING_POLICY as PENDING_PROFESSION_POLICY, PENDING_ACK as PENDING_PROFESSION_ACK
+    if manifest.get('policy')==PENDING_PROFESSION_POLICY:
+        if manifest.get('pending_profession_ack')!=PENDING_PROFESSION_ACK:fail('PENDING_PROFESSION_ACK_INVALID','Pending profession acknowledgement differs')
+        configuration_ack += f"SET @pending_profession_ack='{PENDING_PROFESSION_ACK}';\n"
+    if manifest.get('policy') in (PROFESSION_POLICY,PENDING_PROFESSION_POLICY):
         if manifest.get('profession_activation_ack') != PROFESSION_ACK:
             fail('PROFESSION_ACK_INVALID','Profession activation acknowledgement differs')
         configuration_ack += f"SET @profession_activation_ack='{PROFESSION_ACK}';\n"
@@ -672,18 +708,29 @@ def command_action(settings, work, args):
             fail('SKILL_TEACHER_ACK_INVALID','Skill-teaching acknowledgement differs')
         configuration_ack += f"SET @skill_teaching_ack='{SKILL_TEACHING_ACK}';\n"
         configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
+    from cleanup_foreign_skills import POLICIES as FOREIGN_SKILL_POLICIES,policy_ack as foreign_policy_ack
+    if manifest.get('policy')in FOREIGN_SKILL_POLICIES:
+        foreign_ack=foreign_policy_ack(manifest['policy'])
+        if manifest.get('foreign_skill_ack')!=foreign_ack:fail('FOREIGN_SKILL_ACK_INVALID','Foreign skill-family acknowledgement differs')
+        configuration_ack+=f"SET @foreign_skill_family_ack='{foreign_ack}'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    from cleanup_dual_spec_teacher import POLICY as DUAL_TEACHER_POLICY,ACK as DUAL_TEACHER_ACK
+    if manifest.get('policy')==DUAL_TEACHER_POLICY:
+        if manifest.get('dual_teacher_ack')!=DUAL_TEACHER_ACK:fail('DUAL_TEACHER_ACK_INVALID','Dual-spec teacher acknowledgement differs')
+        configuration_ack+=f"SET @spell_eligibility_ack='{DUAL_TEACHER_ACK}'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
     from cleanup_shaman_dual_wield import POLICY as SHAMAN_POLICY, ACK as SHAMAN_ACK
-    from cleanup_obsolete_riding import POLICY as RIDING_POLICY, POLICIES as RIDING_POLICIES, ACK as RIDING_ACK, INVALID_ITEMS_POLICY, INVALID_ITEMS_ACK
+    from cleanup_shaman_offhand import POLICY as OFFHAND_POLICY, ACK as OFFHAND_ACK
+    from cleanup_obsolete_riding import POLICY as RIDING_POLICY, POLICIES as RIDING_POLICIES, ACK as RIDING_ACK, INVALID_ITEMS_POLICY, INVALID_ITEMS_ACK, HORSE_POLICY, HORSE_ACK
     if manifest.get('policy') in RIDING_POLICIES:
-        riding_ack = INVALID_ITEMS_ACK if manifest.get('policy') == INVALID_ITEMS_POLICY else RIDING_ACK
+        riding_ack = HORSE_ACK if manifest['policy']==HORSE_POLICY else INVALID_ITEMS_ACK if manifest.get('policy') == INVALID_ITEMS_POLICY else RIDING_ACK
         if manifest.get('riding_ack') != riding_ack:
             fail('OBSOLETE_RIDING_ACK_INVALID','Obsolete riding spell/skill acknowledgement differs')
         configuration_ack += f"SET @obsolete_riding_ack='{riding_ack}';\n"
         configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
-    if manifest.get('policy') == SHAMAN_POLICY:
-        if manifest.get('shaman_ack') != SHAMAN_ACK:
+    if manifest.get('policy')in(SHAMAN_POLICY,OFFHAND_POLICY):
+        shaman_ack=OFFHAND_ACK if manifest['policy']==OFFHAND_POLICY else SHAMAN_ACK
+        if manifest.get('shaman_ack') != shaman_ack:
             fail('SHAMAN_ACK_INVALID','Coupled Shaman acknowledgement differs')
-        configuration_ack += f"SET @shaman_dual_wield_ack='{SHAMAN_ACK}';\n"
+        configuration_ack += f"SET @shaman_dual_wield_ack='{shaman_ack}';\n"
         configuration_ack += 'SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n'
     from cleanup_selected_passive import POLICY as DIRECT_PASSIVE_POLICY, ACK as DIRECT_PASSIVE_ACK
     if manifest.get('policy') == DIRECT_PASSIVE_POLICY:
@@ -717,7 +764,7 @@ def command_action(settings, work, args):
                 text in str(error) for text in ('DELETE command denied','INSERT command denied')):
             error.hint=('This history policy needs DELETE on character_spell for apply and INSERT for exact restore. '
                 'Have the preparation administrator grant only those source privileges to the configured writer, then retry; no source grants were added automatically.')
-        if manifest.get('policy') in (SHAMAN_POLICY,*RIDING_POLICIES) and any(text in str(error) for text in ('DELETE command denied','INSERT command denied')):
+        if manifest.get('policy') in (SHAMAN_POLICY,OFFHAND_POLICY,*FOREIGN_SKILL_POLICIES,*RIDING_POLICIES) and any(text in str(error) for text in ('DELETE command denied','INSERT command denied')):
             error.hint=('Coupled repair requires DELETE/INSERT on character_spell AND character_skills for apply/exact restore. No source grants were added automatically.')
         if manifest.get('policy')=='tc-active-build-native-reset-v1' and any(
                 text in str(error) for text in ('DELETE command denied','INSERT command denied','UPDATE command denied')):
@@ -737,7 +784,7 @@ def command_action(settings, work, args):
     status=settings.sql(contents['04-status.sql'].decode(),'write',headers=True)
     (work.operation/'status.tsv').write_text(status)
     print(result.strip()+'\nStatus: '+str(work.operation/'status.tsv'))
-    if manifest.get('policy') == DEATH_COIL_POLICY:
+    if manifest.get('policy') in (DEATH_COIL_POLICY,PENDING_DEATH_COIL_POLICY):
         print('Death Coil rank 1 is native skill-derived state on load; no spell row was inserted. '
               'Native gameplay and existing skill normalization still require acceptance.')
 
@@ -772,12 +819,14 @@ def parser():
     sessions=commands.add_parser('sessions',help='List retained sessions or explicitly select one for inspection/restore')
     sessions.add_argument('--use',help='Session ID; must match the configured server and schemas')
     audit=commands.add_parser('audit',help='Run read-only source audit; exit 1 means findings, not a failed audit')
-    audit.add_argument('--scope',choices=('talents','all'),default='all')
+    audit.add_argument('--scope',choices=('talents','character-state','all'),default='all')
     inspect=commands.add_parser('inspect-items',help='Report zero-entry containers and their contents; no item deletion')
     history=commands.add_parser('inspect-spell-history',help='Review direct talent history against both talent groups; no cleanup or preflight')
     history.add_argument('--audit',help='Full audit ID in this session; defaults to latest completed audit')
     blockers=commands.add_parser('inspect-migration-blockers',help='Capture read-only source context for every character in a saved migration blocker TSV; no cleanup or preflight')
-    blockers.add_argument('--report',required=True,help='Path to saved spell-state-blockers.tsv from the migration toolkit')
+    blocker_scope=blockers.add_mutually_exclusive_group(required=True)
+    blocker_scope.add_argument('--report',help='Path to saved spell-state-blockers.tsv from the migration toolkit')
+    blocker_scope.add_argument('--all-characters',action='store_true',help='Capture the entire current source for preparation; no first-failure report or historical GUID filter')
     blockers.add_argument('--bundle',action='store_true',help='Also create a private tar.gz in the operation directory for offline review')
     plans=commands.add_parser('plan',help='Generate private SQL and a reviewable manifest; no source writes')
     types=plans.add_subparsers(dest='kind',required=True)
@@ -789,9 +838,11 @@ def parser():
     skills.add_argument('--expect-rows',type=int,required=True)
     native_skills=types.add_parser('native-skills',help='Review insertion of missing native Generic/Runeforging skill rows from already known enabled spells')
     native_skills.add_argument('--migration-inspection',help='Sealed migration blocker context ID; defaults to latest captured context in this session')
-    native_skills.add_argument('--skills',nargs='+',choices=('generic','runeforging'),default=['generic','runeforging'])
+    native_skills.add_argument('--skills',nargs='+',choices=('generic','runeforging','racial'),default=['generic','runeforging'])
     native_policy=native_skills.add_mutually_exclusive_group()
     native_policy.add_argument('--normalize-generic',action='store_true',help='Opt in to v2: verified dual-spec teacher anchors and exact native level*5 normalization of existing Generic only; requires --skills generic')
+    native_policy.add_argument('--known-racials',action='store_true',help='Separate v5: restore four fixed absent racial skills from existing legitimate known spells; explicitly allow verified stock racial rewards; requires --skills racial')
+    native_policy.add_argument('--pending-generic',action='store_true',help='Separate v4: insert absent Generic only from enabled known 2382 on pending-reset characters; retain reset flags, talents and every spell; no reset execution')
     native_policy.add_argument('--known-generic-switch',action='store_true',help='Opt in to v3: insert absent Generic from verified enabled switch spells even with one spec; no spec grant or existing skill update; requires --skills generic')
     native_mode=native_skills.add_mutually_exclusive_group(required=True)
     native_mode.add_argument('--expect-rows',type=int,help='Exact eligible skill change count from preview')
@@ -812,13 +863,16 @@ def parser():
         help='Use v3 policy to archive isolated wholly disabled direct talent/rank/dependency groups, including exact related rows; implies reviewed scripts')
     history.add_argument('--include-reviewed-routes',action='store_true',
         help='Use v4 exact Berserk/Blast Wave teacher rules and inert shaman 30798 root-only rule preserving 674/skill 118; implies v3 review')
+    history.add_argument('--pending-reset-history',action='store_true',help='Separate v8: archive wholly disabled unselected talent families on pending-reset characters; retain selected ownership, enabled spells, skills and reset flags; no reset executed')
     history.add_argument('--selected-rank-history',action='store_true',
         help='Use v5 for disabled ranks selected by neither spec when another direct rank is selected; preserve all selected ranks; cannot combine with other modes')
     ordinary=types.add_parser('disabled-spell-history',help='Opt-in archive of isolated wholly disabled ordinary ranks; preserve enabled and talent-linked families')
     ordinary.set_defaults(ordinary_spell_history=True,inspection=None,audit=None)
     ordinary.add_argument('--migration-inspection',required=True,help='Sealed migration-blocker inspection ID or latest in this session')
     ordinary_modes=ordinary.add_mutually_exclusive_group()
+    ordinary_modes.add_argument('--pending-inactive-defaults',action='store_true',help='Separate pending-reset policy for wholly disabled Dash/Death Pact families under verified inactive custom defaults; no reset or login changes')
     ordinary_modes.add_argument('--inactive-custom-defaults',action='store_true',help='Explicit v2: allow inactive custom-start routes only with [source] player_start_all_spells=0; other guards remain')
+    ordinary_modes.add_argument('--pending-native-death-coil',action='store_true',help='Separate pending-reset Death Coil rank-1 policy; retain all reset flags, selected talents and skills; no reset execution')
     ordinary_modes.add_argument('--native-death-coil',action='store_true',help='Separate v3: retire eligible disabled Death Coil training history, allowing native rank 1 from existing Unholy skill; requires player_start_all_spells=0')
     ordinary_modes.add_argument('--training-prerequisites',action='store_true',help='Separate v4: exact reviewed disabled ordinary training prerequisites; preserve enabled counterparts, skills and talents')
     ordinary_review=ordinary.add_mutually_exclusive_group(required=True)
@@ -828,9 +882,12 @@ def parser():
     ownership.set_defaults(talent_ownership=True,inspection=None,audit=None)
     ownership.add_argument('--migration-inspection',required=True,help='Sealed migration-blocker inspection ID or latest')
     ownership_policy=ownership.add_mutually_exclusive_group()
+    ownership_policy.add_argument('--unselected-overlevel-talents',action='store_true',help='Separate policy: retire verified unselected talent history on level 81..255 characters with no selected builds; preserve exact level, skills and flags')
+    ownership_policy.add_argument('--pending-reset-ownership',action='store_true',help='Separate ownership repair on pending-reset characters only; retain both selected builds, skills and reset flags; no reset execution')
     ownership_policy.add_argument('--foreign-class-families',action='store_true',help='Separate v2: retire only isolated unselected foreign-class talent families; retain shared skill spells and selected ownership')
     ownership_policy.add_argument('--native-passive-prefixes',action='store_true',help='Separate v3: retire disabled passive predecessors only with retained enabled authorized higher anchors; no missing child grants or talent/skill changes')
     ownership_policy.add_argument('--selected-direct-passives',action='store_true',help='Separate policy: retire unselected higher direct passive ranks; restore existing lower selected auras through native AC talent loading; both worlds required')
+    ownership_policy.add_argument('--reconcile-shaman-offhand',action='store_true',help='Separate coupled spell/skill repair: retain verified shield or stow verified weapon into empty native backpack/bank slot; archive exact placement inverse; preserve pending reset flags')
     ownership_policy.add_argument('--unselected-shaman-dual-wield',action='store_true',help='Separate coupled repair: retire unselected Shaman spell 674 AND skill 118 only with an empty off-hand; --expect-rows counts pairs')
     ownership_policy.add_argument('--native-passive-rekey',action='store_true',help='Separate v5: rekey conflicting enabled passive child anchors downward to already-known active selected ranks; stock spell columns only')
     ownership_policy.add_argument('--reviewed-aura-aliases',action='store_true',help='Separate v4: retire isolated unselected paladin aura talent history under exact protected registration/helper contracts')
@@ -839,6 +896,7 @@ def parser():
     ownership_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows printed by this policy preview')
     riding=types.add_parser('obsolete-riding',help='Archived paired retirement of forbidden Wolf Riding 825 and skill 149; retain modern Riding and mounts')
     riding.set_defaults(obsolete_riding=True,inspection=None,audit=None)
+    riding.add_argument('--horse',action='store_true',help='Separate v3: forbidden legacy Horse Riding 824 AND skill 148, with retained modern riding and full native-invalid item guards')
     riding.add_argument('--native-invalid-items',action='store_true',help='Separate v2: retain verified missing-instance references and zero-entry instances unchanged; unknown nonzero templates still defer')
     riding.add_argument('--migration-inspection',required=True,help='Current sealed migration-blocker inspection ID or latest')
     riding_review=riding.add_mutually_exclusive_group(required=True)
@@ -846,22 +904,45 @@ def parser():
     riding_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected spell/skill pairs from the current preview')
     specialties=types.add_parser('specialization-retirement',help='Separate archived retirement of inactive competitors to one verified active profession specialization')
     specialties.set_defaults(specialization_retirement=True,inspection=None,audit=None)
+    specialties.add_argument('--native-invalid-items',action='store_true',help='Separate reviewed policy: retain exact missing-instance/zero-entry equipment rows; check all valid items and defer unknown nonzero templates')
     specialties.add_argument('--migration-inspection',required=True,help='Current sealed migration-blocker inspection ID or latest')
     specialty_review=specialties.add_mutually_exclusive_group(required=True)
     specialty_review.add_argument('--preview',action='store_true',help='Read-only specialization/equipped-item review; no SQL package')
     specialty_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows from the current preview')
     parents=types.add_parser('specialization-parent',help='Restore reviewed missing Weaponsmith parent, retain active Master Axesmith and retire three inactive competitors')
     parents.set_defaults(specialization_retirement=True,parent_specialization=True,inspection=None,audit=None)
+    parents.add_argument('--native-invalid-items',action='store_true',help='Separate reviewed policy: retain exact missing-instance/zero-entry equipment rows; check all valid items and defer unknown nonzero templates')
     parents.add_argument('--migration-inspection',required=True,help='Current sealed migration-blocker inspection ID or latest')
     parent_review=parents.add_mutually_exclusive_group(required=True)
     parent_review.add_argument('--preview',action='store_true',help='Read-only review; no SQL package or source changes')
     parent_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact original selected rows from this preview, three per selected character')
     professions=types.add_parser('profession-activation',help='Separate archived activation of existing ordinary profession ranks; preserve skills and recipes')
     professions.set_defaults(profession_activation=True,inspection=None,audit=None)
+    professions.add_argument('--pending-reset',action='store_true',help='Separate v2: activate reviewed existing ordinary profession ranks only on pending-reset characters; preserve every reset flag and selected talent')
     professions.add_argument('--migration-inspection',required=True,help='Current sealed migration-blocker inspection ID or latest')
     profession_review=professions.add_mutually_exclusive_group(required=True)
     profession_review.add_argument('--preview',action='store_true',help='Read-only review; no SQL package or active batch')
     profession_review.add_argument('--expect-rows',type=int,dest='expect_review_rows',help='Exact selected_rows from the current preview')
+    actions=types.add_parser('native-actions',help='Separate fixed native teacher, unusable specialization or transient combat spellbook retirement; no casts, grants or selected build changes')
+    actions.set_defaults(foreign_skill_families=True,inspection=None,audit=None)
+    actions.add_argument('--action',dest='native_action',choices=('forbidden-pairs-stowing','forbidden-pairs','redundant-teachers','obsolete-teachers','unusable-specializations','transient-combat'),required=True)
+    actions.add_argument('--migration-inspection',required=True)
+    action_review=actions.add_mutually_exclusive_group(required=True)
+    action_review.add_argument('--preview',action='store_true')
+    action_review.add_argument('--expect-rows',type=int,dest='expect_review_rows')
+    foreign=types.add_parser('foreign-skill-families',help='Retire complete forbidden native playerbook skill families AND corresponding stored skills; retain every selected talent and item; no grants')
+    foreign.set_defaults(foreign_skill_families=True,inspection=None,audit=None)
+    foreign.add_argument('--absent-training-actions',action='store_true',help='Separate v2: include verified pure training actions with native-forbidden children even if child rows are absent; no grants or casts')
+    foreign.add_argument('--migration-inspection',required=True)
+    foreign_review=foreign.add_mutually_exclusive_group(required=True)
+    foreign_review.add_argument('--preview',action='store_true')
+    foreign_review.add_argument('--expect-rows',type=int,dest='expect_review_rows')
+    dual=types.add_parser('dual-spec-teacher',help='Retire unavailable dual-spec purchase wrapper on one-spec pending-reset characters; no spec or button grants')
+    dual.set_defaults(dual_spec_teacher=True,inspection=None,audit=None)
+    dual.add_argument('--migration-inspection',required=True)
+    dual_review=dual.add_mutually_exclusive_group(required=True)
+    dual_review.add_argument('--preview',action='store_true')
+    dual_review.add_argument('--expect-rows',type=int,dest='expect_review_rows')
     teachers=types.add_parser('skill-teaching',help='Archived retirement of redundant skill-step teaching wrappers; retain known taught spells and every skill')
     teachers.set_defaults(skill_teaching=True,inspection=None,audit=None)
     teachers.add_argument('--migration-inspection',required=True,help='Current sealed migration-blocker inspection ID or latest')
@@ -879,6 +960,8 @@ def parser():
     eligibility.set_defaults(spell_eligibility=True,inspection=None,audit=None)
     eligibility.add_argument('--migration-inspection',required=True,help='Sealed migration-blocker inspection ID or latest')
     eligibility_mode=eligibility.add_mutually_exclusive_group()
+    eligibility_mode.add_argument('--reviewed-cast-scripts',action='store_true',help='Separate v6: ineligible ordinary families with protected NO_SPELLBOOK_MUTATION cast callbacks; retain all other route, skill, talent and ownership guards')
+    eligibility_mode.add_argument('--inactive-foreign-actions',action='store_true',help='Separate v5: fixed inactive foreign Lockpicking action with absent skill and whole teacher chain; no grants')
     eligibility_mode.add_argument('--inactive-foreign-swipes',action='store_true',help='Separate v4: only inactive foreign Swipe ranks with absent Bear Form and Feral skill; no grants')
     eligibility_mode.add_argument('--reviewed-racials',action='store_true',help='Separate v3 fixed-catalog wrong-race racial retirement; no languages, riding or replacement racials')
     eligibility_mode.add_argument('--absent-teachers',action='store_true',help='Separate v2 contract for exact reviewed absent single-child teachers; other dependencies still defer')

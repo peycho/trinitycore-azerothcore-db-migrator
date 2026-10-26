@@ -61,6 +61,17 @@ class EligibilityTests(unittest.TestCase):
             select(self.state,self.tc,self.ac,1)
         self.assertEqual(error.exception.code, 'ELIGIBILITY_SELECTION_MISMATCH')
 
+    def test_reviewed_nonlearning_cast_callbacks_are_separate_and_guarded(self):
+        for m in(self.tc,self.ac):m.scripts[465].add('spell_warl_health_funnel')
+        self.assertEqual({r[2]for r in self.review()[1]},{'DEFER_SCRIPTED_SPELL_FAMILY'})
+        r=select(self.state,self.tc,self.ac,preview=True,reviewed_cast_scripts=True)
+        self.assertEqual(r[0],[(1,465,0,0),(1,48942,1,0)])
+        self.assertEqual(r[3]['eligibility_proofs'][0]['callback_contract'],'NO_SPELLBOOK_MUTATION')
+        self.ac.scripts[465].add('unreviewed')
+        self.assertEqual({r[2]for r in select(self.state,self.tc,self.ac,preview=True,reviewed_cast_scripts=True)[1]},{'DEFER_UNREVIEWED_CAST_SCRIPT'})
+        self.ac.scripts[465].remove('unreviewed');self.state['character_skills'].append([1,267,400,400])
+        self.assertEqual({r[2]for r in select(self.state,self.tc,self.ac,preview=True,reviewed_cast_scripts=True)[1]},{'DEFER_EXISTING_ASSOCIATED_SKILL'})
+
     def test_eligible_class_both_specs_and_source_target_disagreement_are_preserved(self):
         self.state['character_talent'] = []
         self.state['characters'][0][2] = 2

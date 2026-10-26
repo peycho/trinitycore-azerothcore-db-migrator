@@ -697,6 +697,42 @@ class SpellTests(unittest.TestCase):
         tc.scripts[53341].add('spell_chapter1_emblazon_runeblade')
         self.fails('UNSUPPORTED_LEARNING_SCRIPT',lambda:self.convert({53341:(1,0)},skills={776:(1,1)},cls=6,tc=tc))
 
+    def language_metas(self):
+        tc,ac=copy.deepcopy(self.tc),copy.deepcopy(self.ac)
+        for m in(tc,ac):
+            row=m.spells[6603][:];row[0]=900090;row[71:74]=[39,0,0];row[4]=192;row[86:92]=[0]*6;row[95:98]=[0]*3;row[116:119]=[0]*3;m.spells[900090]=row
+            m.abilities[900090]=[[9999,109,900090,0,0,0,0,1,0,2,0,0,0,0]]
+            line=m.stores['SkillLine'][183][:];line[0]=109;line[1]=10;m.stores['SkillLine'][109]=line
+            m.stores['SkillRaceClassInfo'][9999]=[9999,109,2047,1535,160,0,21,0]
+            m.stores['SkillTiers'][21]=[21]+[0]*16+[300]*16
+        return tc,ac
+
+    def test_v18_rank_zero_ranked_language_keeps_absent_skill_bidirectionally(self):
+        tc,ac=self.language_metas()
+        for reverse in(False,True):
+            result=self.convert({900090:(3,)if reverse else(1,0)},skills={},tc=tc,ac=ac,reverse=reverse,level=200)
+            self.assertEqual(set(result),{900090});proof=result[900090]['authorization']['absent_ranked_language_skill'][0]
+            self.assertFalse(proof['skill_granted']);self.assertEqual(proof['native_range'],'RANK')
+
+    def test_v18_real_language_acquisition_or_changed_tier_does_not_use_noop(self):
+        for change in('missing-tier','no-tier','category','learn','effect','ability','different-tier','trigger','target','aura'):
+            tc,ac=self.language_metas()
+            for m in(tc,ac):
+                if change=='missing-tier':m.stores['SkillTiers'].pop(21)
+                elif change=='no-tier':m.stores['SkillRaceClassInfo'][9999][6]=0
+                elif change=='category':m.stores['SkillLine'][109][1]=7
+                elif change=='learn':m.learns[900090]=[(6603,1,False)]
+                elif change=='effect':m.spells[900090][71]=3
+                elif change=='ability':m.abilities[900090].append(m.abilities[900090][0][:])
+                elif change=='trigger':m.spells[900090][116]=6603
+                elif change=='target':m.spells[900090][86]=1
+                elif change=='aura':m.spells[900090][95]=35
+            if change=='different-tier':ac.stores['SkillTiers'][21][17]=301
+            with self.subTest(change=change),self.assertRaises(Unsupported):self.convert({900090:(1,0)},skills={},tc=tc,ac=ac)
+        tc,ac=self.language_metas()
+        for flags in((0,0),(1,1)):
+            with self.assertRaises(Unsupported):self.convert({900090:flags},skills={},tc=tc,ac=ac)
+
     def test_v17_known_runeforging_preserves_absent_skill_in_both_directions(self):
         for reverse in (False,True):
             for spell in fixtures.RUNEFORGING:

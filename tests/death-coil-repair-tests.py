@@ -55,6 +55,18 @@ class DeathCoilTests(unittest.TestCase):
             old=ordinary.select(self.state,self.meta,6,inactive_custom_defaults=flag)
             self.assertFalse(any(r[1] in dc.CHAIN for r in old[0]))
 
+    def test_pending_native_base_keeps_reset_and_all_selected_state(self):
+        original=copy.deepcopy(self.state)
+        rows,_,_,summary,_=ordinary.select(self.state,self.meta,None,preview=True,native_death_coil=True,pending_death_coil=True)
+        self.assertEqual(rows,[(4,49894,1,1)]);self.assertEqual(self.state,original)
+        self.assertTrue(summary['pending_native_reset_preserved']);self.assertFalse(summary['reset_executed'])
+        self.assertEqual(summary['spell_rows_inserted'],0);self.assertEqual(summary['skill_rows_changed'],0)
+        self.state['character_spell'].append([4,49895,1,0])
+        self.assertFalse(ordinary.select(self.state,self.meta,None,preview=True,native_death_coil=True,pending_death_coil=True)[0])
+        with self.assertRaises(CleanupError):ordinary.select(original,self.meta,None,preview=True,pending_death_coil=True)
+        args=parser().parse_args(['plan','disabled-spell-history','--migration-inspection','latest','--pending-native-death-coil','--preview'])
+        self.assertTrue(args.pending_native_death_coil)
+
     def test_cli_and_configuration_are_explicit_and_independent(self):
         args=parser().parse_args(['plan','disabled-spell-history','--migration-inspection','latest','--native-death-coil','--preview'])
         self.assertTrue(args.native_death_coil);self.assertFalse(args.inactive_custom_defaults)

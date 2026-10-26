@@ -10,7 +10,9 @@ from cleanup_talent_relations import MAX_ROWS,validate_stored
 from spells import Unsupported
 
 POLICY='tc-inactive-ordinary-profession-activation-v1'
-POLICIES=(POLICY,)
+PENDING_POLICY='tc-pending-reset-ordinary-profession-activation-v2'
+POLICIES=(POLICY,PENDING_POLICY)
+PENDING_ACK='ACTIVATE_EXISTING_PROFESSIONS_KEEP_NATIVE_RESET_PENDING'
 ACK='ACTIVATE_ONLY_EXISTING_ORDINARY_PROFESSION_RANKS'
 CATALOG=ROOT/'lib/cleanup_profession_catalog.json'
 RULES=json.loads(CATALOG.read_text())
@@ -38,7 +40,7 @@ def contract(meta,root):
             and {str(r[6]):meta.stores['SkillTiers'][r[6]]for r in infos if r[6]in meta.stores['SkillTiers']}==expected['tiers'])
 
 
-def select(state,tc,ac,expected=None,*,preview=False):
+def select(state,tc,ac,expected=None,*,preview=False,pending_reset=False):
     validate_stored(state['character_spell'])
     if not 1<=len(state['characters'])<=40000 or sum(map(len,state.values()))>MAX_ROWS:
         fail('PROFESSION_BOUND','Captured scope exceeds reviewed bounds')
@@ -58,6 +60,7 @@ def select(state,tc,ac,expected=None,*,preview=False):
     safe={root:contract(tc,root)and contract(ac,root)for root in map(int,RULES['roots'])}
     selected,excluded,proofs=[],[],[]
     for g,c in sorted(chars.items()):
+        if pending_reset and not c[7]&4:continue
         for spell in sorted(s for s,flags in books[g].items()if flags==(0,0)):
             row=tc.spells.get(spell,[])
             # Report unsupported crafting/specialization rows as deferred rather
@@ -65,7 +68,7 @@ def select(state,tc,ac,expected=None,*,preview=False):
             if len(row)<74 or 47 not in row[71:74]:continue
             chain=tc.chain(spell);root=chain[0];reason=''
             if c[6]:reason='DEFER_ONLINE_CHARACTER'
-            elif c[7]&4:reason='DEFER_PENDING_NATIVE_RESET'
+            elif c[7]&4 and not pending_reset:reason='DEFER_PENDING_NATIVE_RESET'
             elif (c[1]not in (1,2,3,4,5,6,7,8,10,11)or c[2]not in (1,2,3,4,5,6,7,8,9,11)
                     or not 1<=c[3]<=80 or c[5]not in (1,2)or not 0<=c[4]<c[5]):reason='DEFER_PROFESSION_CHARACTER_STATE'
             elif g in invalid:reason='DEFER_INVALID_TALENT_SELECTION'
@@ -96,4 +99,7 @@ def select(state,tc,ac,expected=None,*,preview=False):
         'deferred_candidate_rows':len(excluded),'spell_rows_inserted':0,'skill_rows_changed':0,
         'eligibility_proofs':proofs,'deferred':dict(Counter(r[2]for r in excluded)),
         'native_policy':'Activate only existing inactive/non-disabled ordinary crafting ranks backed by preserved native skills; explicit usable-availability correction; no missing-rank grant, specialization choice, spell insertion/deletion, skill/cap, recipe, talent/spec, item or login change'}
+    if pending_reset:
+        summary.update(pending_native_reset_preserved=True,reset_executed=False)
+        summary['native_policy']+='; pending-reset characters only, retain reset flag and all selected ownership; no reset/login executed'
     return selected,excluded,[],summary,[]

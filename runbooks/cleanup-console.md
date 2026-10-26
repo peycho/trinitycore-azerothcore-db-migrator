@@ -1262,9 +1262,11 @@ archive metadata to force a replay.
 For the complete preparation-to-cutover sequence, see
 [Repeat the complete preparation and migration](source-preparation.md#repeat-the-complete-preparation-and-migration).
 Reuse reviewed policies against fresh findings; old counts and character-specific
-approvals are not a recipe. A combined automatic cleanup/migration orchestrator
-is not implemented yet. The current manual operations below are its building
-blocks and do not establish fresh-snapshot end-to-end acceptance.
+approvals are not a recipe. The [preparation replay runner](preparation-replay.md) can execute a reviewed
+recipe with fresh selections and archives, then call the migration phases. The
+manual operations below remain available for review, exceptions and restoration.
+Neither individual policy tests nor the existence of the runner establish full
+fresh-snapshot or gameplay acceptance.
 
 1. Preserve the earlier workspace, audits, archives and execution reports.
 2. Restore the verified untouched dump into stopped preparation schemas using
@@ -1482,3 +1484,21 @@ This separate policy restores Weaponsmith only under a verified retained active
 Master Axesmith and retires three exact inactive competitors. It changes known
 specialization eligibility while preserving skills, recipes, items and both
 talent builds. The original retirement mode still defers missing parents.
+
+## Inactive foreign class action retirement
+
+Use `plan spell-eligibility --migration-inspection latest --inactive-foreign-actions --preview`
+for the [fixed inactive Lockpicking contract](spell-eligibility-repair.md#opt-in-inactive-foreign-class-actions-v5).
+It requires a non-rogue, absent Lockpicking skill and an entirely absent old
+teacher chain. Only inactive/non-disabled action history can be retired; both
+builds, skills/caps, items and flags remain unchanged. It grants no ability and
+does not authorize broader profession or class-spell retirement.
+
+### Additional pending-reset and specialization policies
+
+The preparation recipe includes separate policies for safe repairs while a
+native reset remains pending, and for exact native-invalid equipment during
+specialization review. Their scope, flags, preserved data and validation limits
+are documented in [Preparation replay](preparation-replay.md#repairs-while-a-native-talent-reset-is-pending).
+Use fresh inspections and preview counts; old batch IDs and selections are not
+replayable against a new import.

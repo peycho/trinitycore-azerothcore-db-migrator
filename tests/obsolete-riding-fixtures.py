@@ -31,7 +31,7 @@ def stores(profile):
     for child,expected in RULES['ac']['spells'].items():
         for parent in expected['learn_parents']: children.setdefault(parent,[]).append(int(child))
     for parent,spells in children.items():
-        if parent == 6746: continue
+        if str(parent) in RULES['tc']['spells']: continue
         row = [0]*len(profile['stores']['Spell']['columns']); row[0] = parent
         for i,child in enumerate(spells): row[71+i] = 36; row[116+i] = child
         data['Spell'][parent] = row

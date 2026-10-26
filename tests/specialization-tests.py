@@ -114,6 +114,23 @@ class SpecializationTests(unittest.TestCase):
             self.assertEqual(error.exception.code,'SPECIALIZATION_EQUIPMENT_LAYOUT')
         meta=copy.deepcopy(base);row=meta['columns'][1].copy();row[1]='RequiredSpell';meta['columns'].append(row)
         with self.assertRaises(CleanupError):equipment_shape(meta,'item_template',{'entry','requiredspell'})
+    def test_native_invalid_items_are_explicit_exact_and_do_not_hide_valid_requirements(self):
+        old=copy.deepcopy(self.equipment)
+        for row in ([1,15,101,None,None,None,None,None,None], [1,15,101,101,0,None,None,None,None]):
+            self.equipment=[row]
+            self.assertFalse(self.review()[0])
+            selected,_,_,summary,_=select(self.state,self.tc,self.ac,preview=True,equipment=self.equipment,
+                native_invalid_items=True,zero_template_counts={'tc':0,'ac':0})
+            self.assertEqual(len(selected),2);self.assertEqual(summary['native_invalid_item_rows_retained'],1)
+            for counts in (None,{'tc':1,'ac':0},{'tc':0,'ac':1}):
+                with self.assertRaises(CleanupError):select(self.state,self.tc,self.ac,preview=True,equipment=self.equipment,native_invalid_items=True,zero_template_counts=counts)
+        for field,value in ((4,999),(5,0),(8,0),(3,None)):
+            row=[1,15,101,101,0,None,None,None,None];row[field]=value
+            self.assertFalse(select(self.state,self.tc,self.ac,preview=True,equipment=[row],native_invalid_items=True,zero_template_counts={'tc':0,'ac':0})[0])
+        row=old[0];row[1]=16;row[6]=17039
+        self.assertFalse(select(self.state,self.tc,self.ac,preview=True,equipment=[row,[1,15,102,None,None,None,None,None,None]],native_invalid_items=True,zero_template_counts={'tc':0,'ac':0})[0])
+        self.assertFalse(select(self.state,self.tc,self.ac,preview=True,equipment=[[1,15,101,None,None,None,None,None,None]]*2,native_invalid_items=True,zero_template_counts={'tc':0,'ac':0})[0])
+
     def test_character_pending_reset_and_count_guards(self):
         base=copy.deepcopy(self.state)
         for field,val in ((1,9),(2,10),(3,49),(3,81),(4,2),(5,3),(6,1),(7,4)):

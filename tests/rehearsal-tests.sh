@@ -22,6 +22,7 @@ python3 "$ROOT/tests/talent-runtime-tests.py" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/ownership-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/selected-passive-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/shaman-dual-wield-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
+python3 "$ROOT/tests/shaman-offhand-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/obsolete-riding-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/obsolete-riding-item-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/skill-teaching-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
@@ -67,21 +68,40 @@ python3 "$ROOT/tests/passive-rekey-mysql-tests.py"
 python3 "$ROOT/tests/inactive-legacy-mysql-tests.py"
 python3 "$ROOT/tests/selected-passive-mysql-tests.py"
 python3 "$ROOT/tests/shaman-dual-wield-mysql-tests.py"
+python3 "$ROOT/tests/shaman-offhand-mysql-tests.py"
+python3 "$ROOT/tests/foreign-skill-mysql-tests.py"
+python3 "$ROOT/tests/native-action-mysql-tests.py" redundant-teachers
+python3 "$ROOT/tests/native-action-mysql-tests.py" obsolete-teachers
+python3 "$ROOT/tests/native-action-mysql-tests.py" unusable-specializations
+python3 "$ROOT/tests/native-action-mysql-tests.py" transient-combat
+python3 "$ROOT/tests/native-action-mysql-tests.py" forbidden-pairs
+python3 "$ROOT/tests/native-action-mysql-tests.py" forbidden-pairs-stowing
+python3 "$ROOT/tests/foreign-skill-mysql-tests.py" --training-actions
+python3 "$ROOT/tests/dual-spec-teacher-mysql-tests.py"
 python3 "$ROOT/tests/obsolete-riding-mysql-tests.py"
 python3 "$ROOT/tests/obsolete-riding-mysql-tests.py" --native-invalid-items
+python3 "$ROOT/tests/obsolete-riding-mysql-tests.py" --horse
 python3 "$ROOT/tests/skill-teaching-mysql-tests.py"
 python3 "$ROOT/tests/profession-activation-mysql-tests.py"
 python3 "$ROOT/tests/specialization-mysql-tests.py"
 python3 "$ROOT/tests/specialization-mysql-tests.py" --parent
 python3 "$ROOT/tests/spell-eligibility-mysql-tests.py"
-python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --absent-teachers
-python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --reviewed-racials
-python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --inactive-foreign-swipes
-python3 "$ROOT/tests/spell-eligibility-mysql-tests.py" --training-prerequisites
+python3 "$ROOT/tests/cast-script-eligibility-mysql-tests.py"
+python3 "$ROOT/tests/spell-eligibility-mysql-tests.py"
+python3 "$ROOT/tests/cast-script-eligibility-mysql-tests.py" --absent-teachers
+python3 "$ROOT/tests/spell-eligibility-mysql-tests.py"
+python3 "$ROOT/tests/cast-script-eligibility-mysql-tests.py" --reviewed-racials
+python3 "$ROOT/tests/spell-eligibility-mysql-tests.py"
+python3 "$ROOT/tests/cast-script-eligibility-mysql-tests.py" --inactive-foreign-swipes
+python3 "$ROOT/tests/spell-eligibility-mysql-tests.py"
+python3 "$ROOT/tests/cast-script-eligibility-mysql-tests.py" --inactive-foreign-actions
+python3 "$ROOT/tests/spell-eligibility-mysql-tests.py"
+python3 "$ROOT/tests/cast-script-eligibility-mysql-tests.py" --training-prerequisites
 python3 "$ROOT/tests/pet-teaching-mysql-tests.py"
 python3 "$ROOT/tests/pet-teaching-mysql-tests.py" --reviewed-cower
 python3 "$ROOT/tests/cower-runtime-tests.py" "$TRINITYCORE_DIR" "$AZEROTHCORE_DIR"
 python3 "$ROOT/tests/cleanup-console-mysql-tests.py"
+python3 "$ROOT/tests/preparation-replay-mysql-tests.py"
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT
 prepare_test_toolkit "$TEST_ROOT/toolkit"
