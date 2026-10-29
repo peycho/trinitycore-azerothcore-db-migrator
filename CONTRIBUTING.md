@@ -21,6 +21,18 @@ configuration, static checks, disposable MySQL 8.4 fixture rehearsals, and the
 required checks for loader/sanitizer/checkpoint changes. Operator staging runs
 follow the [migration guide](runbooks/migration-guide.md).
 
+Python code supports 3.10 and uses only the standard library. Follow PEP 8 and
+PEP 257, annotate function interfaces and state, and keep database access,
+selection, SQL rendering, and CLI orchestration separate. Preserve SQL literal
+contents when formatting. The [Python refactor record](runbooks/python-refactor.md)
+describes the module boundaries and compatibility contracts.
+
+When adding or extracting production modules, update `IMPLEMENTATION_FILES` in
+`lib/cleanup_files.py`; spell-reader changes must also keep `SPELL_READER_FILES`
+in `lib/spell_common.py` complete. Retain public re-exports that callers use
+through module attributes. Contract fixtures captured from the original behavior
+must not be regenerated from changed code merely to make a failing test pass.
+
 ## Pull requests
 
 Keep changes focused and include:

@@ -1,0 +1,4785 @@
+{
+  "acknowledgements": [
+    {
+      "manifest": {
+        "policy": "tc-active-build-native-reset-v1"
+      },
+      "missing_fields": {},
+      "sql": ""
+    },
+    {
+      "manifest": {
+        "policy": "tc-disabled-ordinary-inactive-custom-defaults-v2"
+      },
+      "missing_fields": {},
+      "sql": "SET @ordinary_history_all_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-disabled-ordinary-training-prerequisites-v4",
+        "training_prerequisite_ack": "REVIEWED_TRAINING_PREREQUISITES_ONLY"
+      },
+      "missing_fields": {
+        "training_prerequisite_ack": {
+          "code": "ORDINARY_TRAINING_ACK_INVALID",
+          "hint": "",
+          "message": "Training-prerequisite acknowledgement differs from reviewed policy"
+        }
+      },
+      "sql": "SET @ordinary_history_all_spells=0;\nSET @ordinary_training_ack='REVIEWED_TRAINING_PREREQUISITES_ONLY';\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-disabled-other-selected-talent-rank-v5"
+      },
+      "missing_fields": {},
+      "sql": ""
+    },
+    {
+      "manifest": {
+        "policy": "tc-disabled-reviewed-script-talent-history-v2"
+      },
+      "missing_fields": {},
+      "sql": ""
+    },
+    {
+      "manifest": {
+        "policy": "tc-disabled-reviewed-talent-routes-v4"
+      },
+      "missing_fields": {},
+      "sql": ""
+    },
+    {
+      "manifest": {
+        "policy": "tc-disabled-unselected-direct-talent-history-v1"
+      },
+      "missing_fields": {},
+      "sql": ""
+    },
+    {
+      "manifest": {
+        "policy": "tc-disabled-unselected-talent-child-history-v7"
+      },
+      "missing_fields": {},
+      "sql": ""
+    },
+    {
+      "manifest": {
+        "policy": "tc-disabled-unselected-talent-closure-v3"
+      },
+      "missing_fields": {},
+      "sql": ""
+    },
+    {
+      "manifest": {
+        "policy": "tc-disabled-unselected-trained-talent-history-v6"
+      },
+      "missing_fields": {},
+      "sql": ""
+    },
+    {
+      "manifest": {
+        "foreign_skill_ack": "RETIRE_FORBIDDEN_DUAL_WIELD_STOW_VERIFIED_WEAPON_EXACT_INVERSE",
+        "policy": "tc-forbidden-dual-wield-native-stowing-v5"
+      },
+      "missing_fields": {
+        "foreign_skill_ack": {
+          "code": "FOREIGN_SKILL_ACK_INVALID",
+          "hint": "",
+          "message": "Foreign skill-family acknowledgement differs"
+        }
+      },
+      "sql": "SET @foreign_skill_family_ack='RETIRE_FORBIDDEN_DUAL_WIELD_STOW_VERIFIED_WEAPON_EXACT_INVERSE'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "foreign_skill_ack": "RETIRE_VERIFIED_FOREIGN_SKILL_AND_COMPLETE_PLAYERBOOK_FAMILY",
+        "policy": "tc-forbidden-player-skill-family-retirement-v1"
+      },
+      "missing_fields": {
+        "foreign_skill_ack": {
+          "code": "FOREIGN_SKILL_ACK_INVALID",
+          "hint": "",
+          "message": "Foreign skill-family acknowledgement differs"
+        }
+      },
+      "sql": "SET @foreign_skill_family_ack='RETIRE_VERIFIED_FOREIGN_SKILL_AND_COMPLETE_PLAYERBOOK_FAMILY'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "foreign_skill_ack": "RETIRE_FOREIGN_FAMILIES_AND_VERIFIED_ABSENT_CHILD_TRAINING_ACTIONS",
+        "policy": "tc-forbidden-player-training-family-retirement-v2"
+      },
+      "missing_fields": {
+        "foreign_skill_ack": {
+          "code": "FOREIGN_SKILL_ACK_INVALID",
+          "hint": "",
+          "message": "Foreign skill-family acknowledgement differs"
+        }
+      },
+      "sql": "SET @foreign_skill_family_ack='RETIRE_FOREIGN_FAMILIES_AND_VERIFIED_ABSENT_CHILD_TRAINING_ACTIONS'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-inactive-competing-specialization-retirement-v1",
+        "specialization_ack": "RETIRE_INACTIVE_COMPETITORS_RETAIN_VERIFIED_ACTIVE_CHOICE"
+      },
+      "missing_fields": {
+        "specialization_ack": {
+          "code": "SPECIALIZATION_ACK_INVALID",
+          "hint": "",
+          "message": "Specialization retirement acknowledgement differs"
+        }
+      },
+      "sql": "SET @specialization_retirement_ack='RETIRE_INACTIVE_COMPETITORS_RETAIN_VERIFIED_ACTIVE_CHOICE';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "eligibility_ack": "RETIRE_VERIFIED_INELIGIBLE_SPELLS",
+        "foreign_action_ack": "RETIRE_ONLY_INACTIVE_FOREIGN_ACTION_WITHOUT_SKILL_OR_TEACHER",
+        "policy": "tc-inactive-foreign-action-retirement-v5"
+      },
+      "missing_fields": {
+        "eligibility_ack": {
+          "code": "ELIGIBILITY_ACK_INVALID",
+          "hint": "",
+          "message": "Eligibility acknowledgement differs from the reviewed candidate"
+        },
+        "foreign_action_ack": {
+          "code": "FOREIGN_ACTION_ACK_INVALID",
+          "hint": "",
+          "message": "Inactive foreign action acknowledgement differs"
+        }
+      },
+      "sql": "SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\nSET @eligibility_foreign_action_ack='RETIRE_ONLY_INACTIVE_FOREIGN_ACTION_WITHOUT_SKILL_OR_TEACHER';\n"
+    },
+    {
+      "manifest": {
+        "eligibility_ack": "RETIRE_VERIFIED_INELIGIBLE_SPELLS",
+        "policy": "tc-inactive-foreign-swipe-retirement-v4",
+        "swipe_ack": "RETIRE_ONLY_INACTIVE_FOREIGN_SWIPE_ABSENT_BEAR_FORM"
+      },
+      "missing_fields": {
+        "eligibility_ack": {
+          "code": "ELIGIBILITY_ACK_INVALID",
+          "hint": "",
+          "message": "Eligibility acknowledgement differs from the reviewed candidate"
+        },
+        "swipe_ack": {
+          "code": "FOREIGN_SWIPE_ACK_INVALID",
+          "hint": "",
+          "message": "Inactive foreign Swipe acknowledgement differs"
+        }
+      },
+      "sql": "SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\nSET @eligibility_swipe_ack='RETIRE_ONLY_INACTIVE_FOREIGN_SWIPE_ABSENT_BEAR_FORM';\n"
+    },
+    {
+      "manifest": {
+        "inactive_legacy_ack": "RETIRE_ONLY_INACTIVE_LEGACY_BLOODTHIRST",
+        "policy": "tc-inactive-legacy-bloodthirst-retirement-v1"
+      },
+      "missing_fields": {
+        "inactive_legacy_ack": {
+          "code": "INACTIVE_LEGACY_ACK_INVALID",
+          "hint": "",
+          "message": "Inactive legacy acknowledgement differs"
+        }
+      },
+      "sql": "SET @inactive_legacy_ack='RETIRE_ONLY_INACTIVE_LEGACY_BLOODTHIRST';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-inactive-ordinary-profession-activation-v1",
+        "profession_activation_ack": "ACTIVATE_ONLY_EXISTING_ORDINARY_PROFESSION_RANKS"
+      },
+      "missing_fields": {
+        "profession_activation_ack": {
+          "code": "PROFESSION_ACK_INVALID",
+          "hint": "",
+          "message": "Profession activation acknowledgement differs"
+        }
+      },
+      "sql": "SET @profession_activation_ack='ACTIVATE_ONLY_EXISTING_ORDINARY_PROFESSION_RANKS';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-inactive-specialization-native-invalid-items-v2",
+        "specialization_ack": "RETIRE_INACTIVE_COMPETITORS_RETAIN_VERIFIED_ACTIVE_CHOICE"
+      },
+      "missing_fields": {
+        "specialization_ack": {
+          "code": "SPECIALIZATION_ACK_INVALID",
+          "hint": "",
+          "message": "Specialization retirement acknowledgement differs"
+        }
+      },
+      "sql": "SET @specialization_retirement_ack='RETIRE_INACTIVE_COMPETITORS_RETAIN_VERIFIED_ACTIVE_CHOICE';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "absent_teacher_ack": "VERIFIED_TEACHERS_ABSENT",
+        "eligibility_ack": "RETIRE_VERIFIED_INELIGIBLE_SPELLS",
+        "policy": "tc-ineligible-ordinary-absent-teacher-repair-v2"
+      },
+      "missing_fields": {
+        "absent_teacher_ack": {
+          "code": "ABSENT_TEACHER_ACK_INVALID",
+          "hint": "",
+          "message": "Absent-teacher acknowledgement differs from the reviewed candidate"
+        },
+        "eligibility_ack": {
+          "code": "ELIGIBILITY_ACK_INVALID",
+          "hint": "",
+          "message": "Eligibility acknowledgement differs from the reviewed candidate"
+        }
+      },
+      "sql": "SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\nSET @eligibility_absent_teachers_ack='VERIFIED_TEACHERS_ABSENT';\n"
+    },
+    {
+      "manifest": {
+        "eligibility_ack": "RETIRE_VERIFIED_INELIGIBLE_SPELLS",
+        "policy": "tc-ineligible-ordinary-spell-repair-v1"
+      },
+      "missing_fields": {
+        "eligibility_ack": {
+          "code": "ELIGIBILITY_ACK_INVALID",
+          "hint": "",
+          "message": "Eligibility acknowledgement differs from the reviewed candidate"
+        }
+      },
+      "sql": "SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "cast_script_ack": "RETIRE_INELIGIBLE_FAMILIES_WITH_REVIEWED_NONLEARNING_CALLBACKS",
+        "eligibility_ack": "RETIRE_VERIFIED_INELIGIBLE_SPELLS",
+        "policy": "tc-ineligible-reviewed-cast-script-retirement-v6"
+      },
+      "missing_fields": {
+        "cast_script_ack": {
+          "code": "CAST_SCRIPT_ACK_INVALID",
+          "hint": "",
+          "message": "Reviewed nonlearning callback acknowledgement differs"
+        },
+        "eligibility_ack": {
+          "code": "ELIGIBILITY_ACK_INVALID",
+          "hint": "",
+          "message": "Eligibility acknowledgement differs from the reviewed candidate"
+        }
+      },
+      "sql": "SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\nSET @eligibility_cast_scripts_ack='RETIRE_INELIGIBLE_FAMILIES_WITH_REVIEWED_NONLEARNING_CALLBACKS';\n"
+    },
+    {
+      "manifest": {
+        "eligibility_ack": "RETIRE_VERIFIED_INELIGIBLE_SPELLS",
+        "policy": "tc-ineligible-reviewed-racial-spell-repair-v3",
+        "racial_ack": "RETIRE_ONLY_REVIEWED_WRONG_RACE_RACIALS"
+      },
+      "missing_fields": {
+        "eligibility_ack": {
+          "code": "ELIGIBILITY_ACK_INVALID",
+          "hint": "",
+          "message": "Eligibility acknowledgement differs from the reviewed candidate"
+        },
+        "racial_ack": {
+          "code": "RACIAL_ACK_INVALID",
+          "hint": "",
+          "message": "Reviewed racial acknowledgement differs from the candidate"
+        }
+      },
+      "sql": "SET @spell_eligibility_ack='RETIRE_VERIFIED_INELIGIBLE_SPELLS';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\nSET @eligibility_racials_ack='RETIRE_ONLY_REVIEWED_WRONG_RACE_RACIALS';\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-isolated-disabled-ordinary-spell-history-v1"
+      },
+      "missing_fields": {},
+      "sql": ""
+    },
+    {
+      "manifest": {
+        "native_switch_ack": "KNOWN_SWITCH_SKILL_ONLY",
+        "policy": "tc-known-generic-switch-skill-v3"
+      },
+      "missing_fields": {
+        "native_switch_ack": {
+          "code": "NATIVE_SWITCH_ACK_INVALID",
+          "hint": "",
+          "message": "Known-switch skill acknowledgement differs from the reviewed candidate"
+        }
+      },
+      "sql": "SET @native_generic_switch_ack='KNOWN_SWITCH_SKILL_ONLY';\n"
+    },
+    {
+      "manifest": {
+        "native_racial_ack": "RESTORE_FIXED_NATIVE_RACIAL_SKILLS_AND_STOCK_REWARDS",
+        "policy": "tc-known-racial-native-skills-v5"
+      },
+      "missing_fields": {
+        "native_racial_ack": {
+          "code": "RACIAL_SKILL_ACK_INVALID",
+          "hint": "",
+          "message": "Racial-skill acknowledgement differs"
+        }
+      },
+      "sql": "SET @native_racial_skills_ack='RESTORE_FIXED_NATIVE_RACIAL_SKILLS_AND_STOCK_REWARDS'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-missing-native-skills-v1"
+      },
+      "missing_fields": {},
+      "sql": ""
+    },
+    {
+      "manifest": {
+        "policy": "tc-native-death-coil-base-repair-v3"
+      },
+      "missing_fields": {},
+      "sql": "SET @ordinary_history_all_spells=0;\nSET @ordinary_history_native_base=47541;\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-native-generic-skills-v2"
+      },
+      "missing_fields": {},
+      "sql": ""
+    },
+    {
+      "manifest": {
+        "policy": "tc-obsolete-horse-riding-native-invalid-items-v3",
+        "riding_ack": "RETIRE_FORBIDDEN_HORSE_RIDING_PAIR_RETAIN_MODERN_RIDING"
+      },
+      "missing_fields": {
+        "riding_ack": {
+          "code": "OBSOLETE_RIDING_ACK_INVALID",
+          "hint": "",
+          "message": "Obsolete riding spell/skill acknowledgement differs"
+        }
+      },
+      "sql": "SET @obsolete_riding_ack='RETIRE_FORBIDDEN_HORSE_RIDING_PAIR_RETAIN_MODERN_RIDING';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "foreign_skill_ack": "RETIRE_FIXED_OBSOLETE_TRAINING_KEEP_MODERN_RIDING",
+        "policy": "tc-obsolete-native-training-action-retirement-v1"
+      },
+      "missing_fields": {
+        "foreign_skill_ack": {
+          "code": "FOREIGN_SKILL_ACK_INVALID",
+          "hint": "",
+          "message": "Foreign skill-family acknowledgement differs"
+        }
+      },
+      "sql": "SET @foreign_skill_family_ack='RETIRE_FIXED_OBSOLETE_TRAINING_KEEP_MODERN_RIDING'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-obsolete-wolf-riding-native-invalid-items-v2",
+        "riding_ack": "RETAIN_NATIVE_INVALID_ITEM_ROWS_CHECK_ALL_VALID_REQUIREMENTS"
+      },
+      "missing_fields": {
+        "riding_ack": {
+          "code": "OBSOLETE_RIDING_ACK_INVALID",
+          "hint": "",
+          "message": "Obsolete riding spell/skill acknowledgement differs"
+        }
+      },
+      "sql": "SET @obsolete_riding_ack='RETAIN_NATIVE_INVALID_ITEM_ROWS_CHECK_ALL_VALID_REQUIREMENTS';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-obsolete-wolf-riding-spell-skill-retirement-v1",
+        "riding_ack": "RETIRE_FORBIDDEN_WOLF_RIDING_PAIR_RETAIN_MODERN_RIDING"
+      },
+      "missing_fields": {
+        "riding_ack": {
+          "code": "OBSOLETE_RIDING_ACK_INVALID",
+          "hint": "",
+          "message": "Obsolete riding spell/skill acknowledgement differs"
+        }
+      },
+      "sql": "SET @obsolete_riding_ack='RETIRE_FORBIDDEN_WOLF_RIDING_PAIR_RETAIN_MODERN_RIDING';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "pending_default_ack": "RETAIN_PENDING_RESET_RETIRE_ONLY_DISABLED_DASH_DEATH_PACT",
+        "policy": "tc-pending-reset-disabled-ordinary-defaults-v6"
+      },
+      "missing_fields": {
+        "pending_default_ack": {
+          "code": "PENDING_DEFAULT_ACK_INVALID",
+          "hint": "",
+          "message": "Pending default acknowledgement differs"
+        }
+      },
+      "sql": "SET @pending_default_ack='RETAIN_PENDING_RESET_RETIRE_ONLY_DISABLED_DASH_DEATH_PACT';\nSET @ordinary_history_all_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "native_switch_ack": "KNOWN_SWITCH_SKILL_ONLY",
+        "policy": "tc-pending-reset-known-generic-skill-v4"
+      },
+      "missing_fields": {
+        "native_switch_ack": {
+          "code": "NATIVE_SWITCH_ACK_INVALID",
+          "hint": "",
+          "message": "Known-switch skill acknowledgement differs from the reviewed candidate"
+        }
+      },
+      "sql": "SET @native_generic_switch_ack='KNOWN_SWITCH_SKILL_ONLY';\n"
+    },
+    {
+      "manifest": {
+        "pending_death_coil_ack": "RETAIN_PENDING_RESET_ALLOW_ONLY_NATIVE_DEATH_COIL_BASE",
+        "policy": "tc-pending-reset-native-death-coil-v5"
+      },
+      "missing_fields": {
+        "pending_death_coil_ack": {
+          "code": "PENDING_DEATH_COIL_ACK_INVALID",
+          "hint": "",
+          "message": "Pending Death Coil acknowledgement differs"
+        }
+      },
+      "sql": "SET @pending_death_coil_ack='RETAIN_PENDING_RESET_ALLOW_ONLY_NATIVE_DEATH_COIL_BASE';\nSET @ordinary_history_all_spells=0;\nSET @ordinary_history_native_base=47541;\n"
+    },
+    {
+      "manifest": {
+        "pending_profession_ack": "ACTIVATE_EXISTING_PROFESSIONS_KEEP_NATIVE_RESET_PENDING",
+        "policy": "tc-pending-reset-ordinary-profession-activation-v2",
+        "profession_activation_ack": "ACTIVATE_ONLY_EXISTING_ORDINARY_PROFESSION_RANKS"
+      },
+      "missing_fields": {
+        "pending_profession_ack": {
+          "code": "PENDING_PROFESSION_ACK_INVALID",
+          "hint": "",
+          "message": "Pending profession acknowledgement differs"
+        },
+        "profession_activation_ack": {
+          "code": "PROFESSION_ACK_INVALID",
+          "hint": "",
+          "message": "Profession activation acknowledgement differs"
+        }
+      },
+      "sql": "SET @pending_profession_ack='ACTIVATE_EXISTING_PROFESSIONS_KEEP_NATIVE_RESET_PENDING';\nSET @profession_activation_ack='ACTIVATE_ONLY_EXISTING_ORDINARY_PROFESSION_RANKS';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "ownership_ack": "SELECTED_TALENTS_AUTHORITATIVE",
+        "pending_ownership_ack": "KEEP_PENDING_RESET_SELECTED_TALENTS_AUTHORITATIVE",
+        "policy": "tc-pending-reset-selected-talent-authority-v6"
+      },
+      "missing_fields": {
+        "ownership_ack": {
+          "code": "OWNERSHIP_ACK_INVALID",
+          "hint": "",
+          "message": "Ownership policy acknowledgement differs from the reviewed candidate"
+        },
+        "pending_ownership_ack": {
+          "code": "PENDING_OWNERSHIP_ACK_INVALID",
+          "hint": "",
+          "message": "Pending ownership acknowledgement differs"
+        }
+      },
+      "sql": "SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';\nSET @pending_ownership_ack='KEEP_PENDING_RESET_SELECTED_TALENTS_AUTHORITATIVE';\n"
+    },
+    {
+      "manifest": {
+        "pending_history_ack": "RETAIN_PENDING_RESET_REMOVE_ONLY_WHOLLY_DISABLED_UNOWNED_FAMILIES",
+        "policy": "tc-pending-reset-unselected-disabled-talents-v8"
+      },
+      "missing_fields": {
+        "pending_history_ack": {
+          "code": "PENDING_HISTORY_ACK_INVALID",
+          "hint": "",
+          "message": "Pending history acknowledgement differs"
+        }
+      },
+      "sql": "SET @pending_history_ack='RETAIN_PENDING_RESET_REMOVE_ONLY_WHOLLY_DISABLED_UNOWNED_FAMILIES';\n"
+    },
+    {
+      "manifest": {
+        "cower_ack": "REVIEWED_COWER_CHILD_ONLY",
+        "pet_teaching_ack": "RETIRE_VERIFIED_PET_TEACHERS",
+        "policy": "tc-pet-teaching-reviewed-cower-retirement-v2"
+      },
+      "missing_fields": {
+        "cower_ack": {
+          "code": "COWER_ACK_INVALID",
+          "hint": "",
+          "message": "Cower acknowledgement differs from the reviewed candidate"
+        },
+        "pet_teaching_ack": {
+          "code": "PET_TEACHING_ACK_INVALID",
+          "hint": "",
+          "message": "Pet-teaching acknowledgement differs from the reviewed candidate"
+        }
+      },
+      "sql": "SET @pet_teaching_ack='RETIRE_VERIFIED_PET_TEACHERS';\nSET @pet_teaching_tc_all_spells=0; SET @pet_teaching_ac_custom_spells=0;\nSET @pet_teaching_cower_ack='REVIEWED_COWER_CHILD_ONLY';\n"
+    },
+    {
+      "manifest": {
+        "pet_teaching_ack": "RETIRE_VERIFIED_PET_TEACHERS",
+        "policy": "tc-pet-teaching-wrapper-retirement-v1"
+      },
+      "missing_fields": {
+        "pet_teaching_ack": {
+          "code": "PET_TEACHING_ACK_INVALID",
+          "hint": "",
+          "message": "Pet-teaching acknowledgement differs from the reviewed candidate"
+        }
+      },
+      "sql": "SET @pet_teaching_ack='RETIRE_VERIFIED_PET_TEACHERS';\nSET @pet_teaching_tc_all_spells=0; SET @pet_teaching_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "foreign_skill_ack": "RETIRE_FIXED_REDUNDANT_NATIVE_TEACHERS_KEEP_SKILLS",
+        "policy": "tc-redundant-native-training-actions-v2"
+      },
+      "missing_fields": {
+        "foreign_skill_ack": {
+          "code": "FOREIGN_SKILL_ACK_INVALID",
+          "hint": "",
+          "message": "Foreign skill-family acknowledgement differs"
+        }
+      },
+      "sql": "SET @foreign_skill_family_ack='RETIRE_FIXED_REDUNDANT_NATIVE_TEACHERS_KEEP_SKILLS'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-redundant-skill-teaching-wrapper-retirement-v1",
+        "skill_teaching_ack": "RETIRE_ONLY_REDUNDANT_KNOWN_SKILL_TEACHERS"
+      },
+      "missing_fields": {
+        "skill_teaching_ack": {
+          "code": "SKILL_TEACHER_ACK_INVALID",
+          "hint": "",
+          "message": "Skill-teaching acknowledgement differs"
+        }
+      },
+      "sql": "SET @skill_teaching_ack='RETIRE_ONLY_REDUNDANT_KNOWN_SKILL_TEACHERS';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "foreign_skill_ack": "RETIRE_FIXED_FORBIDDEN_NATIVE_PAIRS_PRESERVE_ITEMS_AND_MODERN_RIDING",
+        "policy": "tc-reviewed-forbidden-native-pair-retirement-v4"
+      },
+      "missing_fields": {
+        "foreign_skill_ack": {
+          "code": "FOREIGN_SKILL_ACK_INVALID",
+          "hint": "",
+          "message": "Foreign skill-family acknowledgement differs"
+        }
+      },
+      "sql": "SET @foreign_skill_family_ack='RETIRE_FIXED_FORBIDDEN_NATIVE_PAIRS_PRESERVE_ITEMS_AND_MODERN_RIDING'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-reviewed-weaponsmith-parent-repair-v2",
+        "specialization_ack": "RESTORE_WEAPONSMITH_RETAIN_MASTER_AXESMITH_RETIRE_INACTIVE_COMPETITORS"
+      },
+      "missing_fields": {
+        "specialization_ack": {
+          "code": "SPECIALIZATION_PARENT_ACK_INVALID",
+          "hint": "",
+          "message": "Parent-specialization acknowledgement differs"
+        }
+      },
+      "sql": "SET @specialization_retirement_ack='RESTORE_WEAPONSMITH_RETAIN_MASTER_AXESMITH_RETIRE_INACTIVE_COMPETITORS';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "direct_passive_ack": "SELECTED_LOWER_DIRECT_PASSIVES_AUTHORITATIVE",
+        "ownership_ack": "SELECTED_TALENTS_AUTHORITATIVE",
+        "policy": "tc-selected-direct-passive-authority-v1"
+      },
+      "missing_fields": {
+        "direct_passive_ack": {
+          "code": "DIRECT_PASSIVE_ACK_INVALID",
+          "hint": "",
+          "message": "Direct passive authority acknowledgement differs"
+        },
+        "ownership_ack": {
+          "code": "DIRECT_PASSIVE_ACK_INVALID",
+          "hint": "",
+          "message": "Direct passive authority acknowledgement differs"
+        }
+      },
+      "sql": "SET @direct_passive_ack='SELECTED_LOWER_DIRECT_PASSIVES_AUTHORITATIVE';\nSET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "native_rekey_ack": "ONLY_ALREADY_KNOWN_SELECTED_LOWER_PASSIVES",
+        "ownership_ack": "SELECTED_TALENTS_AUTHORITATIVE",
+        "policy": "tc-selected-known-passive-rank-rekey-v5"
+      },
+      "missing_fields": {
+        "native_rekey_ack": {
+          "code": "OWNERSHIP_REKEY_ACK_INVALID",
+          "hint": "",
+          "message": "Already-known lower passive acknowledgement differs"
+        },
+        "ownership_ack": {
+          "code": "OWNERSHIP_ACK_INVALID",
+          "hint": "",
+          "message": "Ownership policy acknowledgement differs from the reviewed candidate"
+        }
+      },
+      "sql": "SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';\nSET @talent_native_rekey_ack='ONLY_ALREADY_KNOWN_SELECTED_LOWER_PASSIVES';\n"
+    },
+    {
+      "manifest": {
+        "native_prefix_ack": "RETAIN_AUTHORIZED_HIGHER_ANCHORS",
+        "ownership_ack": "SELECTED_TALENTS_AUTHORITATIVE",
+        "policy": "tc-selected-native-passive-prefix-repair-v3"
+      },
+      "missing_fields": {
+        "native_prefix_ack": {
+          "code": "OWNERSHIP_PREFIX_ACK_INVALID",
+          "hint": "",
+          "message": "Native-prefix acknowledgement differs from the reviewed candidate"
+        },
+        "ownership_ack": {
+          "code": "OWNERSHIP_ACK_INVALID",
+          "hint": "",
+          "message": "Ownership policy acknowledgement differs from the reviewed candidate"
+        }
+      },
+      "sql": "SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';\nSET @talent_native_prefix_ack='RETAIN_AUTHORIZED_HIGHER_ANCHORS';\n"
+    },
+    {
+      "manifest": {
+        "ownership_ack": "SELECTED_TALENTS_AUTHORITATIVE",
+        "policy": "tc-selected-talent-ownership-repair-v1"
+      },
+      "missing_fields": {
+        "ownership_ack": {
+          "code": "OWNERSHIP_ACK_INVALID",
+          "hint": "",
+          "message": "Ownership policy acknowledgement differs from the reviewed candidate"
+        }
+      },
+      "sql": "SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-talent-rank-cleanup-v1"
+      },
+      "missing_fields": {},
+      "sql": ""
+    },
+    {
+      "manifest": {
+        "foreign_skill_ack": "RETIRE_FIXED_COMBAT_AURA_IDS_FROM_SPELLBOOK_ONLY",
+        "policy": "tc-transient-combat-spellbook-retirement-v1"
+      },
+      "missing_fields": {
+        "foreign_skill_ack": {
+          "code": "FOREIGN_SKILL_ACK_INVALID",
+          "hint": "",
+          "message": "Foreign skill-family acknowledgement differs"
+        }
+      },
+      "sql": "SET @foreign_skill_family_ack='RETIRE_FIXED_COMBAT_AURA_IDS_FROM_SPELLBOOK_ONLY'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "dual_teacher_ack": "RETIRE_DUAL_SPEC_TEACHER_KEEP_ONE_SPEC_NO_BUTTON_GRANTS",
+        "policy": "tc-unavailable-dual-spec-teacher-retirement-v1"
+      },
+      "missing_fields": {
+        "dual_teacher_ack": {
+          "code": "DUAL_TEACHER_ACK_INVALID",
+          "hint": "",
+          "message": "Dual-spec teacher acknowledgement differs"
+        }
+      },
+      "sql": "SET @spell_eligibility_ack='RETIRE_DUAL_SPEC_TEACHER_KEEP_ONE_SPEC_NO_BUTTON_GRANTS'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "foreign_family_ack": "UNSELECTED_FOREIGN_FAMILIES_ONLY",
+        "ownership_ack": "SELECTED_TALENTS_AUTHORITATIVE",
+        "policy": "tc-unselected-foreign-talent-retirement-v2"
+      },
+      "missing_fields": {
+        "foreign_family_ack": {
+          "code": "OWNERSHIP_FOREIGN_ACK_INVALID",
+          "hint": "",
+          "message": "Foreign-family acknowledgement differs from the reviewed candidate"
+        },
+        "ownership_ack": {
+          "code": "OWNERSHIP_ACK_INVALID",
+          "hint": "",
+          "message": "Ownership policy acknowledgement differs from the reviewed candidate"
+        }
+      },
+      "sql": "SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';\nSET @talent_foreign_family_ack='UNSELECTED_FOREIGN_FAMILIES_ONLY';\n"
+    },
+    {
+      "manifest": {
+        "overlevel_ownership_ack": "RETAIN_LEVEL_RETIRE_ISOLATED_UNSELECTED_TALENT_HISTORY",
+        "ownership_ack": "SELECTED_TALENTS_AUTHORITATIVE",
+        "policy": "tc-unselected-overlevel-talent-history-v7"
+      },
+      "missing_fields": {
+        "overlevel_ownership_ack": {
+          "code": "OVERLEVEL_ACK_INVALID",
+          "hint": "",
+          "message": "Overlevel ownership acknowledgement differs"
+        },
+        "ownership_ack": {
+          "code": "OWNERSHIP_ACK_INVALID",
+          "hint": "",
+          "message": "Ownership policy acknowledgement differs from the reviewed candidate"
+        }
+      },
+      "sql": "SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';\nSET @overlevel_ownership_ack='RETAIN_LEVEL_RETIRE_ISOLATED_UNSELECTED_TALENT_HISTORY';\n"
+    },
+    {
+      "manifest": {
+        "aura_alias_ack": "UNSELECTED_REVIEWED_AURA_ALIASES_ONLY",
+        "ownership_ack": "SELECTED_TALENTS_AUTHORITATIVE",
+        "policy": "tc-unselected-reviewed-aura-alias-retirement-v4"
+      },
+      "missing_fields": {
+        "aura_alias_ack": {
+          "code": "OWNERSHIP_ALIAS_ACK_INVALID",
+          "hint": "",
+          "message": "Aura-alias acknowledgement differs from the reviewed candidate"
+        },
+        "ownership_ack": {
+          "code": "OWNERSHIP_ACK_INVALID",
+          "hint": "",
+          "message": "Ownership policy acknowledgement differs from the reviewed candidate"
+        }
+      },
+      "sql": "SET @talent_ownership_ack='SELECTED_TALENTS_AUTHORITATIVE';\nSET @talent_aura_alias_ack='UNSELECTED_REVIEWED_AURA_ALIASES_ONLY';\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-unselected-shaman-dual-wield-skill-retirement-v1",
+        "shaman_ack": "RETIRE_UNSELECTED_SHAMAN_SPELL_AND_SKILL_EMPTY_OFFHAND"
+      },
+      "missing_fields": {
+        "shaman_ack": {
+          "code": "SHAMAN_ACK_INVALID",
+          "hint": "",
+          "message": "Coupled Shaman acknowledgement differs"
+        }
+      },
+      "sql": "SET @shaman_dual_wield_ack='RETIRE_UNSELECTED_SHAMAN_SPELL_AND_SKILL_EMPTY_OFFHAND';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-unselected-shaman-offhand-reconciliation-v2",
+        "shaman_ack": "RETIRE_UNSELECTED_DUAL_WIELD_STOW_WEAPON_RETAIN_SHIELD"
+      },
+      "missing_fields": {
+        "shaman_ack": {
+          "code": "SHAMAN_ACK_INVALID",
+          "hint": "",
+          "message": "Coupled Shaman acknowledgement differs"
+        }
+      },
+      "sql": "SET @shaman_dual_wield_ack='RETIRE_UNSELECTED_DUAL_WIELD_STOW_WEAPON_RETAIN_SHIELD';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "foreign_skill_ack": "RETIRE_UNUSABLE_SPECIALIZATIONS_AND_TEACHERS_KEEP_RECIPES",
+        "policy": "tc-unusable-specialization-history-retirement-v3"
+      },
+      "missing_fields": {
+        "foreign_skill_ack": {
+          "code": "FOREIGN_SKILL_ACK_INVALID",
+          "hint": "",
+          "message": "Foreign skill-family acknowledgement differs"
+        }
+      },
+      "sql": "SET @foreign_skill_family_ack='RETIRE_UNUSABLE_SPECIALIZATIONS_AND_TEACHERS_KEEP_RECIPES'; SET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "policy": "tc-weaponsmith-parent-native-invalid-items-v3",
+        "specialization_ack": "RESTORE_WEAPONSMITH_RETAIN_MASTER_AXESMITH_RETIRE_INACTIVE_COMPETITORS"
+      },
+      "missing_fields": {
+        "specialization_ack": {
+          "code": "SPECIALIZATION_PARENT_ACK_INVALID",
+          "hint": "",
+          "message": "Parent-specialization acknowledgement differs"
+        }
+      },
+      "sql": "SET @specialization_retirement_ack='RESTORE_WEAPONSMITH_RETAIN_MASTER_AXESMITH_RETIRE_INACTIVE_COMPETITORS';\nSET @eligibility_tc_all_spells=0; SET @eligibility_ac_custom_spells=0;\n"
+    },
+    {
+      "manifest": {
+        "policy": "unknown-policy"
+      },
+      "missing_fields": {},
+      "sql": ""
+    }
+  ],
+  "cli_contract": {
+    "actions": [
+      {
+        "action": "_HelpAction",
+        "choices": null,
+        "default": "==SUPPRESS==",
+        "dest": "help",
+        "help": "show this help message and exit",
+        "metavar": null,
+        "nargs": 0,
+        "options": [
+          "-h",
+          "--help"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action": "_StoreAction",
+        "choices": null,
+        "default": "cleanup.ini",
+        "dest": "config",
+        "help": "Private INI file (default: ./cleanup.ini)",
+        "metavar": null,
+        "nargs": null,
+        "options": [
+          "--config"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action": "_SubParsersAction",
+        "choices": {
+          "apply": {
+            "actions": [
+              {
+                "action": "_HelpAction",
+                "choices": null,
+                "default": "==SUPPRESS==",
+                "dest": "help",
+                "help": "show this help message and exit",
+                "metavar": null,
+                "nargs": 0,
+                "options": [
+                  "-h",
+                  "--help"
+                ],
+                "required": false,
+                "type": null
+              },
+              {
+                "action": "_StoreAction",
+                "choices": null,
+                "default": null,
+                "dest": "batch",
+                "help": "Batch ID in this session; prepare/apply/restore default to the selected plan",
+                "metavar": null,
+                "nargs": null,
+                "options": [
+                  "--batch"
+                ],
+                "required": false,
+                "type": null
+              }
+            ],
+            "description": null
+          },
+          "audit": {
+            "actions": [
+              {
+                "action": "_HelpAction",
+                "choices": null,
+                "default": "==SUPPRESS==",
+                "dest": "help",
+                "help": "show this help message and exit",
+                "metavar": null,
+                "nargs": 0,
+                "options": [
+                  "-h",
+                  "--help"
+                ],
+                "required": false,
+                "type": null
+              },
+              {
+                "action": "_StoreAction",
+                "choices": [
+                  "talents",
+                  "character-state",
+                  "all"
+                ],
+                "default": "all",
+                "dest": "scope",
+                "help": null,
+                "metavar": null,
+                "nargs": null,
+                "options": [
+                  "--scope"
+                ],
+                "required": false,
+                "type": null
+              }
+            ],
+            "description": null
+          },
+          "init": {
+            "actions": [
+              {
+                "action": "_HelpAction",
+                "choices": null,
+                "default": "==SUPPRESS==",
+                "dest": "help",
+                "help": "show this help message and exit",
+                "metavar": null,
+                "nargs": 0,
+                "options": [
+                  "-h",
+                  "--help"
+                ],
+                "required": false,
+                "type": null
+              },
+              {
+                "action": "_StoreAction",
+                "choices": null,
+                "default": "",
+                "dest": "label",
+                "help": null,
+                "metavar": null,
+                "nargs": null,
+                "options": [
+                  "--label"
+                ],
+                "required": false,
+                "type": null
+              }
+            ],
+            "description": null
+          },
+          "inspect-items": {
+            "actions": [
+              {
+                "action": "_HelpAction",
+                "choices": null,
+                "default": "==SUPPRESS==",
+                "dest": "help",
+                "help": "show this help message and exit",
+                "metavar": null,
+                "nargs": 0,
+                "options": [
+                  "-h",
+                  "--help"
+                ],
+                "required": false,
+                "type": null
+              }
+            ],
+            "description": null
+          },
+          "inspect-migration-blockers": {
+            "actions": [
+              {
+                "action": "_HelpAction",
+                "choices": null,
+                "default": "==SUPPRESS==",
+                "dest": "help",
+                "help": "show this help message and exit",
+                "metavar": null,
+                "nargs": 0,
+                "options": [
+                  "-h",
+                  "--help"
+                ],
+                "required": false,
+                "type": null
+              },
+              {
+                "action": "_StoreAction",
+                "choices": null,
+                "default": null,
+                "dest": "report",
+                "help": "Path to saved spell-state-blockers.tsv from the migration toolkit",
+                "metavar": null,
+                "nargs": null,
+                "options": [
+                  "--report"
+                ],
+                "required": false,
+                "type": null
+              },
+              {
+                "action": "_StoreTrueAction",
+                "choices": null,
+                "default": false,
+                "dest": "all_characters",
+                "help": "Capture the entire current source for preparation; no first-failure report or historical GUID filter",
+                "metavar": null,
+                "nargs": 0,
+                "options": [
+                  "--all-characters"
+                ],
+                "required": false,
+                "type": null
+              },
+              {
+                "action": "_StoreTrueAction",
+                "choices": null,
+                "default": false,
+                "dest": "bundle",
+                "help": "Also create a private tar.gz in the operation directory for offline review",
+                "metavar": null,
+                "nargs": 0,
+                "options": [
+                  "--bundle"
+                ],
+                "required": false,
+                "type": null
+              }
+            ],
+            "description": null
+          },
+          "inspect-spell-history": {
+            "actions": [
+              {
+                "action": "_HelpAction",
+                "choices": null,
+                "default": "==SUPPRESS==",
+                "dest": "help",
+                "help": "show this help message and exit",
+                "metavar": null,
+                "nargs": 0,
+                "options": [
+                  "-h",
+                  "--help"
+                ],
+                "required": false,
+                "type": null
+              },
+              {
+                "action": "_StoreAction",
+                "choices": null,
+                "default": null,
+                "dest": "audit",
+                "help": "Full audit ID in this session; defaults to latest completed audit",
+                "metavar": null,
+                "nargs": null,
+                "options": [
+                  "--audit"
+                ],
+                "required": false,
+                "type": null
+              }
+            ],
+            "description": null
+          },
+          "plan": {
+            "actions": [
+              {
+                "action": "_HelpAction",
+                "choices": null,
+                "default": "==SUPPRESS==",
+                "dest": "help",
+                "help": "show this help message and exit",
+                "metavar": null,
+                "nargs": 0,
+                "options": [
+                  "-h",
+                  "--help"
+                ],
+                "required": false,
+                "type": null
+              },
+              {
+                "action": "_SubParsersAction",
+                "choices": {
+                  "disabled-spell-history": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": "Sealed migration-blocker inspection ID or latest in this session",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "pending_inactive_defaults",
+                        "help": "Separate pending-reset policy for wholly disabled Dash/Death Pact families under verified inactive custom defaults; no reset or login changes",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--pending-inactive-defaults"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "inactive_custom_defaults",
+                        "help": "Explicit v2: allow inactive custom-start routes only with [source] player_start_all_spells=0; other guards remain",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--inactive-custom-defaults"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "pending_native_death_coil",
+                        "help": "Separate pending-reset Death Coil rank-1 policy; retain all reset flags, selected talents and skills; no reset execution",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--pending-native-death-coil"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "native_death_coil",
+                        "help": "Separate v3: retire eligible disabled Death Coil training history, allowing native rank 1 from existing Unholy skill; requires player_start_all_spells=0",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--native-death-coil"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "training_prerequisites",
+                        "help": "Separate v4: exact reviewed disabled ordinary training prerequisites; preserve enabled counterparts, skills and talents",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--training-prerequisites"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": "Read-only review; no SQL package, source change or active-batch change",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_review_rows",
+                        "help": "Exact reviewed_candidate_rows from this policy preview, including exclusions",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-review-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "disabled-talent-history": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "inspection",
+                        "help": "Retained spell-history inspection ID in this session",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--inspection"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "audit",
+                        "help": "Full audit ID in this session; create a fresh read-only spell-history inspection before planning",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--audit"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": "Sealed migration blocker context ID or latest in this session; v6 trained ranks or explicit v7 talent children",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_review_rows",
+                        "help": "Exact candidate total for the chosen category; v7 uses the preview reviewed_candidate_rows, not selected rows or characters",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-review-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": "V7 only: review captured talent-child state without creating a SQL package or changing the active batch",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "orphaned_talent_children",
+                        "help": "Use v7 with --migration-inspection: wholly disabled unselected talent-child families, including absent direct/trained roots; enabled rows remain untouched",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--orphaned-talent-children"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "include_reviewed_scripts",
+                        "help": "Use v2 policy for families whose every binding has the protected NO_SPELLBOOK_MUTATION contract; other exclusions remain",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--include-reviewed-scripts"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "include_inert_relations",
+                        "help": "Use v3 policy to archive isolated wholly disabled direct talent/rank/dependency groups, including exact related rows; implies reviewed scripts",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--include-inert-relations"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "include_reviewed_routes",
+                        "help": "Use v4 exact Berserk/Blast Wave teacher rules and inert shaman 30798 root-only rule preserving 674/skill 118; implies v3 review",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--include-reviewed-routes"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "pending_reset_history",
+                        "help": "Separate v8: archive wholly disabled unselected talent families on pending-reset characters; retain selected ownership, enabled spells, skills and reset flags; no reset executed",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--pending-reset-history"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "selected_rank_history",
+                        "help": "Use v5 for disabled ranks selected by neither spec when another direct rank is selected; preserve all selected ranks; cannot combine with other modes",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--selected-rank-history"
+                        ],
+                        "required": false,
+                        "type": null
+                      }
+                    ],
+                    "description": null
+                  },
+                  "dual-spec-teacher": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_review_rows",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "foreign-skill-families": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "absent_training_actions",
+                        "help": "Separate v2: include verified pure training actions with native-forbidden children even if child rows are absent; no grants or casts",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--absent-training-actions"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_review_rows",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "inactive-legacy-spells": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": "Sealed migration-blocker inspection ID or latest",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": "Read-only review; no SQL package or active batch",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_review_rows",
+                        "help": "Exact selected_rows from this policy preview",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "items": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "containers",
+                        "help": "Comma-separated container GUIDs from inspect-items",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--containers"
+                        ],
+                        "required": true,
+                        "type": null
+                      }
+                    ],
+                    "description": null
+                  },
+                  "native-actions": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": [
+                          "forbidden-pairs-stowing",
+                          "forbidden-pairs",
+                          "redundant-teachers",
+                          "obsolete-teachers",
+                          "unusable-specializations",
+                          "transient-combat"
+                        ],
+                        "default": null,
+                        "dest": "native_action",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--action"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_review_rows",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "native-skills": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": "Sealed migration blocker context ID; defaults to latest captured context in this session",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": [
+                          "generic",
+                          "runeforging",
+                          "racial"
+                        ],
+                        "default": [
+                          "generic",
+                          "runeforging"
+                        ],
+                        "dest": "skills",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": "+",
+                        "options": [
+                          "--skills"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "normalize_generic",
+                        "help": "Opt in to v2: verified dual-spec teacher anchors and exact native level*5 normalization of existing Generic only; requires --skills generic",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--normalize-generic"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "known_racials",
+                        "help": "Separate v5: restore four fixed absent racial skills from existing legitimate known spells; explicitly allow verified stock racial rewards; requires --skills racial",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--known-racials"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "pending_generic",
+                        "help": "Separate v4: insert absent Generic only from enabled known 2382 on pending-reset characters; retain reset flags, talents and every spell; no reset execution",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--pending-generic"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "known_generic_switch",
+                        "help": "Opt in to v3: insert absent Generic from verified enabled switch spells even with one spec; no spec grant or existing skill update; requires --skills generic",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--known-generic-switch"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_rows",
+                        "help": "Exact eligible skill change count from preview",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": "Review the captured selection without a SQL package, active-batch change or source writes",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      }
+                    ],
+                    "description": null
+                  },
+                  "obsolete-riding": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "horse",
+                        "help": "Separate v3: forbidden legacy Horse Riding 824 AND skill 148, with retained modern riding and full native-invalid item guards",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--horse"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "native_invalid_items",
+                        "help": "Separate v2: retain verified missing-instance references and zero-entry instances unchanged; unknown nonzero templates still defer",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--native-invalid-items"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": "Current sealed migration-blocker inspection ID or latest",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": "Read-only spell/skill/item requirement review; no SQL package",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_review_rows",
+                        "help": "Exact selected spell/skill pairs from the current preview",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "pet-teaching": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": "Sealed migration-blocker inspection ID or latest",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "reviewed_cower",
+                        "help": "Separate v2 contract for exact reviewed Cower pet-child amount callbacks; other scripts still defer",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--reviewed-cower"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": "Read-only review; no SQL package or active batch",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_review_rows",
+                        "help": "Exact selected_rows from this policy preview",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "profession-activation": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "pending_reset",
+                        "help": "Separate v2: activate reviewed existing ordinary profession ranks only on pending-reset characters; preserve every reset flag and selected talent",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--pending-reset"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": "Current sealed migration-blocker inspection ID or latest",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": "Read-only review; no SQL package or active batch",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_review_rows",
+                        "help": "Exact selected_rows from the current preview",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "reset-active-talents": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "guid",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--guid"
+                        ],
+                        "required": true,
+                        "type": "int"
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "remove_spells",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--remove-spells"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_talent_rows",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-talent-rows"
+                        ],
+                        "required": true,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "reset-talents": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "guid",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--guid"
+                        ],
+                        "required": true,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "skill-teaching": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": "Current sealed migration-blocker inspection ID or latest",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": "Read-only review; no SQL package or active batch",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_review_rows",
+                        "help": "Exact selected_rows from the current preview",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "skills": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "audit",
+                        "help": "Full audit ID in this session; defaults to latest completed audit",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--audit"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_rows",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": true,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "specialization-parent": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "native_invalid_items",
+                        "help": "Separate reviewed policy: retain exact missing-instance/zero-entry equipment rows; check all valid items and defer unknown nonzero templates",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--native-invalid-items"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": "Current sealed migration-blocker inspection ID or latest",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": "Read-only review; no SQL package or source changes",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_review_rows",
+                        "help": "Exact original selected rows from this preview, three per selected character",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "specialization-retirement": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "native_invalid_items",
+                        "help": "Separate reviewed policy: retain exact missing-instance/zero-entry equipment rows; check all valid items and defer unknown nonzero templates",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--native-invalid-items"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": "Current sealed migration-blocker inspection ID or latest",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": "Read-only specialization/equipped-item review; no SQL package",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_review_rows",
+                        "help": "Exact selected_rows from the current preview",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "spell-eligibility": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": "Sealed migration-blocker inspection ID or latest",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "reviewed_cast_scripts",
+                        "help": "Separate v6: ineligible ordinary families with protected NO_SPELLBOOK_MUTATION cast callbacks; retain all other route, skill, talent and ownership guards",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--reviewed-cast-scripts"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "inactive_foreign_actions",
+                        "help": "Separate v5: fixed inactive foreign Lockpicking action with absent skill and whole teacher chain; no grants",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--inactive-foreign-actions"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "inactive_foreign_swipes",
+                        "help": "Separate v4: only inactive foreign Swipe ranks with absent Bear Form and Feral skill; no grants",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--inactive-foreign-swipes"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "reviewed_racials",
+                        "help": "Separate v3 fixed-catalog wrong-race racial retirement; no languages, riding or replacement racials",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--reviewed-racials"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "absent_teachers",
+                        "help": "Separate v2 contract for exact reviewed absent single-child teachers; other dependencies still defer",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--absent-teachers"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": "Read-only review; no SQL package or active batch",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_review_rows",
+                        "help": "Exact selected_rows from this policy preview",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "talent-ownership": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "migration_inspection",
+                        "help": "Sealed migration-blocker inspection ID or latest",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--migration-inspection"
+                        ],
+                        "required": true,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "unselected_overlevel_talents",
+                        "help": "Separate policy: retire verified unselected talent history on level 81..255 characters with no selected builds; preserve exact level, skills and flags",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--unselected-overlevel-talents"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "pending_reset_ownership",
+                        "help": "Separate ownership repair on pending-reset characters only; retain both selected builds, skills and reset flags; no reset execution",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--pending-reset-ownership"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "foreign_class_families",
+                        "help": "Separate v2: retire only isolated unselected foreign-class talent families; retain shared skill spells and selected ownership",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--foreign-class-families"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "native_passive_prefixes",
+                        "help": "Separate v3: retire disabled passive predecessors only with retained enabled authorized higher anchors; no missing child grants or talent/skill changes",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--native-passive-prefixes"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "selected_direct_passives",
+                        "help": "Separate policy: retire unselected higher direct passive ranks; restore existing lower selected auras through native AC talent loading; both worlds required",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--selected-direct-passives"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "reconcile_shaman_offhand",
+                        "help": "Separate coupled spell/skill repair: retain verified shield or stow verified weapon into empty native backpack/bank slot; archive exact placement inverse; preserve pending reset flags",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--reconcile-shaman-offhand"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "unselected_shaman_dual_wield",
+                        "help": "Separate coupled repair: retire unselected Shaman spell 674 AND skill 118 only with an empty off-hand; --expect-rows counts pairs",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--unselected-shaman-dual-wield"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "native_passive_rekey",
+                        "help": "Separate v5: rekey conflicting enabled passive child anchors downward to already-known active selected ranks; stock spell columns only",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--native-passive-rekey"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "reviewed_aura_aliases",
+                        "help": "Separate v4: retire isolated unselected paladin aura talent history under exact protected registration/helper contracts",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--reviewed-aura-aliases"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreTrueAction",
+                        "choices": null,
+                        "default": false,
+                        "dest": "preview",
+                        "help": "Read-only complete captured-scope review; no active batch or SQL package",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "--preview"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_review_rows",
+                        "help": "Exact selected_rows printed by this policy preview",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": false,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  },
+                  "talents": {
+                    "actions": [
+                      {
+                        "action": "_HelpAction",
+                        "choices": null,
+                        "default": "==SUPPRESS==",
+                        "dest": "help",
+                        "help": "show this help message and exit",
+                        "metavar": null,
+                        "nargs": 0,
+                        "options": [
+                          "-h",
+                          "--help"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "audit",
+                        "help": "Audit ID in this session; defaults to latest completed audit",
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--audit"
+                        ],
+                        "required": false,
+                        "type": null
+                      },
+                      {
+                        "action": "_StoreAction",
+                        "choices": null,
+                        "default": null,
+                        "dest": "expect_rows",
+                        "help": null,
+                        "metavar": null,
+                        "nargs": null,
+                        "options": [
+                          "--expect-rows"
+                        ],
+                        "required": true,
+                        "type": "int"
+                      }
+                    ],
+                    "description": null
+                  }
+                },
+                "default": null,
+                "dest": "kind",
+                "help": null,
+                "metavar": null,
+                "nargs": "A...",
+                "options": [],
+                "required": true,
+                "type": null
+              }
+            ],
+            "description": null
+          },
+          "prepare": {
+            "actions": [
+              {
+                "action": "_HelpAction",
+                "choices": null,
+                "default": "==SUPPRESS==",
+                "dest": "help",
+                "help": "show this help message and exit",
+                "metavar": null,
+                "nargs": 0,
+                "options": [
+                  "-h",
+                  "--help"
+                ],
+                "required": false,
+                "type": null
+              },
+              {
+                "action": "_StoreAction",
+                "choices": null,
+                "default": null,
+                "dest": "batch",
+                "help": "Batch ID in this session; prepare/apply/restore default to the selected plan",
+                "metavar": null,
+                "nargs": null,
+                "options": [
+                  "--batch"
+                ],
+                "required": false,
+                "type": null
+              }
+            ],
+            "description": null
+          },
+          "restore": {
+            "actions": [
+              {
+                "action": "_HelpAction",
+                "choices": null,
+                "default": "==SUPPRESS==",
+                "dest": "help",
+                "help": "show this help message and exit",
+                "metavar": null,
+                "nargs": 0,
+                "options": [
+                  "-h",
+                  "--help"
+                ],
+                "required": false,
+                "type": null
+              },
+              {
+                "action": "_StoreAction",
+                "choices": null,
+                "default": null,
+                "dest": "batch",
+                "help": "Batch ID in this session; prepare/apply/restore default to the selected plan",
+                "metavar": null,
+                "nargs": null,
+                "options": [
+                  "--batch"
+                ],
+                "required": false,
+                "type": null
+              }
+            ],
+            "description": null
+          },
+          "sessions": {
+            "actions": [
+              {
+                "action": "_HelpAction",
+                "choices": null,
+                "default": "==SUPPRESS==",
+                "dest": "help",
+                "help": "show this help message and exit",
+                "metavar": null,
+                "nargs": 0,
+                "options": [
+                  "-h",
+                  "--help"
+                ],
+                "required": false,
+                "type": null
+              },
+              {
+                "action": "_StoreAction",
+                "choices": null,
+                "default": null,
+                "dest": "use",
+                "help": "Session ID; must match the configured server and schemas",
+                "metavar": null,
+                "nargs": null,
+                "options": [
+                  "--use"
+                ],
+                "required": false,
+                "type": null
+              }
+            ],
+            "description": null
+          },
+          "status": {
+            "actions": [
+              {
+                "action": "_HelpAction",
+                "choices": null,
+                "default": "==SUPPRESS==",
+                "dest": "help",
+                "help": "show this help message and exit",
+                "metavar": null,
+                "nargs": 0,
+                "options": [
+                  "-h",
+                  "--help"
+                ],
+                "required": false,
+                "type": null
+              },
+              {
+                "action": "_StoreAction",
+                "choices": null,
+                "default": null,
+                "dest": "batch",
+                "help": "Batch ID in this session; prepare/apply/restore default to the selected plan",
+                "metavar": null,
+                "nargs": null,
+                "options": [
+                  "--batch"
+                ],
+                "required": false,
+                "type": null
+              }
+            ],
+            "description": null
+          }
+        },
+        "default": null,
+        "dest": "command",
+        "help": null,
+        "metavar": null,
+        "nargs": "A...",
+        "options": [],
+        "required": true,
+        "type": null
+      }
+    ],
+    "description": "Audit and reviewed reversible cleanup of a stopped TrinityCore preparation copy."
+  },
+  "policy_descriptions_sha256": "6b18a43eefa76156a2a1ceeb26530427ae41c54d3902955a151b6d455134179b",
+  "provenance": "Captured from the pre-refactor implementation; do not regenerate from refactored code.",
+  "spells": [
+    {
+      "expected": {
+        "rows": {
+          "465": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149,
+                  10293,
+                  10292,
+                  1032,
+                  10291,
+                  643,
+                  10290,
+                  465
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "643": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149,
+                  10293,
+                  10292,
+                  1032,
+                  10291,
+                  643
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "1032": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149,
+                  10293,
+                  10292,
+                  1032
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "10290": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149,
+                  10293,
+                  10292,
+                  1032,
+                  10291,
+                  643,
+                  10290
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "10291": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149,
+                  10293,
+                  10292,
+                  1032,
+                  10291
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "10292": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149,
+                  10293,
+                  10292
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "10293": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149,
+                  10293
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "27149": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "48941": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "48942": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": false,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [
+              1,
+              0
+            ],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942
+                ],
+                "STORED_SPELL"
+              ]
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "stored": {
+          "48942": [
+            1,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "expected": {
+        "rows": {
+          "465": {
+            "active": 0,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149,
+                  10293,
+                  10292,
+                  1032,
+                  10291,
+                  643,
+                  10290,
+                  465
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "643": {
+            "active": 0,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149,
+                  10293,
+                  10292,
+                  1032,
+                  10291,
+                  643
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "1032": {
+            "active": 0,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149,
+                  10293,
+                  10292,
+                  1032
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "10290": {
+            "active": 0,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149,
+                  10293,
+                  10292,
+                  1032,
+                  10291,
+                  643,
+                  10290
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "10291": {
+            "active": 0,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149,
+                  10293,
+                  10292,
+                  1032,
+                  10291
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "10292": {
+            "active": 0,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149,
+                  10293,
+                  10292
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "10293": {
+            "active": 0,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149,
+                  10293
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "27149": {
+            "active": 0,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941,
+                  27149
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "48941": {
+            "active": 0,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942,
+                  48941
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "48942": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 465,
+              "required_spells": []
+            },
+            "derived": false,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [
+              3,
+              0
+            ],
+            "proofs": [
+              [
+                48942,
+                [
+                  48942
+                ],
+                "STORED_SPELL"
+              ]
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "reverse": true,
+        "stored": {
+          "48942": [
+            3,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "expected": {
+        "rows": {
+          "10321": {
+            "active": 1,
+            "authorization": {
+              "consumed_teacher": {
+                "children": [
+                  20271,
+                  21084
+                ],
+                "class": 2,
+                "effects_executed": false,
+                "policy": "TC_KNOWN_ORDINARY_TEACHER",
+                "skills": [
+                  [
+                    184,
+                    1,
+                    400
+                  ],
+                  [
+                    594,
+                    1,
+                    400
+                  ]
+                ],
+                "source_flags": [
+                  1,
+                  0
+                ],
+                "target_representation": "PERSISTENT_CHILDREN_WITH_RECORDED_WRAPPER"
+              },
+              "owner_masks": [],
+              "policy": "CONSUMED_ORDINARY_TEACHER",
+              "rank_root": 10321,
+              "required_spells": []
+            },
+            "derived": false,
+            "disabled": 0,
+            "disposition": "TEACHER",
+            "mask": 3,
+            "original": [
+              1,
+              0
+            ],
+            "proofs": [
+              [
+                10321,
+                [
+                  10321
+                ],
+                "STORED_SPELL"
+              ]
+            ]
+          },
+          "20154": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 20154,
+              "required_spells": [],
+              "seal_rank_split": {
+                "ac_chains": [
+                  [
+                    20154
+                  ],
+                  [
+                    21084
+                  ]
+                ],
+                "higher_rank_granted": false,
+                "policy": "NATIVE_SEAL_RANK_SPLIT",
+                "skill": 594,
+                "superseded_by": {
+                  "20154": 21084
+                },
+                "tc_chain": [
+                  20154,
+                  21084
+                ]
+              }
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                10321,
+                [
+                  10321,
+                  21084,
+                  20154
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "20271": {
+            "active": 1,
+            "authorization": {
+              "consumed_teacher_sources": [
+                10321
+              ],
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 20271,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                10321,
+                [
+                  10321,
+                  20271
+                ],
+                "TC_DEPENDENT_LEARN"
+              ]
+            ]
+          },
+          "21084": {
+            "active": 1,
+            "authorization": {
+              "consumed_teacher_sources": [
+                10321
+              ],
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 20154,
+              "required_spells": [],
+              "seal_rank_split": {
+                "ac_chains": [
+                  [
+                    20154
+                  ],
+                  [
+                    21084
+                  ]
+                ],
+                "higher_rank_granted": false,
+                "policy": "NATIVE_SEAL_RANK_SPLIT",
+                "skill": 594,
+                "superseded_by": {
+                  "20154": 21084
+                },
+                "tc_chain": [
+                  20154,
+                  21084
+                ]
+              }
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                10321,
+                [
+                  10321,
+                  21084
+                ],
+                "TC_DEPENDENT_LEARN"
+              ]
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "skills": {
+          "184": [
+            1,
+            400
+          ],
+          "594": [
+            1,
+            400
+          ]
+        },
+        "stored": {
+          "10321": [
+            1,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "expected": {
+        "rows": {
+          "5394": {
+            "active": 1,
+            "authorization": {
+              "consumed_teacher_sources": [
+                5396
+              ],
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 5394,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                5396,
+                [
+                  5396,
+                  5394
+                ],
+                "TC_DEPENDENT_LEARN"
+              ]
+            ]
+          },
+          "5396": {
+            "active": 1,
+            "authorization": {
+              "consumed_teacher": {
+                "children": [
+                  5394
+                ],
+                "class": 7,
+                "effects_executed": false,
+                "policy": "TC_KNOWN_ORDINARY_TEACHER",
+                "skills": [
+                  [
+                    374,
+                    400,
+                    400
+                  ]
+                ],
+                "source_flags": [
+                  1,
+                  0
+                ],
+                "target_representation": "PERSISTENT_CHILDREN_WITH_RECORDED_WRAPPER"
+              },
+              "owner_masks": [],
+              "policy": "CONSUMED_ORDINARY_TEACHER",
+              "rank_root": 5396,
+              "required_spells": []
+            },
+            "derived": false,
+            "disabled": 0,
+            "disposition": "TEACHER",
+            "mask": 3,
+            "original": [
+              1,
+              0
+            ],
+            "proofs": [
+              [
+                5396,
+                [
+                  5396
+                ],
+                "STORED_SPELL"
+              ]
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "cls": 7,
+        "skills": {
+          "374": [
+            400,
+            400
+          ]
+        },
+        "stored": {
+          "5396": [
+            1,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "expected": {
+        "rows": {
+          "20219": {
+            "active": 1,
+            "authorization": {
+              "consumed_teacher_sources": [
+                20220
+              ],
+              "owner_masks": [],
+              "policy": "ORDINARY_TRAINING_PREREQUISITES",
+              "rank_root": 20219,
+              "required_spells": [
+                12656
+              ],
+              "training_prerequisites": {
+                "ac_required_spells": [],
+                "missing_from_known_state": [
+                  12656
+                ],
+                "ordinary_ancestry": [
+                  12656
+                ],
+                "policy": "NATIVE_ORDINARY_KNOWN_STATE",
+                "prerequisites_granted": false,
+                "tc_required_spells": [
+                  12656
+                ]
+              }
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                20220,
+                [
+                  20220,
+                  20219
+                ],
+                "TC_DEPENDENT_LEARN"
+              ]
+            ]
+          },
+          "20220": {
+            "active": 1,
+            "authorization": {
+              "consumed_teacher": {
+                "children": [
+                  20219
+                ],
+                "class": 0,
+                "effects_executed": false,
+                "policy": "TC_KNOWN_ORDINARY_TEACHER",
+                "skills": [
+                  [
+                    202,
+                    450,
+                    450
+                  ]
+                ],
+                "source_flags": [
+                  1,
+                  0
+                ],
+                "target_representation": "PERSISTENT_CHILDREN_WITH_RECORDED_WRAPPER"
+              },
+              "owner_masks": [],
+              "policy": "CONSUMED_ORDINARY_TEACHER",
+              "rank_root": 20220,
+              "required_spells": []
+            },
+            "derived": false,
+            "disabled": 0,
+            "disposition": "TEACHER",
+            "mask": 3,
+            "original": [
+              1,
+              0
+            ],
+            "proofs": [
+              [
+                20220,
+                [
+                  20220
+                ],
+                "STORED_SPELL"
+              ]
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "cls": 3,
+        "skills": {
+          "202": [
+            450,
+            450
+          ]
+        },
+        "stored": {
+          "20220": [
+            1,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "expected": {
+        "rows": {
+          "20473": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [
+                [
+                  20473,
+                  2
+                ]
+              ],
+              "policy": "TALENT_AND_REQUIREMENT_AUTHORIZATION",
+              "rank_root": 20473,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 1,
+            "disposition": "TALENT",
+            "mask": 2,
+            "original": [],
+            "proofs": [
+              [
+                20473,
+                [
+                  20473
+                ],
+                "SELECTED_TALENT"
+              ],
+              [
+                48825,
+                [
+                  48825,
+                  48824,
+                  33072,
+                  27174,
+                  20930,
+                  20929,
+                  20473
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "20929": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [
+                [
+                  20473,
+                  2
+                ]
+              ],
+              "policy": "TALENT_AND_REQUIREMENT_AUTHORIZATION",
+              "rank_root": 20473,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 1,
+            "disposition": "PERSISTENT",
+            "mask": 2,
+            "original": [],
+            "proofs": [
+              [
+                48825,
+                [
+                  48825,
+                  48824,
+                  33072,
+                  27174,
+                  20930,
+                  20929
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "20930": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [
+                [
+                  20473,
+                  2
+                ]
+              ],
+              "policy": "TALENT_AND_REQUIREMENT_AUTHORIZATION",
+              "rank_root": 20473,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 1,
+            "disposition": "PERSISTENT",
+            "mask": 2,
+            "original": [],
+            "proofs": [
+              [
+                48825,
+                [
+                  48825,
+                  48824,
+                  33072,
+                  27174,
+                  20930
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "27174": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [
+                [
+                  20473,
+                  2
+                ]
+              ],
+              "policy": "TALENT_AND_REQUIREMENT_AUTHORIZATION",
+              "rank_root": 20473,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 1,
+            "disposition": "PERSISTENT",
+            "mask": 2,
+            "original": [],
+            "proofs": [
+              [
+                48825,
+                [
+                  48825,
+                  48824,
+                  33072,
+                  27174
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "33072": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [
+                [
+                  20473,
+                  2
+                ]
+              ],
+              "policy": "TALENT_AND_REQUIREMENT_AUTHORIZATION",
+              "rank_root": 20473,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 1,
+            "disposition": "PERSISTENT",
+            "mask": 2,
+            "original": [],
+            "proofs": [
+              [
+                48825,
+                [
+                  48825,
+                  48824,
+                  33072
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "48824": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [
+                [
+                  20473,
+                  2
+                ]
+              ],
+              "policy": "TALENT_AND_REQUIREMENT_AUTHORIZATION",
+              "rank_root": 20473,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 1,
+            "disposition": "PERSISTENT",
+            "mask": 2,
+            "original": [],
+            "proofs": [
+              [
+                48825,
+                [
+                  48825,
+                  48824
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "48825": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [
+                [
+                  20473,
+                  2
+                ]
+              ],
+              "policy": "TALENT_AND_REQUIREMENT_AUTHORIZATION",
+              "rank_root": 20473,
+              "required_spells": []
+            },
+            "derived": false,
+            "disabled": 1,
+            "disposition": "PERSISTENT",
+            "mask": 2,
+            "original": [
+              2,
+              0
+            ],
+            "proofs": [
+              [
+                48825,
+                [
+                  48825
+                ],
+                "STORED_SPELL"
+              ]
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "reverse": true,
+        "stored": {
+          "48825": [
+            2,
+            0
+          ]
+        },
+        "talents": {
+          "20473": 2
+        }
+      }
+    },
+    {
+      "expected": {
+        "rows": {
+          "20473": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [
+                [
+                  20473,
+                  2
+                ]
+              ],
+              "policy": "TALENT_AND_REQUIREMENT_AUTHORIZATION",
+              "rank_root": 20473,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 2,
+            "original": [],
+            "proofs": [
+              [
+                20473,
+                [
+                  20473
+                ],
+                "SELECTED_TALENT"
+              ],
+              [
+                48825,
+                [
+                  48825,
+                  48824,
+                  33072,
+                  27174,
+                  20930,
+                  20929,
+                  20473
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "20929": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [
+                [
+                  20473,
+                  2
+                ]
+              ],
+              "policy": "TALENT_AND_REQUIREMENT_AUTHORIZATION",
+              "rank_root": 20473,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 2,
+            "original": [],
+            "proofs": [
+              [
+                48825,
+                [
+                  48825,
+                  48824,
+                  33072,
+                  27174,
+                  20930,
+                  20929
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "20930": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [
+                [
+                  20473,
+                  2
+                ]
+              ],
+              "policy": "TALENT_AND_REQUIREMENT_AUTHORIZATION",
+              "rank_root": 20473,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 2,
+            "original": [],
+            "proofs": [
+              [
+                48825,
+                [
+                  48825,
+                  48824,
+                  33072,
+                  27174,
+                  20930
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "27174": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [
+                [
+                  20473,
+                  2
+                ]
+              ],
+              "policy": "TALENT_AND_REQUIREMENT_AUTHORIZATION",
+              "rank_root": 20473,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 2,
+            "original": [],
+            "proofs": [
+              [
+                48825,
+                [
+                  48825,
+                  48824,
+                  33072,
+                  27174
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "33072": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [
+                [
+                  20473,
+                  2
+                ]
+              ],
+              "policy": "TALENT_AND_REQUIREMENT_AUTHORIZATION",
+              "rank_root": 20473,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 2,
+            "original": [],
+            "proofs": [
+              [
+                48825,
+                [
+                  48825,
+                  48824,
+                  33072
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "48824": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [
+                [
+                  20473,
+                  2
+                ]
+              ],
+              "policy": "TALENT_AND_REQUIREMENT_AUTHORIZATION",
+              "rank_root": 20473,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 2,
+            "original": [],
+            "proofs": [
+              [
+                48825,
+                [
+                  48825,
+                  48824
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "48825": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [
+                [
+                  20473,
+                  2
+                ]
+              ],
+              "policy": "TALENT_AND_REQUIREMENT_AUTHORIZATION",
+              "rank_root": 20473,
+              "required_spells": []
+            },
+            "derived": false,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 2,
+            "original": [
+              2,
+              0
+            ],
+            "proofs": [
+              [
+                48825,
+                [
+                  48825
+                ],
+                "STORED_SPELL"
+              ]
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "active": 1,
+        "reverse": true,
+        "stored": {
+          "48825": [
+            2,
+            0
+          ]
+        },
+        "talents": {
+          "20473": 2
+        }
+      }
+    },
+    {
+      "expected": {
+        "rows": {
+          "2259": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 2259,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                51304,
+                [
+                  51304,
+                  28596,
+                  11611,
+                  3464,
+                  3101,
+                  2259
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "3101": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 2259,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                51304,
+                [
+                  51304,
+                  28596,
+                  11611,
+                  3464,
+                  3101
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "3464": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 2259,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                51304,
+                [
+                  51304,
+                  28596,
+                  11611,
+                  3464
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "11611": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 2259,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                51304,
+                [
+                  51304,
+                  28596,
+                  11611
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "28596": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 2259,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                51304,
+                [
+                  51304,
+                  28596
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "33388": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 33388,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                34091,
+                [
+                  34091,
+                  34090,
+                  33391,
+                  33388
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "33391": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 33388,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                34091,
+                [
+                  34091,
+                  34090,
+                  33391
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "34090": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 33388,
+              "required_spells": []
+            },
+            "derived": true,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [],
+            "proofs": [
+              [
+                34091,
+                [
+                  34091,
+                  34090
+                ],
+                "LOWER_RANK"
+              ]
+            ]
+          },
+          "34091": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 33388,
+              "required_spells": []
+            },
+            "derived": false,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [
+              1,
+              0
+            ],
+            "proofs": [
+              [
+                34091,
+                [
+                  34091
+                ],
+                "STORED_SPELL"
+              ]
+            ]
+          },
+          "51304": {
+            "active": 1,
+            "authorization": {
+              "owner_masks": [],
+              "policy": "ORDINARY_BOTH_SPECS",
+              "rank_root": 2259,
+              "required_spells": []
+            },
+            "derived": false,
+            "disabled": 0,
+            "disposition": "PERSISTENT",
+            "mask": 3,
+            "original": [
+              1,
+              0
+            ],
+            "proofs": [
+              [
+                51304,
+                [
+                  51304
+                ],
+                "STORED_SPELL"
+              ]
+            ]
+          }
+        }
+      },
+      "inputs": {
+        "cls": 1,
+        "skills": {
+          "171": [
+            450,
+            450
+          ],
+          "762": [
+            300,
+            300
+          ]
+        },
+        "stored": {
+          "34091": [
+            1,
+            0
+          ],
+          "51304": [
+            1,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "expected": {
+        "detail": "tc: 999999",
+        "reason": "UNKNOWN_SPELL_ID"
+      },
+      "inputs": {
+        "stored": {
+          "999999": [
+            1,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "expected": {
+        "detail": "48782: stored=1; eligible=3",
+        "reason": "UNREPRESENTABLE_AC_SPELL_MASK"
+      },
+      "inputs": {
+        "reverse": true,
+        "stored": {
+          "48782": [
+            1,
+            0
+          ]
+        }
+      }
+    }
+  ]
+}

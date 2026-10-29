@@ -1,55 +1,81 @@
-"""Explicit retirement of ordinary spell families AC rejects for race/class.
+"""Explicit retirement of ordinary spell families AC rejects for
+race/class.
 
-Both effective catalogs must agree. No talent authority, skill repair, spell
-insertion, flag rewrite or broader migration exception is implied.
+Both effective catalogs must agree. No talent authority, skill repair,
+spell insertion, flag rewrite or broader migration exception is implied.
 """
+
+from __future__ import annotations
+
 from collections import Counter, defaultdict
+from collections.abc import Mapping, Sequence
 import json
 import re
+from typing import Any, TYPE_CHECKING
 
-from cleanup_console import PROFILE, ROOT, fail, identifier
-from cleanup_talent_relations import Relations, MAX_ROWS, validate_stored
+from cleanup_files import PROFILE, ROOT, fail, identifier
+from cleanup_talent_relations import MAX_ROWS, Relations, validate_stored
+from cleanup_types import DatabaseState, Evidence, SelectionResult, SpellBook
 from spells import Metadata, Unsupported
+
+if TYPE_CHECKING:
+    from cleanup_config import Settings
+    from cleanup_talent_relations import Relations as Graph
+
 
 POLICY = 'tc-ineligible-ordinary-spell-repair-v1'
 ABSENT_TEACHER_POLICY = 'tc-ineligible-ordinary-absent-teacher-repair-v2'
 RACIAL_POLICY = 'tc-ineligible-reviewed-racial-spell-repair-v3'
 SWIPE_POLICY = 'tc-inactive-foreign-swipe-retirement-v4'
 ACTION_POLICY = 'tc-inactive-foreign-action-retirement-v5'
-CAST_SCRIPT_POLICY='tc-ineligible-reviewed-cast-script-retirement-v6'
-CAST_SCRIPT_ACK='RETIRE_INELIGIBLE_FAMILIES_WITH_REVIEWED_NONLEARNING_CALLBACKS'
-POLICIES = (POLICY, ABSENT_TEACHER_POLICY, RACIAL_POLICY, SWIPE_POLICY, ACTION_POLICY,CAST_SCRIPT_POLICY)
+CAST_SCRIPT_POLICY = 'tc-ineligible-reviewed-cast-script-retirement-v6'
+CAST_SCRIPT_ACK = 'RETIRE_INELIGIBLE_FAMILIES_WITH_REVIEWED_NONLEARNING_CALLBACKS'
+POLICIES = (POLICY, ABSENT_TEACHER_POLICY, RACIAL_POLICY, SWIPE_POLICY,
+    ACTION_POLICY, CAST_SCRIPT_POLICY)
 ACK = 'RETIRE_VERIFIED_INELIGIBLE_SPELLS'
 ABSENT_TEACHER_ACK = 'VERIFIED_TEACHERS_ABSENT'
 RACIAL_ACK = 'RETIRE_ONLY_REVIEWED_WRONG_RACE_RACIALS'
-RACIAL_CATALOG = ROOT/'lib/cleanup_racial_catalog.json'
+RACIAL_CATALOG = ROOT / 'lib/cleanup_racial_catalog.json'
 SWIPE_ACK = 'RETIRE_ONLY_INACTIVE_FOREIGN_SWIPE_ABSENT_BEAR_FORM'
-SWIPE_CATALOG = ROOT/'lib/cleanup_foreign_swipe_catalog.json'
+SWIPE_CATALOG = ROOT / 'lib/cleanup_foreign_swipe_catalog.json'
 ACTION_ACK = 'RETIRE_ONLY_INACTIVE_FOREIGN_ACTION_WITHOUT_SKILL_OR_TEACHER'
-ACTION_CATALOG = ROOT/'lib/cleanup_foreign_action_catalog.json'
+ACTION_CATALOG = ROOT / 'lib/cleanup_foreign_action_catalog.json'
 
 
-def inactive_action_contract(meta, graph, rules):
+def inactive_action_contract(
+    meta: Metadata,
+    graph: Graph,
+    rules: Evidence,
+) -> bool:
     """Lockpicking is a class action, not permission to retire professions."""
-    if meta.stores['SkillLine'].get(633,[0,0])[1] != 7:
+    if meta.stores['SkillLine'].get(633, [0, 0])[1] != 7:
         return False
-    if sorted(r for r in meta.stores['SkillRaceClassInfo'].values() if r[1] == 633) != rules[meta.core+'_skill_info']:
+    if (sorted(r for r in meta.stores['SkillRaceClassInfo'].values() if r[1]
+        == 633) != rules[meta.core + '_skill_info']):
         return False
-    expected_edges = {(1809,1804,kind) for kind in ('WORLD_LEARN','EFFECT_LEARN')}
-    if {e for e in graph.edges if e[0] in (1804,1809,1810,6460) or e[1] in (1804,1809,1810,6460)} != expected_edges:
+    expected_edges = ({(1809, 1804, kind) for kind in ('WORLD_LEARN',
+        'EFFECT_LEARN')})
+    if ({e for e in graph.edges if e[0] in (1804, 1809, 1810, 6460) or e[1]
+        in (1804, 1809, 1810, 6460)} != expected_edges):
         return False
-    for s in (1804,1809,1810,6460):
-        expected = rules[meta.core][str(s)]; row = meta.spells.get(s,[])
+    for s in (1804, 1809, 1810, 6460):
+        expected = rules[meta.core][str(s)]
+        row = meta.spells.get(s, [])
         if (len(row) < 212 or list(meta.chain(s)) != expected['chain']
-                or any(row[i] != expected['mechanics'].get(str(i),0) for i in (*range(4,131),*range(208,212)))
-                or meta.abilities[s] != expected['abilities']
-                or sorted(meta.requires[s]) != expected['requires']
-                or sorted(meta.prerequisite_users[s]) != expected['prerequisite_users']
-                or sorted(meta.learn_parents[s]) != expected['learn_parents']
-                or [list(r) for r in meta.learns[s]] != expected['learns']
-                or [list(r) for r in meta.effect_learns[s]] != expected['effect_learns']
-                or meta.scripts[s] or s in meta.talents or meta.talent_learn_owners.get(s)
-                or meta.aura_owners.get(s) or s in meta.world_aura_owners or s in meta.additional):
+            or any(row[i] != expected['mechanics'].get(str(i), 0) for i
+                in (*range(4, 131), *range(208, 212)))
+            or meta.abilities[s] != expected['abilities']
+            or sorted(meta.requires[s]) != expected['requires']
+            or sorted(meta.prerequisite_users[s]) != expected[
+                'prerequisite_users']
+            or sorted(meta.learn_parents[s]) != expected['learn_parents']
+            or [list(r) for r in meta.learns[s]] != expected['learns']
+            or [list(r) for r in meta.effect_learns[s]] != expected[
+                'effect_learns']
+            or meta.scripts[s] or s in meta.talents
+            or meta.talent_learn_owners.get(s)
+            or meta.aura_owners.get(s) or s in meta.world_aura_owners or s
+            in meta.additional):
             return False
         try:
             meta.check_spell(s)
@@ -58,186 +84,256 @@ def inactive_action_contract(meta, graph, rules):
     return True
 
 
-def swipe_contract(meta, graph, rules):
+def swipe_contract(meta: Metadata, graph: Graph, rules: Evidence) -> bool:
     """Fixed ordinary damage family; never a general prerequisite exception."""
     chain = tuple(rules[meta.core]['779']['chain'])
-    expected_edges = {(5487,779,'REQUIRED_BY')} if meta.core == 'ac' else set()
-    if {e for e in graph.edges if e[0] in chain or e[1] in chain} != expected_edges:
+    expected_edges = ({(5487, 779, 'REQUIRED_BY')} if meta.core == 'ac'
+        else set())
+    if ({e for e in graph.edges if e[0] in chain or e[1] in chain}
+        != expected_edges):
         return False
-    if sorted(r for r in meta.stores['SkillRaceClassInfo'].values() if r[1] == 134) != rules[meta.core+'_skill_info']:
+    if (sorted(r for r in meta.stores['SkillRaceClassInfo'].values() if r[1]
+        == 134) != rules[meta.core + '_skill_info']):
         return False
-    if meta.stores['SkillLine'].get(134,[0,0])[1] != 7:
+    if meta.stores['SkillLine'].get(134, [0, 0])[1] != 7:
         return False
     for s in chain:
-        expected = rules[meta.core].get(str(s)); row = meta.spells.get(s,[])
-        if (not expected or len(row) < 212 or list(meta.chain(s)) != expected['chain']
-                or any(row[i] != expected['mechanics'].get(str(i),0) for i in (*range(4,131),*range(208,212)))
-                or meta.abilities[s] != expected['abilities']
-                or sorted(meta.requires[s]) != expected['requires']
-                or sorted(meta.prerequisite_users[s]) != expected['prerequisite_users']
-                or sorted(meta.learn_parents[s]) != expected['learn_parents']
-                or [list(r) for r in meta.learns[s]] != expected['learns']
-                or [list(r) for r in meta.effect_learns[s]] != expected['effect_learns']
-                or meta.scripts[s] or s in meta.talents or meta.talent_learn_owners.get(s)
-                or meta.aura_owners.get(s) or s in meta.world_aura_owners or s in meta.additional):
+        expected = rules[meta.core].get(str(s))
+        row = meta.spells.get(s, [])
+        if (not expected or len(row) < 212 or list(meta.chain(s)) != expected[
+            'chain']
+            or any(row[i] != expected['mechanics'].get(str(i), 0) for i
+                in (*range(4, 131), *range(208, 212)))
+            or meta.abilities[s] != expected['abilities']
+            or sorted(meta.requires[s]) != expected['requires']
+            or sorted(meta.prerequisite_users[s]) != expected[
+                'prerequisite_users']
+            or sorted(meta.learn_parents[s]) != expected['learn_parents']
+            or [list(r) for r in meta.learns[s]] != expected['learns']
+            or [list(r) for r in meta.effect_learns[s]] != expected[
+                'effect_learns']
+            or meta.scripts[s] or s in meta.talents
+            or meta.talent_learn_owners.get(s)
+            or meta.aura_owners.get(s) or s in meta.world_aura_owners or s
+            in meta.additional):
             return False
     return True
 
 
-def racial_contract(meta, spell, rules):
+def racial_contract(meta: Metadata, spell: int, rules: Evidence) -> bool:
     """Fixed singleton racial catalog, never a blanket category-9 exception."""
     expected = rules[meta.core][str(spell)]
     skill = rules['spells'][str(spell)]
     row = meta.spells.get(spell, [])
-    infos = sorted(r for r in meta.stores['SkillRaceClassInfo'].values() if r[1] == skill)
+    infos = sorted(r for r in meta.stores['SkillRaceClassInfo'].values() if r[
+        1] == skill)
     reviewed = rules['skill_metadata'][meta.core][str(skill)]
-    return (len(row) >= 212 and list(meta.chain(spell)) == expected['chain'] == [spell]
-            and all(row[i] == expected['mechanics'].get(str(i), 0) for i in (*range(4,131), *range(208,212)))
-            and meta.abilities[spell] == expected['abilities']
-            and [list(r) for r in meta.learns[spell]] == expected['learns'] == []
-            and [list(r) for r in meta.effect_learns[spell]] == expected['effect_learns'] == []
-            and sorted(meta.requires[spell]) == expected['requires'] == []
-            and sorted(meta.prerequisite_users[spell]) == expected['prerequisite_users'] == []
-            and sorted(meta.learn_parents[spell]) == expected['learn_parents'] == []
-            and meta.stores['SkillLine'].get(skill, [0,0])[1] == reviewed['category'] == 9
-            and infos == reviewed['infos'] and bool(infos) and all(r[2] for r in infos))
+    return (len(row) >= 212 and list(meta.chain(spell)) == expected['chain']
+        == [spell]
+        and all(row[i] == expected['mechanics'].get(str(i), 0) for i in (
+            *range(4, 131), *range(208, 212)))
+        and meta.abilities[spell] == expected['abilities']
+        and [list(r) for r in meta.learns[spell]] == expected['learns']
+        == []
+        and [list(r) for r in meta.effect_learns[spell]] == expected[
+            'effect_learns'] == []
+        and sorted(meta.requires[spell]) == expected['requires'] == []
+        and sorted(meta.prerequisite_users[spell]) == expected[
+            'prerequisite_users'] == []
+        and sorted(meta.learn_parents[spell]) == expected['learn_parents']
+        == []
+        and meta.stores['SkillLine'].get(skill, [0, 0])[1] == reviewed[
+            'category'] == 9
+        and infos == reviewed['infos'] and bool(infos) and all(r[2] for r
+            in infos))
 
 # Only pure, single-child stock teaching actions. Multi-child stance teachers,
 # skill teachers and arbitrary world learn links are deliberately not included.
-ABSENT_TEACHERS = {5504: ((5507,5504), (5565,5505), (5566,5506), (6128,6127),
-                         (10141,10138), (10142,10139), (10143,10140),
-                         (42978,27090), (37421,37420)),
-                   18540: ((20700,18540),)}
+ABSENT_TEACHERS = {5504: ((5507, 5504), (5565, 5505), (5566, 5506), (6128,
+    6127),
+    (10141, 10138), (10142, 10139), (10143, 10140),
+    (42978, 27090), (37421, 37420)),
+    18540: ((20700, 18540),)}
 
 
-def absent_teacher_contract(tc, ac, graphs, root, book):
-    """Prove inert incoming routes; never remove a known teacher or its child here."""
+def absent_teacher_contract(
+    tc: Metadata,
+    ac: Metadata,
+    graphs: Sequence[Graph],
+    root: int,
+    book: SpellBook,
+) -> Evidence | None:
+    """Prove inert incoming routes; never remove a known teacher or its
+    child here.
+    """
     pairs = ABSENT_TEACHERS.get(root)
     if not pairs:
         return None
     nodes = set(tc.chain(root))
-    expected = {(p,c,kind) for p,c in pairs for kind in ('WORLD_LEARN','EFFECT_LEARN')}
-    for meta, graph in zip((tc,ac), graphs):
+    expected = ({(p, c, kind) for p, c in pairs for kind in ('WORLD_LEARN',
+        'EFFECT_LEARN')})
+    for meta, graph in zip((tc, ac), graphs):
         edges = {r for r in graph.edges if r[0] in nodes or r[1] in nodes}
         if edges != expected:
             return None
         for parent, child in pairs:
             row = meta.spells.get(parent, [])
-            gates = [0]*16
+            gates = [0] * 16
             if parent != 10143:
                 gates[4] = 256
-            if (parent in book or parent not in meta.spells or meta.chain(parent) != (parent,)
-                    or len(row) < 212 or row[4:12] != [262400,0,0,0,0,0,0,0]
-                    or row[12:28] != gates or row[71:74] != [36,0,0]
-                    or row[86:92] != ([25,0,0,0,0,0] if parent == 10143 else [0]*6)
-                    or row[95:98] != [0,0,0] or row[116:119] != [child,0,0]
-                    or row[208:212] != [0,0,0,0] or meta.abilities[parent]
-                    or meta.scripts[parent] or meta.requires[parent]
-                    or meta.learns[parent] != [(child,1,False)]
-                    or meta.effect_learns[parent] != [(child,1,False)]
-                    or graph.incoming[parent] or graph.next[parent] != {root}
-                    or parent in meta.talents or parent in meta.talent_learn_owners
-                    or parent in meta.aura_owners or parent in meta.world_aura_owners
-                    or parent in meta.additional or parent in graph.unsupported):
+            if (parent in book or parent not in meta.spells or meta.chain(
+                parent) != (parent,)
+                or len(row) < 212 or row[4:12] != [262400, 0, 0, 0, 0, 0,
+                    0, 0]
+                or row[12:28] != gates or row[71:74] != [36, 0, 0]
+                or row[86:92] != ([25, 0, 0, 0, 0, 0] if parent == 10143
+                    else[0] * 6)
+                or row[95:98] != [0, 0, 0] or row[116:119] != [child, 0, 0]
+                or row[208:212] != [0, 0, 0, 0] or meta.abilities[parent]
+                or meta.scripts[parent] or meta.requires[parent]
+                or meta.learns[parent] != [(child, 1, False)]
+                or meta.effect_learns[parent] != [(child, 1, False)]
+                or graph.incoming[parent] or graph.next[parent] != {root}
+                or parent in meta.talents or parent
+                in meta.talent_learn_owners
+                or parent in meta.aura_owners or parent
+                in meta.world_aura_owners
+                or parent in meta.additional or parent
+                in graph.unsupported):
                 return None
             try:
                 meta.check_spell(parent)
             except Unsupported:
                 return None
-    return {'contract':'ABSENT_SINGLE_CHILD_TEACHERS_V1',
-            'pairs':[list(pair) for pair in pairs], 'all_teachers_absent':True,
-            'native_route':'Only adding a known parent traverses its learn map; no incoming parent route',
-            'custom_start_settings':[0,0], 'teacher_rows_removed':0, 'spell_rows_inserted':0}
+    return {'contract': 'ABSENT_SINGLE_CHILD_TEACHERS_V1',
+        'pairs': [list(pair) for pair in pairs],
+        'all_teachers_absent': True,
+        'native_route': 'Only adding a known parent traverses its learn map; no incoming '
+        'parent route',
+        'custom_start_settings': [0, 0], 'teacher_rows_removed': 0,
+        'spell_rows_inserted': 0}
 
 
-def configuration_contract(settings):
+def configuration_contract(settings: Settings) -> Evidence:
     world = settings.get('target', 'world')
     if not world:
-        fail('ELIGIBILITY_TARGET_REQUIRED', 'Set [target] world to the read-only AC world schema')
+        fail('ELIGIBILITY_TARGET_REQUIRED',
+            'Set [target] world to the read-only AC world schema')
     world = identifier(world)
     if world in settings.schemas.values():
-        fail('ELIGIBILITY_TARGET_OVERLAP', 'AC world must differ from every preparation source schema')
+        fail('ELIGIBILITY_TARGET_OVERLAP',
+            'AC world must differ from every preparation source schema')
     if (settings.get('source', 'player_start_all_spells') != '0'
-            or settings.get('target', 'player_start_custom_spells') != '0'):
+        or settings.get('target', 'player_start_custom_spells') != '0'):
         fail('ELIGIBILITY_CONFIG_REQUIRED',
-             'This policy requires [source] player_start_all_spells = 0 and [target] player_start_custom_spells = 0',
-             'Verify TC PlayerStart.AllSpells and AC PlayerStart.CustomSpells in their effective configurations; '
-             'these values are operator assertions, not configuration changes.')
+            'This policy requires [source] player_start_all_spells = 0 '
+            'and [target] player_start_custom_spells = 0',
+            'Verify TC PlayerStart.AllSpells and AC '
+            'PlayerStart.CustomSpells in their effective configurations; '
+            'these values are operator assertions, not configuration '
+            'changes.')
     if not settings.paths.get('ac_dbc') or not settings.paths.get('ac_source'):
-        fail('ELIGIBILITY_TARGET_REQUIRED', 'Set [paths] ac_dbc and ac_source for the reviewed AC inputs')
+        fail('ELIGIBILITY_TARGET_REQUIRED',
+            'Set [paths] ac_dbc and ac_source for the reviewed AC inputs')
     return {'target_world': world, 'source_player_start_all_spells': 0,
-            'target_player_start_custom_spells': 0, 'evidence': 'OPERATOR_ASSERTION',
-            'policy': 'No custom starting-spell route may reactivate retired rows'}
+        'target_player_start_custom_spells': 0,
+        'evidence': 'OPERATOR_ASSERTION',
+        'policy': 'No custom starting-spell route may reactivate retired rows'}
 
 
-def read_target(settings):
-    """Capture all AC Metadata inputs, including database DBC overlays, read-only."""
+def read_target(settings: Settings) -> tuple[Metadata, Evidence]:
+    """Capture all AC Metadata inputs, including database DBC overlays,
+    read-only.
+    """
     from cleanup_plans import snapshot
     from cleanup_active_reset import exact_hex
     contract = configuration_contract(settings)
     schema = contract['target_world']
-    profile = json.loads((PROFILE/'spell-metadata.json').read_text())
+    profile = json.loads((PROFILE / 'spell-metadata.json').read_text())
     names = sorted({layout['table'] for layout in profile['stores'].values()} |
-                   {'spell_ranks', 'spell_required', 'spell_script_names', 'spell_custom_attr', 'trainer_spell'})
-    quoted = ','.join("'"+name+"'" for name in names)
+        {'spell_ranks', 'spell_required', 'spell_script_names',
+            'spell_custom_attr', 'trainer_spell'})
+    quoted = ','.join("'" + name + "'" for name in names)
     layout_queries = [('columns',
-        "SELECT JSON_ARRAY(TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,ORDINAL_POSITION,EXTRA) row_value "
-        f"FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME IN ({quoted}) "
-        "ORDER BY BINARY TABLE_NAME,ORDINAL_POSITION"), ('tables',
-        f"SELECT JSON_ARRAY(TABLE_NAME,ENGINE,TABLE_TYPE) row_value FROM information_schema.TABLES WHERE TABLE_SCHEMA='{schema}' "
-        f"AND TABLE_NAME IN ({quoted}) ORDER BY BINARY TABLE_NAME")]
+        'SELECT '
+        'JSON_ARRAY(TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,ORDINAL_POSITION,EXTRA) '
+        "row_value FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='"
+        f"{schema}' AND TABLE_NAME IN ({quoted}) ORDER BY BINARY "
+        'TABLE_NAME,ORDINAL_POSITION'), ('tables',
+            'SELECT JSON_ARRAY(TABLE_NAME,ENGINE,TABLE_TYPE) row_value '
+            f"FROM information_schema.TABLES WHERE TABLE_SCHEMA='{schema}"
+            f"' AND TABLE_NAME IN ({quoted}) ORDER BY BINARY TABLE_NAME")]
     layout = snapshot(settings, layout_queries)
     if layout['tables'] != [[name, 'InnoDB', 'BASE TABLE'] for name in names]:
-        fail('ELIGIBILITY_TARGET_METADATA', 'Required AC metadata tables must exist and use InnoDB')
+        fail('ELIGIBILITY_TARGET_METADATA',
+            'Required AC metadata tables must exist and use InnoDB')
     queries = []
     for table in names:
         fields = [identifier(r[1]) for r in layout['columns'] if r[0] == table]
         if not fields or len(fields) > 256:
-            fail('ELIGIBILITY_TARGET_METADATA', 'Missing or oversized AC metadata layout: '+table)
-        columns = ','.join('`'+name+'`' for name in fields)
-        types = {r[1]:r[2] for r in layout['columns'] if r[0] == table}
-        hashed = "SHA2(CONCAT_WS('|',"+','.join(f"IFNULL({exact_hex('`'+name+'`',types[name])},'N')" for name in fields)+'),256)'
-        queries.append((table, f'SELECT JSON_ARRAY({columns}) row_value FROM `{schema}`.`{table}` LIMIT 100001'))
-        queries.append(('digests', f"SELECT JSON_ARRAY('{table}',COUNT(*),SHA2(COALESCE(GROUP_CONCAT({hashed} "
-                        f"ORDER BY BINARY {hashed} SEPARATOR ''),''),256)) row_value FROM `{schema}`.`{table}`"))
-    original_sql = settings.sql
-    def bounded_sql(query, *args, **kwargs):
-        return original_sql("SET SESSION time_zone='+00:00';\nSET SESSION group_concat_max_len=6400001;\n"+query, *args, **kwargs)
-    settings.sql = bounded_sql
-    try:
-        captured = snapshot(settings, queries)
-    finally:
-        settings.sql = original_sql
+            fail('ELIGIBILITY_TARGET_METADATA',
+                'Missing or oversized AC metadata layout: ' + table)
+        columns = ','.join('`' + name + '`' for name in fields)
+        types = {r[1]: r[2] for r in layout['columns'] if r[0] == table}
+        hashed = ("SHA2(CONCAT_WS('|'," + ','.join(
+            f"IFNULL({exact_hex('`' + name + '`', types[name])},'N')" for name
+            in fields) + '),256)')
+        queries.append((table,
+            f'SELECT JSON_ARRAY({columns}) row_value FROM `{schema}`.`{table}'
+            '` LIMIT 100001'))
+        queries.append(('digests', f"SELECT JSON_ARRAY('{table}"
+            f"',COUNT(*),SHA2(COALESCE(GROUP_CONCAT({hashed} ORDER BY BINARY "
+            f"{hashed} SEPARATOR ''),''),256)) row_value FROM `{schema}`.`"
+            f'{table}`'))
+    captured = snapshot(settings, queries,
+        session_prefix="SET SESSION time_zone='+00:00';\nSET SESSION "
+        'group_concat_max_len=6400001;\n')
     if any(len(captured[name]) > 100000 for name in names):
-        fail('ELIGIBILITY_TARGET_BOUND', 'AC metadata exceeds the 100000-row per-table bound')
-    if any(not isinstance(r[2], str) or not re.fullmatch('[a-f0-9]{64}', r[2]) for r in captured['digests']):
-        fail('ELIGIBILITY_TARGET_METADATA', 'AC content digest could not be computed')
+        fail('ELIGIBILITY_TARGET_BOUND',
+            'AC metadata exceeds the 100000-row per-table bound')
+    if any(not isinstance(r[2], str) or not re.fullmatch('[a-f0-9]{64}', r[2])
+        for r in captured['digests']):
+        fail('ELIGIBILITY_TARGET_METADATA',
+            'AC content digest could not be computed')
     if snapshot(settings, layout_queries) != layout:
-        fail('ELIGIBILITY_TARGET_DRIFT', 'AC metadata layout changed during capture')
-    rows = {name: sorted(captured[name], key=lambda r: json.dumps(r, separators=(',', ':'))) for name in names}
+        fail('ELIGIBILITY_TARGET_DRIFT',
+            'AC metadata layout changed during capture')
+    rows = ({name: sorted(captured[name], key=lambda r: json.dumps(r,
+        separators= (',', ':'))) for name in names})
     class Captured:
-        def table(self, world, table, fields, optional=False):
+        def table(
+            self,
+            world: str,
+            table: str,
+            fields: list[str],
+            optional: bool = False,
+        ) -> Any:
             columns = [r[1] for r in layout['columns'] if r[0] == table]
             positions = {name.lower(): i for i, name in enumerate(columns)}
             if (world != schema or table not in rows
-                    or any(f.lower() not in positions for f in fields)
-                    or table.endswith('_dbc') and columns != fields):
-                fail('ELIGIBILITY_TARGET_METADATA', 'AC overlay/relationship fields differ: '+table)
-            selected = [[r[positions[f.lower()]] for f in fields] for r in rows[table]]
+                or any(f.lower() not in positions for f in fields)
+                or table.endswith('_dbc') and columns != fields):
+                fail('ELIGIBILITY_TARGET_METADATA',
+                    'AC overlay/relationship fields differ: ' + table)
+            selected = ([[r[positions[f.lower()]] for f in fields] for r
+                in rows[table]])
             return sorted(selected, key=lambda r: tuple(str(v) for v in r))
     try:
-        effective = Metadata('ac', settings.paths['ac_dbc'], schema, profile, Captured())
+        effective = Metadata('ac', settings.paths['ac_dbc'], schema, profile,
+            Captured())
     except Unsupported as error:
-        fail(error.reason, 'AC eligibility metadata: '+str(error))
-    return effective, {'layout': dict(layout), 'rows': rows, 'digests': sorted(captured['digests'])}
+        fail(error.reason, 'AC eligibility metadata: ' + str(error))
+    return effective, {'layout': dict(layout), 'rows': rows, 'digests': sorted(
+        captured['digests'])}
 
 
-def world_checks(schema, world):
+def world_checks(schema: str, world: str) -> str:
     """SQL checks protect direct calls as well as the shell console."""
     from cleanup_plans import planner
     from cleanup_active_reset import exact_hex
-    names = ','.join("'"+r[0]+"'" for r in world['layout']['tables'])
-    checks = [f"""IF (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME IN ({names}))<>{len(world['layout']['columns'])}
+    names = ','.join("'" + r[0] + "'" for r in world['layout']['tables'])
+    checks = [
+        f"""IF (SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME IN ({names}))<>{len(world['layout']['columns'])}
  OR NOT ((SELECT SHA2(COALESCE(GROUP_CONCAT(CONCAT_WS(':',TABLE_NAME,COLUMN_NAME,COLUMN_TYPE,IS_NULLABLE,ORDINAL_POSITION,EXTRA)
  ORDER BY BINARY TABLE_NAME,ORDINAL_POSITION SEPARATOR '|'),''),256) FROM information_schema.COLUMNS
  WHERE TABLE_SCHEMA='{schema}' AND TABLE_NAME IN ({names}))<=>'{planner.key_hash(world['layout']['columns'])}')
@@ -247,35 +343,65 @@ def world_checks(schema, world):
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Eligibility world layout or engine drift'; END IF;"""]
     for table, count, checksum in world['digests']:
         fields = [r[1] for r in world['layout']['columns'] if r[0] == table]
-        types = {r[1]:r[2] for r in world['layout']['columns'] if r[0] == table}
-        hashed = "SHA2(CONCAT_WS('|',"+','.join(f"IFNULL({exact_hex('`'+name+'`',types[name])},'N')" for name in fields)+'),256)'
-        checks.append(f"""IF (SELECT COUNT(*) FROM `{schema}`.`{table}`)<>{count}
+        types = ({r[1]: r[2] for r in world['layout']['columns'] if r[0]
+            == table})
+        hashed = ("SHA2(CONCAT_WS('|'," + ','.join(
+            f"IFNULL({exact_hex('`' + name + '`', types[name])},'N')" for name
+            in fields) + '),256)')
+        checks.append(
+            f"""IF (SELECT COUNT(*) FROM `{schema}`.`{table}`)<>{count}
  OR NOT ((SELECT SHA2(COALESCE(GROUP_CONCAT({hashed} ORDER BY BINARY {hashed} SEPARATOR ''),''),256)
  FROM `{schema}`.`{table}`)<=>'{checksum}') THEN
  SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Eligibility world content drift: {table}'; END IF;""")
     return '\n'.join(checks)
 
 
-def eligibility(meta, spell, race, cls, *, infos_by_skill=None):
+def eligibility(
+    meta: Metadata,
+    spell: int,
+    race: int,
+    cls: int,
+    *,
+    infos_by_skill: Mapping[int, list[list[int]]] | None = None,
+) -> Evidence:
     """Match AC CheckSkillLearnedBySpell, not the ability's own class masks."""
-    skills = sorted({a[1] for a in meta.abilities[spell] if a[1] in meta.stores['SkillLine']})
-    infos = sorted(r for r in meta.stores['SkillRaceClassInfo'].values() if r[1] in skills) if infos_by_skill is None else sorted(
-        r for skill in skills for r in infos_by_skill.get(skill, ()))
-    matches = [r for r in infos if (not r[2] or r[2] & (1 << (race-1)))
-               and (not r[3] or r[3] & (1 << (cls-1)))]
-    return {'passes': not skills or bool(matches), 'skills': skills, 'skill_info': infos}
+    skills = sorted({a[1] for a in meta.abilities[spell] if a[1]
+        in meta.stores['SkillLine']})
+    infos = sorted(r for r in meta.stores['SkillRaceClassInfo'].values() if r[
+        1] in skills) if infos_by_skill is None else sorted(
+            r for skill in skills for r in infos_by_skill.get(skill, ()))
+    matches = [r for r in infos if (not r[2] or r[2] & (1 << (race - 1)))
+        and (not r[3] or r[3] & (1 << (cls - 1)))]
+    return {'passes': not skills or bool(matches), 'skills': skills,
+        'skill_info': infos}
 
 
-def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False, reviewed_racials=False,
-           inactive_foreign_swipes=False, inactive_foreign_actions=False,reviewed_cast_scripts=False):
-    if sum((reviewed_racials,absent_teachers,inactive_foreign_swipes,inactive_foreign_actions,reviewed_cast_scripts)) > 1:
-        fail('ELIGIBILITY_MODE_CONFLICT', 'Choose one reviewed eligibility extension')
-    rules = json.loads(RACIAL_CATALOG.read_text()) if reviewed_racials else None
-    racial_safe = {int(s): all(racial_contract(m, int(s), rules) for m in (tc, ac))
-                   for s in rules['spells']} if rules else {}
+def select(
+    state: DatabaseState,
+    tc: Metadata,
+    ac: Metadata,
+    expected: int | None = None,
+    *,
+    preview: bool = False,
+    absent_teachers: bool = False,
+    reviewed_racials: bool = False,
+    inactive_foreign_swipes: bool = False,
+    inactive_foreign_actions: bool = False,
+    reviewed_cast_scripts: bool = False,
+) -> SelectionResult:
+    if (sum((reviewed_racials, absent_teachers, inactive_foreign_swipes,
+        inactive_foreign_actions, reviewed_cast_scripts)) > 1):
+        fail('ELIGIBILITY_MODE_CONFLICT',
+            'Choose one reviewed eligibility extension')
+    rules = (json.loads(RACIAL_CATALOG.read_text()) if reviewed_racials
+        else None)
+    racial_safe = {int(s): all(racial_contract(m, int(s), rules) for m in (tc,
+        ac))
+        for s in rules['spells']} if rules else {}
     stored = state['character_spell']
     validate_stored(stored)
-    if not 1 <= len(state['characters']) <= 40000 or sum(map(len, state.values())) > MAX_ROWS:
+    if (not 1 <= len(state['characters']) <= 40000 or sum(map(len,
+        state.values())) > MAX_ROWS):
         fail('ELIGIBILITY_BOUND', 'Captured scope exceeds reviewed bounds')
     chars = {r[0]: r for r in state['characters']}
     if len(chars) != len(state['characters']):
@@ -283,7 +409,8 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
     books, skills = defaultdict(dict), defaultdict(set)
     for g, s, a, d in stored:
         if g not in chars or s not in tc.spells or s not in ac.spells:
-            fail('ELIGIBILITY_INPUT_INVALID', 'Unknown or out-of-scope spell row')
+            fail('ELIGIBILITY_INPUT_INVALID',
+                'Unknown or out-of-scope spell row')
         books[g][s] = (a, d)
     for g, s, _, _ in state['character_skills']:
         if g not in chars:
@@ -292,63 +419,79 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
     invalid, seen = set(), set()
     for g, s, group in state['character_talent']:
         c, identity = chars.get(g), tc.talents.get(s)
-        tab = tc.stores['TalentTab'].get(tc.talent_rows[s][1], []) if identity else []
-        key = (g, identity[0] if identity else -1, group)
-        if (c is None or not identity or s in tc.invalid_talents or len(tab) <= 20
-                or not 1 <= c[2] <= 32 or not tab[20] & (1 << (c[2]-1))
-                or c[5] not in (1, 2) or group not in (0, 1) or group >= c[5] or key in seen
-                or ac.talents.get(s) != identity):
+        tab = (tc.stores['TalentTab'].get(tc.talent_rows[s][1], [])
+            if identity else[])
+        key = (g, identity[0] if identity else - 1, group)
+        if (c is None or not identity or s in tc.invalid_talents or len(tab)
+            <= 20
+            or not 1 <= c[2] <= 32 or not tab[20] & (1 << (c[2] - 1))
+            or c[5] not in (1, 2) or group not in (0, 1) or group >= c[5]
+            or key in seen
+            or ac.talents.get(s) != identity):
             invalid.add(g)
         seen.add(key)
     graphs = (Relations(tc), Relations(ac))
-    swipe_rules = json.loads(SWIPE_CATALOG.read_text()) if inactive_foreign_swipes else None
-    swipe_safe = all(swipe_contract(m,graph,swipe_rules) for m,graph in zip((tc,ac),graphs)) if swipe_rules else False
-    action_rules = json.loads(ACTION_CATALOG.read_text()) if inactive_foreign_actions else None
-    action_safe = all(inactive_action_contract(m,graph,action_rules) for m,graph in zip((tc,ac),graphs)) if action_rules else False
+    swipe_rules = (json.loads(SWIPE_CATALOG.read_text())
+        if inactive_foreign_swipes else None)
+    swipe_safe = (all(swipe_contract(m, graph, swipe_rules) for m, graph
+        in zip((tc, ac), graphs)) if swipe_rules else False)
+    action_rules = (json.loads(ACTION_CATALOG.read_text())
+        if inactive_foreign_actions else None)
+    action_safe = (all(inactive_action_contract(m, graph, action_rules) for m,
+        graph in zip((tc, ac), graphs)) if action_rules else False)
     indexes, cache, teacher_catalog = {}, {}, {}
     for m in (tc, ac):
         index = defaultdict(list)
         for r in m.stores['SkillRaceClassInfo'].values():
             index[r[1]].append(r)
         indexes[id(m)] = index
-    def check(m, s, c):
+    def check(m: Metadata, s: int, c: Sequence[int]) -> Evidence:
         key = (id(m), s, c[1], c[2])
         if key not in cache:
-            cache[key] = eligibility(m, s, c[1], c[2], infos_by_skill=indexes[id(m)])
+            cache[key] = eligibility(m, s, c[1], c[2], infos_by_skill=indexes[
+                id(m)])
         return cache[key]
     selected, excluded, proof, native = [], [], [], []
     reviewed = groups = 0
     for g, book in sorted(books.items()):
         c = chars[g]
-        valid = (c[1] in (1,2,3,4,5,6,7,8,10,11) and c[2] in (1,2,3,4,5,6,7,8,9,11)
-                 and 1 <= c[3] <= 80 and c[5] in (1,2) and 0 <= c[4] < c[5])
+        valid = (c[1] in (1, 2, 3, 4, 5, 6, 7, 8, 10, 11) and c[2] in (1, 2, 3,
+            4, 5, 6, 7, 8, 9, 11)
+            and 1 <= c[3] <= 80 and c[5] in (1, 2) and 0 <= c[4] < c[5])
         if not 1 <= c[1] <= 32 or not 1 <= c[2] <= 32:
             reviewed += len(book)
             for s in sorted(book):
                 excluded.append((g, s, 'DEFER_ELIGIBILITY_CHARACTER_STATE'))
             continue
-        roots = sorted({tc.first(s) for s in book if not check(ac, s, c)['passes']})
+        roots = sorted({tc.first(s) for s in book if not check(ac, s, c)[
+            'passes']})
         if reviewed_racials:
-            roots = sorted(s for s in book if s in racial_safe and not check(ac,s,c)['passes'])
+            roots = sorted(s for s in book if s in racial_safe and not check(
+                ac, s, c)['passes'])
         if inactive_foreign_swipes:
-            roots = [779] if any(s in book for s in tc.chain(779)) else []
+            roots = [779] if any(s in book for s in tc.chain(779)) else[]
         if inactive_foreign_actions:
-            roots = [1804] if 1804 in book else []
+            roots = [1804] if 1804 in book else[]
         if reviewed_cast_scripts:
-            roots=[root for root in roots if any(m.scripts[s]for m in(tc,ac)for s in tc.chain(root))]
+            roots = ([root for root in roots if any(m.scripts[s] for m in (tc,
+                ac) for s in tc.chain(root))])
         for root in roots:
             nodes = tc.chain(root)
             present = sorted(set(nodes) & book.keys())
             reviewed += len(present)
             reason = ''
             teacher_proof = None
-            if absent_teachers and any(graph.incoming[root] or graph.next[root] for graph in graphs):
-                # Review catalog edges once per root, then prove absence in each
+            if (absent_teachers and any(graph.incoming[root] or graph.next[
+                root] for graph in graphs)):
+                # Review catalog edges once per root, then prove absence in
+                # each
                 # complete character book. Never rescan the catalog per row.
                 if root not in teacher_catalog:
-                    teacher_catalog[root] = absent_teacher_contract(tc,ac,graphs,root,{})
+                    teacher_catalog[root] = absent_teacher_contract(tc, ac,
+                        graphs, root, {})
                 candidate = teacher_catalog[root]
-                if candidate and not any(parent in book for parent,_ in candidate['pairs']):
+                if (candidate and not any(parent in book for parent, _
+                    in candidate['pairs'])):
                     teacher_proof = candidate
             if not valid:
                 reason = 'DEFER_ELIGIBILITY_CHARACTER_STATE'
@@ -358,57 +501,78 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
                 reason = 'DEFER_PENDING_NATIVE_RESET'
             elif g in invalid:
                 reason = 'DEFER_INVALID_TALENT_SELECTION'
-            elif any(a not in (0,1) or d not in (0,1) for a,d in (book[s] for s in present)):
+            elif any(a not in (0, 1) or d not in (0, 1) for a, d in (book[s]
+                for s in present)):
                 reason = 'DEFER_INVALID_RELATED_FLAGS'
             elif inactive_foreign_swipes and not swipe_safe:
                 reason = 'DEFER_FOREIGN_SWIPE_METADATA'
-            elif inactive_foreign_swipes and (c[2] == 11 or any(book[s] != (0,0) for s in present)):
+            elif (inactive_foreign_swipes and (c[2] == 11 or any(book[s] != (0,
+                0) for s in present))):
                 reason = 'DEFER_FOREIGN_SWIPE_CLASS_OR_FLAGS'
             elif inactive_foreign_swipes and 5487 in book:
                 reason = 'DEFER_STORED_BEAR_FORM'
             elif inactive_foreign_actions and not action_safe:
                 reason = 'DEFER_FOREIGN_ACTION_METADATA'
-            elif inactive_foreign_actions and (c[2] == 4 or book[1804] != (0,0)):
+            elif (inactive_foreign_actions and (c[2] == 4 or book[1804] != (0,
+                0))):
                 reason = 'DEFER_FOREIGN_ACTION_CLASS_OR_FLAGS'
-            elif inactive_foreign_actions and any(s in book for s in (1809,1810,6460)):
+            elif (inactive_foreign_actions and any(s in book for s in (1809,
+                1810, 6460))):
                 reason = 'DEFER_STORED_ACTION_TEACHER'
             elif reviewed_racials and not racial_safe[root]:
                 reason = 'DEFER_REVIEWED_RACIAL_METADATA'
-            elif reviewed_racials and any(r[2] & (1 << (c[1]-1))
-                    for m in (tc,ac) for r in check(m,root,c)['skill_info']):
+            elif reviewed_racials and any(r[2] & (1 << (c[1] - 1))
+                for m in (tc, ac) for r in check(m, root, c)[
+                    'skill_info']):
                 reason = 'DEFER_RACIALLY_ELIGIBLE'
             elif any(ac.chain(s) != nodes for s in nodes):
                 reason = 'DEFER_INCOMPATIBLE_RANK_CHAIN'
-            elif any(check(m, s, c)['passes'] for m in (tc, ac) for s in nodes):
+            elif any(check(m, s, c)['passes'] for m in (tc, ac) for s
+                in nodes):
                 reason = 'DEFER_ELIGIBLE_OR_DISAGREEING_RANK'
-            elif any(not any(r[1] == skill for r in check(m,s,c)['skill_info'])
-                     for m in (tc,ac) for s in nodes for skill in check(m,s,c)['skills']):
+            elif any(not any(r[1] == skill for r in check(m, s, c)[
+                'skill_info'])
+                for m in (tc, ac) for s in nodes for skill in check(m, s,
+                    c)['skills']):
                 reason = 'DEFER_MISSING_NATIVE_SKILL_INFO'
-            elif any(s in m.talents or s in m.talent_learn_owners or s in m.aura_owners
-                     or s in m.world_aura_owners or s in m.additional for m in (tc, ac) for s in nodes):
+            elif any(s in m.talents or s in m.talent_learn_owners or s
+                in m.aura_owners
+                or s in m.world_aura_owners or s in m.additional for m
+                in (tc, ac) for s in nodes):
                 reason = 'DEFER_TALENT_OR_AURA_ROUTE'
-            elif any(graph.incoming[root] or graph.next[root] for graph in graphs) and teacher_proof is None and not (inactive_foreign_swipes or inactive_foreign_actions):
+            elif (any(graph.incoming[root] or graph.next[root] for graph
+                in graphs) and teacher_proof is None and not (
+                    inactive_foreign_swipes or inactive_foreign_actions)):
                 reason = 'DEFER_LEARNING_OR_REQUIREMENT_ROUTE'
-            elif any(s in graph.unsupported or s in graph.unknown_skill_spells for graph in graphs for s in nodes):
+            elif any(s in graph.unsupported or s in graph.unknown_skill_spells
+                for graph in graphs for s in nodes):
                 reason = 'DEFER_UNSUPPORTED_RELATION_METADATA'
-            elif any(a[1] in skills[g] for m in (tc, ac) for s in nodes for a in m.abilities[s]):
+            elif any(a[1] in skills[g] for m in (tc, ac) for s in nodes for a
+                in m.abilities[s]):
                 reason = 'DEFER_EXISTING_ASSOCIATED_SKILL'
-            elif not reviewed_racials and any(m.stores['SkillLine'][a[1]][1] not in (6,7)
-                     for m in (tc, ac) for s in nodes for a in m.abilities[s]):
+            elif not reviewed_racials and any(m.stores['SkillLine'][a[1]][
+                1] not in (6, 7)
+                for m in (tc, ac) for s in nodes for a in m.abilities[s]):
                 reason = 'DEFER_PROFESSION_RIDING_OR_NONPLAYER_SKILL'
-            elif any(set(m.spells[s][71:74]) & {36,40,44,47,118}
-                     or set(m.spells[s][95:98]) & ({30} if reviewed_racials and s == 28875 else {30,98})
-                     for m in (tc, ac) for s in nodes):
+            elif any(set(m.spells[s][71:74]) & {36, 40, 44, 47, 118}
+                or set(m.spells[s][95:98]) & ({30} if reviewed_racials
+                    and s == 28875 else {30, 98})
+                for m in (tc, ac) for s in nodes):
                 reason = 'DEFER_LEARN_OR_SKILL_EFFECT'
-            elif reviewed_cast_scripts and any(m.script_policy.get(name)!='NO_SPELLBOOK_MUTATION'for m in(tc,ac)for s in nodes for name in m.scripts[s]):
-                reason='DEFER_UNREVIEWED_CAST_SCRIPT'
-            elif not reviewed_cast_scripts and any(m.scripts[s] for m in (tc, ac) for s in nodes):
+            elif (reviewed_cast_scripts and any(m.script_policy.get(name)
+                != 'NO_SPELLBOOK_MUTATION' for m in (tc, ac) for s in nodes
+                for name in m.scripts[s])):
+                reason = 'DEFER_UNREVIEWED_CAST_SCRIPT'
+            elif (not reviewed_cast_scripts and any(m.scripts[s] for m in (tc,
+                ac) for s in nodes)):
                 reason = 'DEFER_SCRIPTED_SPELL_FAMILY'
             else:
                 for s in nodes:
                     left, right = check(tc, s, c), check(ac, s, c)
-                    if (left != right or sorted(tc.abilities[s]) != sorted(ac.abilities[s])
-                            or any(tc.stores['SkillLine'][k][1] != ac.stores['SkillLine'][k][1] for k in left['skills'])):
+                    if (left != right or sorted(tc.abilities[s]) != sorted(
+                        ac.abilities[s])
+                        or any(tc.stores['SkillLine'][k][1] != ac.stores[
+                            'SkillLine'][k][1] for k in left['skills'])):
                         reason = 'DEFER_INCOMPATIBLE_ELIGIBILITY_METADATA'
                         break
                     try:
@@ -422,57 +586,107 @@ def select(state, tc, ac, expected=None, *, preview=False, absent_teachers=False
                 continue
             groups += 1
             selected.extend((g, s, *book[s]) for s in present)
-            native.append({'guid': g, 'rank_root': root, 'race': c[1], 'class': c[2],
-                           'stored_spells': present, 'native_skill_grants': False,
-                           **({'reviewed_cast_callbacks':{m.core:{str(s):sorted(m.scripts[s])for s in nodes if m.scripts[s]}for m in(tc,ac)},'callback_contract':'NO_SPELLBOOK_MUTATION'}if reviewed_cast_scripts else{}),
-                           **({'racial_contract':rules['contract'], 'wrong_race_verified':True,
-                               'retired_skill_bonus':{'skill':755,'bonus':5} if root == 28875 else None}
-                              if reviewed_racials else {}),
-                           **({'absent_teacher_contract':teacher_proof} if teacher_proof else {}),
-                           **({'inactive_foreign_swipe_contract':swipe_rules['contract'],
-                               'bear_form_absent':True,'inactive_only':True} if inactive_foreign_swipes else {}),
-                           **({'inactive_foreign_action_contract':action_rules['contract'],
-                               'teacher_chain_absent':[1809,1810,6460],'lockpicking_skill_633_absent':True,
-                               'inactive_only':True} if inactive_foreign_actions else {}),
-                           'ranks': [{'spell': s, **check(ac, s, c)} for s in nodes]})
+            native.append({'guid': g, 'rank_root': root, 'race': c[1],
+                'class': c[2],
+                'stored_spells': present,
+                'native_skill_grants': False,
+                ** ({'reviewed_cast_callbacks': {m.core: {str(
+                    s): sorted(m.scripts[s]) for s in nodes if m.scripts[s]}
+                    for m
+                    in (tc, ac)}, 'callback_contract': 'NO_SPELLBOOK_MUTATION'}
+                    if reviewed_cast_scripts else {}),
+                ** ({'racial_contract': rules['contract'],
+                    'wrong_race_verified': True,
+                    'retired_skill_bonus': {'skill': 755,
+                        'bonus': 5} if root == 28875 else None}
+                    if reviewed_racials else {}),
+                ** ({'absent_teacher_contract': teacher_proof}
+                    if teacher_proof else {}),
+                ** ({'inactive_foreign_swipe_contract': swipe_rules[
+                    'contract'],
+                    'bear_form_absent': True,
+                    'inactive_only': True} if inactive_foreign_swipes else {}),
+                ** ({
+                    'inactive_foreign_action_contract': action_rules[
+                        'contract'],
+                    'teacher_chain_absent': [1809, 1810, 6460],
+                    'lockpicking_skill_633_absent': True,
+                    'inactive_only': True}
+                    if inactive_foreign_actions else {}),
+                'ranks': [{'spell': s, **check(ac, s, c)} for s
+                    in nodes]})
             proof.extend((g, root, s, 'INELIGIBLE_ORDINARY_RANK',
-                          'REMOVE_INELIGIBLE_ENABLED' if s in book and not book[s][1]
-                          else 'REMOVE_INELIGIBLE_DISABLED' if s in book else 'ABSENT_NO_GRANT',
-                          *(book.get(s, ('','')))) for s in nodes)
+                'REMOVE_INELIGIBLE_ENABLED' if s in book
+                and not book[s][1]
+                else 'REMOVE_INELIGIBLE_DISABLED' if s in book
+                else 'ABSENT_NO_GRANT',
+                * (book.get(s, ('', '')))) for s in nodes)
             if len(proof) > MAX_ROWS:
-                fail('ELIGIBILITY_BOUND', 'Eligibility proof exceeds reviewed bounds')
+                fail('ELIGIBILITY_BOUND',
+                    'Eligibility proof exceeds reviewed bounds')
     selected.sort()
     excluded.sort()
     if len(selected) > 500000:
         fail('ELIGIBILITY_BOUND', 'More than 500000 exact selected spell rows')
     if not preview and (not selected or expected != len(selected)):
-        fail('ELIGIBILITY_SELECTION_MISMATCH', f'--expect-rows must equal preview selected_rows ({len(selected)})')
-    summary = {'reviewed_candidate_rows': reviewed, 'selected_rows': len(selected),
-               'selected_characters': len({r[0] for r in selected}), 'selected_groups': groups,
-               'selected_direct_rows': 0, 'selected_related_rows': len(selected),
-               'enabled_rows_removed': sum(not r[3] for r in selected),
-               'disabled_rows_removed': sum(bool(r[3]) for r in selected),
-               'deferred_candidate_rows': len(excluded), 'deferred': dict(Counter(r[2] for r in excluded)),
-               'spell_rows_inserted': 0, 'skill_rows_changed': 0,
-               'eligibility_proofs': native,
-               'native_policy': 'Retire exact ordinary rank families ineligible in both catalogs, including enabled rows; '
-               'no associated stored skill, talent/aura/dependency/script/riding/profession route or pending reset; '
-               'preserve all talents, skills/caps, profession slots, flags and unrelated data; no grants'}
+        fail('ELIGIBILITY_SELECTION_MISMATCH',
+            '--expect-rows must equal preview selected_rows ('
+            f'{len(selected)})')
+    summary = {'reviewed_candidate_rows': reviewed, 'selected_rows': len(
+        selected),
+        'selected_characters': len({r[0] for r in selected}),
+        'selected_groups': groups,
+        'selected_direct_rows': 0, 'selected_related_rows': len(
+            selected),
+        'enabled_rows_removed': sum(not r[3] for r in selected),
+        'disabled_rows_removed': sum(bool(r[3]) for r in selected),
+        'deferred_candidate_rows': len(excluded), 'deferred': dict(
+            Counter(r[2] for r in excluded)),
+        'spell_rows_inserted': 0, 'skill_rows_changed': 0,
+        'eligibility_proofs': native,
+        'native_policy': 'Retire exact ordinary rank families ineligible in both '
+        'catalogs, including enabled rows; no associated stored skill, '
+        'talent/aura/dependency/script/riding/profession route or '
+        'pending reset; preserve all talents, skills/caps, profession '
+        'slots, flags and unrelated data; no grants'}
     if reviewed_cast_scripts:
-        summary['native_policy']+='; separate scripted-family policy: every attached callback must have the protected NO_SPELLBOOK_MUTATION review and pass its native metadata contract; all other script/learning/skill/talent/ownership guards remain'
+        summary['native_policy'] += (
+            '; separate scripted-family policy: every attached callback '
+            'must have the protected NO_SPELLBOOK_MUTATION review and '
+            'pass its native metadata contract; all other '
+            'script/learning/skill/talent/ownership guards remain'
+        )
     if absent_teachers:
-        summary['reviewed_absent_teacher_rows'] = sum(len(p['stored_spells']) for p in native if 'absent_teacher_contract' in p)
-        summary['native_policy'] += '; only exact reviewed absent single-child teachers may supply inert incoming routes'
+        summary['reviewed_absent_teacher_rows'] = sum(len(p['stored_spells'])
+            for p in native if 'absent_teacher_contract' in p)
+        summary['native_policy'] += (
+            '; only exact reviewed absent single-child teachers may '
+            'supply inert incoming routes'
+        )
     if inactive_foreign_swipes:
         summary['inactive_rows_removed'] = len(selected)
-        summary['native_policy'] += '; fixed Swipe (Bear) family only, entirely inactive/non-disabled on non-druids with no stored Bear Form or Feral skill; only the reviewed AC Bear Form prerequisite is allowed; no prerequisite or rank grant'
+        summary['native_policy'] += (
+            '; fixed Swipe (Bear) family only, entirely '
+            'inactive/non-disabled on non-druids with no stored Bear '
+            'Form or Feral skill; only the reviewed AC Bear Form '
+            'prerequisite is allowed; no prerequisite or rank grant'
+        )
     if inactive_foreign_actions:
         summary['inactive_rows_removed'] = len(selected)
-        summary['native_policy'] += '; only inactive/non-disabled Lockpicking 1804 on non-rogues without skill 633 or any rank of teacher 1809; exact reviewed absent-teacher route only; all profession/category guards remain'
+        summary['native_policy'] += (
+            '; only inactive/non-disabled Lockpicking 1804 on non-rogues '
+            'without skill 633 or any rank of teacher 1809; exact '
+            'reviewed absent-teacher route only; all profession/category '
+            'guards remain'
+        )
     if reviewed_racials:
         summary['reviewed_racial_rows'] = len(selected)
-        summary['native_policy'] = ('Retire only four fixed stock singleton racial spells on verified wrong races; '
-            'no associated stored skill, talent/aura/dependency/script route or pending reset; '
-            'retire the wrong racial bonus including reviewed Gemcutting +5; preserve both builds, stored skill '
-            'values/caps, items, profession slots and login flags; no replacement racial or grant')
-    return selected, excluded, proof, summary, sorted(graphs[0].edges | graphs[1].edges)
+        summary['native_policy'] = (
+            'Retire only four fixed stock singleton racial spells on '
+            'verified wrong races; no associated stored skill, '
+            'talent/aura/dependency/script route or pending reset; retire '
+            'the wrong racial bonus including reviewed Gemcutting +5; '
+            'preserve both builds, stored skill values/caps, items, '
+            'profession slots and login flags; no replacement racial or grant')
+    return selected, excluded, proof, summary, sorted(graphs[0].edges | graphs[
+        1].edges)

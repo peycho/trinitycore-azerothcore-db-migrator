@@ -25,6 +25,7 @@ source "$ROOT/tests/test-support.sh"
 
 shellcheck "$ROOT"/bin/*.sh "$ROOT"/lib/*.sh "$ROOT"/tests/*.sh
 python3 "$ROOT/tests/spell-state-tests.py"
+python3 "$ROOT/tests/python-contract-tests.py"
 python3 "$ROOT/tests/source-audit-tests.py"
 python3 "$ROOT/tests/talent-cleanup-tests.py"
 python3 "$ROOT/tests/cleanup-console-tests.py"

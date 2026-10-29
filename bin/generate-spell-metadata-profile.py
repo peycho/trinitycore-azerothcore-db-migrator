@@ -1,16 +1,28 @@
 #!/usr/bin/env python3
-"""Generate conservative, reviewable DBC layouts and spell correction guards.
+"""Generate conservative, reviewable DBC layouts and spell correction
+guards.
 
-This never runs core code. Corrections affecting reconstruction are unsupported
-unless their relevance can be excluded using the original effect type. The
-profile reviewer must review this artifact together with the protected C++.
+This never runs core code. Corrections affecting reconstruction are
+unsupported unless their relevance can be excluded using the original
+effect type. The profile reviewer must review this artifact together
+with the protected C++.
 """
+
+from __future__ import annotations
+
 import ast
+from collections.abc import Mapping
 import hashlib
 import json
 from pathlib import Path
 import re
 import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'lib'))
+
+from cleanup_types import Evidence
+
 
 STORES = {
     'Spell': ('spell_dbc', 'SpellEntryfmt'),
@@ -23,10 +35,11 @@ STORES = {
 }
 
 # Reviewed encounter handlers do not mutate persistent spell ownership.
-# Keep complete files protected; unreviewed handlers in those files still block.
+# Keep complete files protected; unreviewed handlers in those files still
+# block.
 REVIEWED_ENCOUNTER_SCRIPTS = {
     'src/server/scripts/Outland/Auchindoun/ShadowLabyrinth/boss_murmur.cpp': {
-        'spell_murmur_sonic_boom','spell_murmur_sonic_boom_effect'},
+        'spell_murmur_sonic_boom', 'spell_murmur_sonic_boom_effect'},
     'src/server/scripts/Outland/BlackTemple/boss_teron_gorefiend.cpp': {
         'spell_teron_gorefiend_shadow_of_death',
         'spell_teron_gorefiend_shadowy_construct'},
@@ -34,159 +47,219 @@ REVIEWED_ENCOUNTER_SCRIPTS = {
 REVIEWED_CORE_SCRIPTS = {
     'tc': {'src/server/scripts/EasternKingdoms/ScarletEnclave/chapter1.cpp': {
         'spell_chapter1_runeforging_credit'}},
-    'ac': {'src/server/scripts/Outland/BlackTemple/instance_black_temple.cpp': {
-        'spell_black_template_free_friend'}},
+    'ac': {
+        'src/server/scripts/Outland/BlackTemple/instance_black_temple.cpp': {
+            'spell_black_template_free_friend'}},
 }
 # Constructor template arguments can change the spells an implementation casts.
 # Resolve only aliases whose actual registration arguments were reviewed.
 REVIEWED_LEGACY_ALIASES = {
-    'spell_pal_seal_of_corruption':'spell_pal_seal_of_vengeance',
+    'spell_pal_seal_of_corruption': 'spell_pal_seal_of_vengeance',
 }
 # Match the reviewed implementation AND actual template arguments. Unknown
 # instantiations must not inherit a safe policy merely from a class name.
 REVIEWED_TEMPLATE_ALIASES = {
     'spell_wotf_shared_cd': ('spell_pvp_trinket_wotf_shared_cd',
-                           ('SPELL_WILL_OF_THE_FORSAKEN_COOLDOWN_TRIGGER_WOTF',)),
+        ('SPELL_WILL_OF_THE_FORSAKEN_COOLDOWN_TRIGGER_WOTF',
+        )),
     'spell_pvp_trinket_shared_cd': ('spell_pvp_trinket_wotf_shared_cd',
-                                  ('SPELL_WILL_OF_THE_FORSAKEN_COOLDOWN_TRIGGER',)),
-    'spell_warl_t4_2p_bonus_shadow': ('spell_warl_t4_2p_bonus', ('SPELL_WARLOCK_FLAMESHADOW',)),
-    'spell_warl_t4_2p_bonus_fire': ('spell_warl_t4_2p_bonus', ('SPELL_WARLOCK_SHADOWFLAME',)),
+        (
+            'SPELL_WILL_OF_THE_FORSAKEN_COOLDOWN_TRIGGER',)),
+    'spell_warl_t4_2p_bonus_shadow': ('spell_warl_t4_2p_bonus', (
+        'SPELL_WARLOCK_FLAMESHADOW',)),
+    'spell_warl_t4_2p_bonus_fire': ('spell_warl_t4_2p_bonus', (
+        'SPELL_WARLOCK_SHADOWFLAME',)),
 }
 # These protected SpellScript handlers mutate recipes only when explicitly
 # cast. Do not relabel them as non-mutating or accept other attached spell IDs.
 REVIEWED_CAST_ONLY_SCRIPTS = {
     'spell_gen_profession_research': {
-        'spell_skills': {'60893':171, '61177':773, '61288':773},
-        'effects': [157,77,0],
+        'spell_skills': {'60893': 171, '61177': 773, '61288': 773},
+        'effects': [157, 77, 0],
     },
 }
 # TC casts/removes these helper auras; AC adds/removes temporary spells.
 # Neither representation belongs in the persistent spellbook.
 REVIEWED_AURA_TALENT_SCRIPTS = {
     'spell_dru_nurturing_instinct': {
-        'parents': {'33872': {'rank':1,'child':47179}, '33873': {'rank':2,'child':47180}},
-        'effects': [6,0,0], 'aura':175,
-        'helper_effects': [6,0,0], 'helper_aura':118, 'helper_stances':1,
+        'parents': {'33872': {'rank': 1, 'child': 47179}, '33873': {'rank': 2,
+            'child': 47180}},
+        'effects': [6, 0, 0], 'aura': 175,
+        'helper_effects': [6, 0, 0], 'helper_aura': 118, 'helper_stances': 1,
     },
 }
 REVIEWED_SKILL_REWARD_DEPENDENCIES = {
-    '53428': {'skill':776, 'children':[53341,53343], 'value':1, 'max':1,
-              'parent_effects':[47,0,0], 'child_effects':[53,3,0],
-              'class_mask':32, 'acquire':1, 'minimum':1},
+    '53428': {'skill': 776, 'children': [53341, 53343], 'value': 1, 'max': 1,
+        'parent_effects': [47, 0, 0], 'child_effects': [53, 3, 0],
+        'class_mask': 32, 'acquire': 1, 'minimum': 1},
 }
 # TC's explicit load-time world edge restores Expert Riding from Flight Form.
 # AC needs persistent riding rows; this is not a trainer- or skill-based grant.
 REVIEWED_PERSISTENT_WORLD_DEPENDENCIES = {
-    '33943': {'child':34090, 'class':11, 'skill':762, 'skill_category':9,
-              'parent_effects':[6,6,6], 'parent_auras':[36,77,201],
-              'child_effects':[3,118,0], 'child_visibility':192, 'ranks':[33388,33391,34090],
-              'skill_states':[[225,225],[300,300]], 'higher_anchor':34091},
+    '33943': {'child': 34090, 'class': 11, 'skill': 762, 'skill_category': 9,
+        'parent_effects': [6, 6, 6], 'parent_auras': [36, 77, 201],
+        'child_effects': [3, 118, 0], 'child_visibility': 192, 'ranks': [
+            33388, 33391, 34090],
+        'skill_states': [[225, 225], [300, 300]],
+        'higher_anchor': 34091},
 }
 # TC restores hidden known helpers from inactive world edges. AC instead casts
 # the exact selected helper on Cat talent/Bear form aura application. These
 # helpers have no persistent AC spellbook representation and no lower ranks.
 REVIEWED_WORLD_TALENT_AURAS = {
-    '807': {'class':11, 'owners':[17002,24866], 'children':[24867,24864],
-            'script':'spell_dru_feral_swiftness', 'forms':[5487,9634],
-            'parent_flags':464, 'parent_stances':1, 'parent_aura':31,
-            'parent_basepoints':[14,29], 'parent_duration':0, 'helper_flags':128, 'helper_duration':21,
-            'parent_attributes_ex':[[0,0,0,0,0,0,0],[2147483648,0,0,0,0,0,0]],
-            'helper_attributes_ex':[1024,0,0,2097152,0,0,0],
-            'helper_stances':145, 'helper_aura':49, 'helper_basepoints':[1,3]},
+    '807': {'class': 11, 'owners': [17002, 24866], 'children': [24867, 24864],
+        'script': 'spell_dru_feral_swiftness', 'forms': [5487, 9634],
+        'parent_flags': 464, 'parent_stances': 1, 'parent_aura': 31,
+        'parent_basepoints': [14, 29], 'parent_duration': 0,
+        'helper_flags': 128, 'helper_duration': 21,
+        'parent_attributes_ex': [[0, 0, 0, 0, 0, 0, 0], [2147483648, 0, 0,
+            0, 0, 0, 0]],
+        'helper_attributes_ex': [1024, 0, 0, 2097152, 0, 0, 0],
+        'helper_stances': 145, 'helper_aura': 49, 'helper_basepoints': [1,
+            3]},
 }
 # Nurturing Instinct can additionally restore known TC helper ranks through
 # inactive world edges. AC's script owns only the selected exact temporary
 # helper. Sparse mechanics below mean zero for every other guarded field.
 REVIEWED_WORLD_RANKED_TALENT_AURAS = {
-    '1792': {'class':11, 'owners':[33872,33873], 'children':[47179,47180],
-             'script':'spell_dru_nurturing_instinct',
-             'mechanics': {
-                 '33872': {'4':464,'68':4294967295,'71':6,'74':1,'80':34,'86':1,
-                           '95':175,'110':1,'125':33554432,'208':7},
-                 '33873': {'4':464,'7':67108864,'68':4294967295,'71':6,'74':1,'80':69,
-                           '86':1,'87':1,'95':175,'110':1,'125':33554432,'208':7},
-                 '47179': {'4':400,'12':1,'40':21,'68':4294967295,'71':6,'74':1,'80':9,
-                           '86':1,'95':118,'110':127,'125':33554432,'208':7},
-                 '47180': {'4':400,'12':1,'40':21,'68':4294967295,'71':6,'74':1,'75':1,
-                           '80':19,'81':4294967295,'86':1,'95':118,'110':127,'125':33554432,'208':7},
-             }},
+    '1792': {'class': 11, 'owners': [33872, 33873], 'children': [47179, 47180],
+        'script': 'spell_dru_nurturing_instinct',
+        'mechanics': {
+            '33872': {'4': 464, '68': 4294967295, '71': 6, '74': 1,
+                '80': 34, '86': 1,
+                '95': 175, '110': 1, '125': 33554432, '208': 7},
+            '33873': {'4': 464, '7': 67108864, '68': 4294967295, '71': 6,
+                '74': 1, '80': 69,
+                '86': 1, '87': 1, '95': 175, '110': 1,
+                '125': 33554432, '208': 7},
+            '47179': {'4': 400, '12': 1, '40': 21, '68': 4294967295,
+                '71': 6, '74': 1, '80': 9,
+                '86': 1, '95': 118, '110': 127, '125': 33554432,
+                '208': 7},
+            '47180': {'4': 400, '12': 1, '40': 21, '68': 4294967295,
+                '71': 6, '74': 1, '75': 1,
+                '80': 19, '81': 4294967295, '86': 1, '95': 118,
+                '110': 127, '125': 33554432, '208': 7},
+        }},
 }
-# Explicitly reviewed native AC representation: selected exact passive children,
+# Explicitly reviewed native AC representation: selected exact passive
+# children,
 # without persisting TC's superseded internal predecessor entries.
 REVIEWED_NATIVE_PASSIVE_RANKS = {
-    '801': {'class':11, 'owners':[37116,37117],
-            'parent_effects':[36,36,0],
-            'children':[[16958,16952],[16961,16954]],
-            'chains':[[16958,16961],[16952,16954]],
-            'triggers':{'16958':16959,'16952':16953}},
-    '1959': {'class':6, 'owners':[49189,50149,50150],
-             'parent_effects':[3,36,0],
-             'children':[[52284],[52285],[52286]],
-             'chains':[[52284,52285,52286]], 'triggers':{}},
-    '2039': {'class':6, 'owners':[49146,51267],
-             'parent_effects':[36,36,0],
-             'children':[[51983,51969],[51986,51970]],
-             'chains':[[51983,51986],[51969,51970]], 'triggers':{}},
-    '2034': {'class':6, 'owners':[61154,61155,61156,61157,61158],
-             'parent_effects':[36,0,36],
-             'children':[[50096,61274],[50108,61275],[50109,61276],[50110,61277],[50111,61278]],
-             'chains':[[50096,50108,50109,50110,50111],[61274,61275,61276,61277,61278]], 'triggers':{}},
+    '801': {'class': 11, 'owners': [37116, 37117],
+        'parent_effects': [36, 36, 0],
+        'children': [[16958, 16952], [16961, 16954]],
+        'chains': [[16958, 16961], [16952, 16954]],
+        'triggers': {'16958': 16959, '16952': 16953}},
+    '1959': {'class': 6, 'owners': [49189, 50149, 50150],
+        'parent_effects': [3, 36, 0],
+        'children': [[52284], [52285], [52286]],
+        'chains': [[52284, 52285, 52286]], 'triggers': {}},
+    '2039': {'class': 6, 'owners': [49146, 51267],
+        'parent_effects': [36, 36, 0],
+        'children': [[51983, 51969], [51986, 51970]],
+        'chains': [[51983, 51986], [51969, 51970]], 'triggers': {}},
+    '2034': {'class': 6, 'owners': [61154, 61155, 61156, 61157, 61158],
+        'parent_effects': [36, 0, 36],
+        'children': [[50096, 61274], [50108, 61275], [50109, 61276], [
+            50110, 61277], [50111, 61278]],
+        'chains': [[50096, 50108, 50109, 50110, 50111], [61274, 61275,
+            61276, 61277, 61278]], 'triggers': {}},
 }
 # TC restores two cast-only spec buttons from this hidden wrapper. AC refuses
 # persistent LEARN spells. No effect is executed by the migration contract.
 REVIEWED_CONSUMED_TEACHERS = {
-    '63680': {'children':[63645,63644], 'spec_count':2, 'skill':183,
-              'skill_category':12, 'race_mask':4095, 'class_mask':1535,
-              'mechanics': {
-                  '63680': {'4':536871296,'6':4,'7':268632064,'28':190,'35':101,'46':13,
-                            '68':4294967295,'71':36,'72':36,'74':1,'75':1,'81':4294967295,
-                            '86':1,'87':1,'116':63645,'117':63644},
-                  '63644': {'4':268435584,'5':131212,'7':536870912,'8':65536,'28':6,
-                            '31':15,'35':101,'46':13,'68':4294967295,'71':162,'74':1,'75':1,
-                            '80':1,'81':4294967295,'86':1,'87':1},
-                  '63645': {'4':268435584,'5':131212,'7':536870912,'8':65536,'28':6,
-                            '31':15,'33':2011151,'35':101,'46':13,'68':4294967295,'71':162,
-                            '74':1,'75':1,'81':4294967295,'86':1,'87':1},
-              }},
+    '63680': {'children': [63645, 63644], 'spec_count': 2, 'skill': 183,
+        'skill_category': 12, 'race_mask': 4095, 'class_mask': 1535,
+        'mechanics': {
+            '63680': {'4': 536871296, '6': 4, '7': 268632064, '28': 190,
+                '35': 101, '46': 13,
+                '68': 4294967295, '71': 36, '72': 36, '74': 1,
+                '75': 1, '81': 4294967295,
+                '86': 1, '87': 1, '116': 63645, '117': 63644},
+            '63644': {'4': 268435584, '5': 131212, '7': 536870912,
+                '8': 65536, '28': 6,
+                '31': 15, '35': 101, '46': 13, '68': 4294967295,
+                '71': 162, '74': 1, '75': 1,
+                '80': 1, '81': 4294967295, '86': 1, '87': 1},
+            '63645': {'4': 268435584, '5': 131212, '7': 536870912,
+                '8': 65536, '28': 6,
+                '31': 15, '33': 2011151, '35': 101, '46': 13,
+                '68': 4294967295, '71': 162,
+                '74': 1, '75': 1, '81': 4294967295, '86': 1,
+                '87': 1},
+        }},
 }
 # Each separate exact wrapper teaches only its corresponding button. Neither
 # is a purchase spell or authority for the other button or a second spec.
-for wrapper,button in ((63706,63645),(63707,63644)):
+for wrapper, button in ((63706, 63645), (63707, 63644)):
     REVIEWED_CONSUMED_TEACHERS[str(wrapper)] = {
-        'children':[button], 'spec_count':2, 'skill':183, 'skill_category':12,
-        'race_mask':4095, 'class_mask':1535,
-        'mechanics':{
-            str(wrapper):{'5':2147483648,'28':190,'35':101,'46':13,'68':4294967295,
-                          '71':36,'74':1,'75':1,'81':4294967295,'86':1,'87':1,'116':button},
-            str(button):dict(REVIEWED_CONSUMED_TEACHERS['63680']['mechanics'][str(button)]),
+        'children': [button], 'spec_count': 2, 'skill': 183,
+        'skill_category': 12,
+        'race_mask': 4095, 'class_mask': 1535,
+        'mechanics': {
+            str(wrapper): {'5': 2147483648, '28': 190, '35': 101, '46': 13,
+                '68': 4294967295,
+                '71': 36, '74': 1, '75': 1, '81': 4294967295,
+                '86': 1, '87': 1, '116': button},
+            str(button): dict(REVIEWED_CONSUMED_TEACHERS['63680']['mechanics'][
+                str(button)]),
         },
     }
 # Ordinary stored TC teaching wrappers derive these children at load without
 # casting. Explicit contracts, not a general permission to consume LEARN rows.
 REVIEWED_ORDINARY_TEACHERS = {
-    '10321': {'class':2, 'children':[20271,21084], 'skills':[184,594],
+    '10321': {'class': 2, 'children': [20271, 21084], 'skills': [184, 594],
         'mechanics': {
-            '10321':{'4':262400,'16':256,'28':1,'35':101,'46':6,'68':4294967295,'71':36,'72':36,'116':20271,'117':21084},
-            '20271':{'4':327680,'6':1048576,'7':196608,'20':5,'28':1,'29':10000,'30':10000,'38':4,'39':4,'46':7,'68':4294967295,'71':77,'74':1,'80':1,'86':6,'208':10,'209':8388608},
-            '21084':{'4':327680,'7':524288,'28':1,'34':20,'35':100,'37':7,'38':1,'39':1,'40':30,'46':1,'68':4294967295,'71':6,'72':6,'73':6,'74':1,'75':1,'76':1,'80':4294967295,'81':4294967295,'82':20186,'86':1,'87':1,'88':1,'95':4,'96':108,'97':4,'111':14,'125':8388608,'127':8,'208':10,'209':134217728,'210':536870912}},
-        'abilities':{'20271':[184,20271,0,2,0,0,1,0,0,0,0,0,0], '21084':[594,21084,0,2,0,0,1,0,2,0,0,0,0]},
-        'chains':{'tc':{'20271':[20271],'21084':[20154,21084]},'ac':{'20271':[20271],'21084':[21084]}},
-        'scripts':{'tc':{'20271':['spell_pal_judgement_of_light'],'21084':['spell_pal_seal_of_righteousness','spell_pal_seals']},'ac':{'20271':['spell_pal_judgement_of_light'],'21084':['spell_pal_seal_of_righteousness']}},
-        'requirements':{'tc':{},'ac':{}}},
-    '5396': {'class':7, 'children':[5394], 'skills':[374],
-        'mechanics':{
-            '5396':{'4':262400,'28':1,'35':101,'46':6,'68':4294967295,'71':36,'116':5394},
-            '5394':{'4':65536,'11':32,'28':1,'35':101,'38':20,'39':20,'40':5,'46':1,'68':4294967295,'71':28,'74':1,'80':4,'86':42,'110':3527,'113':82,'208':11,'209':524288}},
-        'abilities':{'5394':[374,5394,0,64,0,0,1,0,0,0,0,0,0]},
-        'chains':{core:{'5394':[5394,6375,6377,10462,10463,25567,58755,58756,58757]} for core in ('tc','ac')},
-        'scripts':{'tc':{},'ac':{}}, 'requirements':{'tc':{},'ac':{}}},
-    '20220': {'class':0, 'children':[20219], 'skills':[202],
-        'mechanics':{
-            '20220':{'4':256,'16':256,'28':1,'35':101,'46':6,'68':4294967295,'71':36,'74':1,'80':24,'116':20219},
-            '20219':{'4':16842768,'10':4096,'28':1,'35':101,'46':1,'68':4294967295,'71':47}},
-        'abilities':{'20219':[202,20219,0,0,0,0,1,0,0,0,0,0,0]},
-        'chains':{core:{'20219':[20219]} for core in ('tc','ac')},
-        'scripts':{'tc':{},'ac':{}}, 'requirements':{'tc':{'20219':[12656]},'ac':{}}},
+            '10321': {'4': 262400, '16': 256, '28': 1, '35': 101, '46': 6,
+                '68': 4294967295, '71': 36, '72': 36, '116': 20271,
+                '117': 21084},
+            '20271': {'4': 327680, '6': 1048576, '7': 196608, '20': 5, '28': 1,
+                '29': 10000, '30': 10000, '38': 4, '39': 4, '46': 7,
+                '68': 4294967295,
+                '71': 77, '74': 1, '80': 1, '86': 6, '208': 10,
+                '209': 8388608},
+            '21084': {'4': 327680, '7': 524288, '28': 1, '34': 20, '35': 100,
+                '37': 7, '38': 1, '39': 1, '40': 30, '46': 1, '68': 4294967295,
+                '71': 6,
+                '72': 6, '73': 6, '74': 1, '75': 1, '76': 1, '80': 4294967295,
+                '81': 4294967295, '82': 20186, '86': 1, '87': 1, '88': 1,
+                '95': 4,
+                '96': 108, '97': 4, '111': 14, '125': 8388608, '127': 8,
+                '208': 10,
+                '209': 134217728, '210': 536870912}},
+        'abilities': {'20271': [184, 20271, 0, 2, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+            '21084': [594, 21084, 0, 2, 0, 0, 1, 0, 2, 0, 0, 0, 0]},
+        'chains': {'tc': {'20271': [20271], '21084': [20154, 21084]}, 'ac': {
+            '20271': [20271], '21084': [21084]}},
+        'scripts': {'tc': {'20271': ['spell_pal_judgement_of_light'],
+            '21084': ['spell_pal_seal_of_righteousness', 'spell_pal_seals']},
+            'ac': {
+                '20271': ['spell_pal_judgement_of_light'], '21084': [
+                    'spell_pal_seal_of_righteousness']}},
+        'requirements': {'tc': {}, 'ac': {}}},
+    '5396': {'class': 7, 'children': [5394], 'skills': [374],
+        'mechanics': {
+            '5396': {'4': 262400, '28': 1, '35': 101, '46': 6,
+                '68': 4294967295, '71': 36, '116': 5394},
+            '5394': {'4': 65536, '11': 32, '28': 1, '35': 101, '38': 20,
+                '39': 20, '40': 5, '46': 1, '68': 4294967295, '71': 28,
+                '74': 1, '80': 4,
+                '86': 42, '110': 3527, '113': 82, '208': 11, '209': 524288}},
+        'abilities': {'5394': [374, 5394, 0, 64, 0, 0, 1, 0, 0, 0, 0, 0, 0]},
+        'chains': {core: {'5394': [5394, 6375, 6377, 10462, 10463, 25567,
+            58755, 58756, 58757]} for core in ('tc', 'ac')},
+        'scripts': {'tc': {}, 'ac': {}}, 'requirements': {'tc': {}, 'ac': {}}},
+    '20220': {'class': 0, 'children': [20219], 'skills': [202],
+        'mechanics': {
+            '20220': {'4': 256, '16': 256, '28': 1, '35': 101, '46': 6,
+                '68': 4294967295, '71': 36, '74': 1, '80': 24, '116': 20219},
+            '20219': {'4': 16842768, '10': 4096, '28': 1, '35': 101, '46': 1,
+                '68': 4294967295, '71': 47}},
+        'abilities': {'20219': [202, 20219, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]},
+        'chains': {core: {'20219': [20219]} for core in ('tc', 'ac')},
+        'scripts': {'tc': {}, 'ac': {}}, 'requirements': {'tc': {'20219': [
+            12656]}, 'ac': {}}},
 }
 CORRECTION_DEFINITIONS = (
     'src/server/shared/SharedDefines.h',
@@ -194,13 +267,14 @@ CORRECTION_DEFINITIONS = (
     'src/server/game/Spells/Auras/SpellAuraDefines.h',
 )
 EFFECT_FIELDS = {'Effect': 71, 'TriggerSpell': 116, 'MiscValue': 110,
-                 'BasePoints': 80, 'DieSides': 74, 'TargetA': 86, 'ApplyAuraName': 95}
+    'BasePoints': 80, 'DieSides': 74, 'TargetA': 86,
+    'ApplyAuraName': 95}
 
 
-def integer(expression, constants):
+def integer(expression: str, constants: Mapping[str, int]) -> int:
     """Only integer expressions; never execute text from a C++ source tree."""
     node = ast.parse(expression, mode='eval').body
-    def visit(item):
+    def visit(item: ast.AST) -> int:
         if isinstance(item, ast.Constant) and type(item.value) is int:
             return item.value
         if isinstance(item, ast.Name):
@@ -213,43 +287,59 @@ def integer(expression, constants):
                 return ~value
         if isinstance(item, ast.BinOp):
             left, right = visit(item.left), visit(item.right)
-            for kind, operation in [(ast.BitOr, lambda: left | right), (ast.BitAnd, lambda: left & right),
-                                    (ast.LShift, lambda: left << right), (ast.Add, lambda: left + right),
-                                    (ast.Mult, lambda: left * right)]:
+            for kind, operation in [(ast.BitOr, lambda: left | right), (
+                ast.BitAnd, lambda: left & right),
+                (ast.LShift, lambda: left << right), (
+                    ast.Add, lambda: left + right),
+                (ast.Mult, lambda: left * right)]:
                 if isinstance(item.op, kind):
                     return operation()
         raise ValueError('Unsupported integer expression')
     return visit(node)
 
 
-def strip_comments(source):
-    return re.sub(r'/\*.*?\*/|//[^\n]*', '', source, flags=re.S)
+def strip_comments(source: str) -> str:
+    return re.sub('/\\*.*?\\*/|//[^\\n]*', '', source, flags=re.S)
 
 
-def indexed_family_corrections(body, constants):
+def indexed_family_corrections(
+    body: str,
+    constants: Mapping[str, int],
+) -> tuple[set[int], set[int]]:
     """Read only bounded integer writes; report every unsupported access."""
-    indexed=list(re.finditer(r'spellInfo->SpellFamilyFlags\s*\[([012])\]\s*([|&]?=)\s*([^;]+);',body))
-    changes=[]
-    guarded=len(re.findall(r'SpellFamilyFlags\s*\[',body))!=len(indexed)
+    indexed = list(re.finditer(
+        'spellInfo->SpellFamilyFlags\\s*\\[([012])\\]\\s*([|&]?=)\\s*([^;]+);',
+        body))
+    changes = []
+    guarded = len(re.findall('SpellFamilyFlags\\s*\\[', body)) != len(indexed)
     for assignment in indexed:
         try:
-            if re.search(r'\b(if|else|for|while|do|switch|goto)\b',body):
+            if re.search('\\b(if|else|for|while|do|switch|goto)\\b', body):
                 raise ValueError('Conditional indexed family correction')
-            changes.append([209+int(assignment[1]),assignment[2],integer(assignment[3].strip(),constants)])
-        except (ValueError,KeyError,SyntaxError):
-            guarded=True
-    return changes,guarded
+            changes.append([209 + int(assignment[1]), assignment[2], integer(
+                assignment[3].strip(), constants)])
+        except (ValueError, KeyError, SyntaxError):
+            guarded = True
+    return changes, guarded
 
 
-def script_policies(content, reviewed=None, legacy_aliases=None, template_aliases=None):
+def script_policies(
+    content: str,
+    reviewed: set[str] = None,
+    legacy_aliases: Mapping[str, str] | None = None,
+    template_aliases: Evidence | None = None,
+) -> dict[str, str]:
     """Follow native named registrations without weakening mutation guards."""
     classes, scripts = {}, {}
-    legacy_aliases = REVIEWED_LEGACY_ALIASES if legacy_aliases is None else legacy_aliases
-    template_aliases = REVIEWED_TEMPLATE_ALIASES if template_aliases is None else template_aliases
-    def store(name, policy):
+    legacy_aliases = (REVIEWED_LEGACY_ALIASES if legacy_aliases is None
+        else legacy_aliases)
+    template_aliases = (REVIEWED_TEMPLATE_ALIASES if template_aliases is None
+        else template_aliases)
+    def store(name: str, policy: str) -> None:
         if scripts.get(name) != 'UNSUPPORTED_SPELLBOOK_MUTATION':
             scripts[name] = policy
-    for match in re.finditer(r'\b(?:class|struct)\s+(spell_\w+)\b[^;{]*\{', content):
+    for match in re.finditer('\\b(?:class|struct)\\s+(spell_\\w+)\\b[^;{]*\\{',
+        content):
         if reviewed is not None and match[1] not in reviewed:
             continue
         start, end, depth = match.end(), match.end(), 1
@@ -257,45 +347,53 @@ def script_policies(content, reviewed=None, legacy_aliases=None, template_aliase
             depth += (content[end] == '{') - (content[end] == '}')
             end += 1
         body = content[start:end - 1]
-        mutation = bool(re.search(r'\b(?:LearnSpell|learnSpell|RemoveSpell|removeSpell|AddSpell|addSpell)\s*\(', body))
-        policy = 'UNSUPPORTED_SPELLBOOK_MUTATION' if mutation else 'NO_SPELLBOOK_MUTATION'
+        mutation = bool(re.search(
+            '\\b(?:LearnSpell|learnSpell|RemoveSpell|removeSpell|AddSpell|addSpell)\\s*\\(', body))
+        policy = ('UNSUPPORTED_SPELLBOOK_MUTATION' if mutation
+            else 'NO_SPELLBOOK_MUTATION')
         if classes.get(match[1]) != 'UNSUPPORTED_SPELLBOOK_MUTATION':
             classes[match[1]] = policy
-        for name in {match[1]} | set(re.findall(r'"(spell_\w+)"', body)):
+        for name in {match[1]} | set(re.findall('"(spell_\\w+)"', body)):
             store(name, policy)
     for implementation, alias in re.findall(
-            r'\bRegister(?:Spell|Aura)ScriptWithArgs\(\s*(spell_\w+)\s*,\s*"(spell_\w+)"', content):
+        '\\bRegister(?:Spell|Aura)ScriptWithArgs\\(\\s*(spell_\\w+)\\s*,\\s*"(spell_\\w+)"', content):
         if implementation in classes:
             store(alias, classes[implementation])
     for implementation, arguments, alias in re.findall(
-            r'\bRegister(?:Spell|Aura)ScriptWithArgs\(\s*(spell_\w+)\s*<([^;{}()<>]+)>\s*,\s*"(spell_\w+)"', content):
+        '\\bRegister(?:Spell|Aura)ScriptWithArgs\\(\\s*(spell_\\w+)\\s*<([^;{}()<>]+)>\\s*,\\s*"(spell_\\w+)"', content):
         if alias not in template_aliases:
             continue
-        actual = (implementation, tuple(value.strip() for value in arguments.split(',')))
+        actual = (implementation, tuple(value.strip() for value
+            in arguments.split(',')))
         policy = (classes.get(implementation, 'UNSUPPORTED_SPELLBOOK_MUTATION')
-                  if actual == template_aliases[alias] else 'UNSUPPORTED_SPELLBOOK_MUTATION')
+            if actual == template_aliases[alias]
+            else 'UNSUPPORTED_SPELLBOOK_MUTATION')
         store(alias, policy)
     # TC also registers legacy loaders with new Class<T1,T2>("alias").
     # Follow only resolved implementations, preserving any mutation rejection.
     for implementation, alias in re.findall(
-            r'\bnew\s+(spell_\w+)\s*(?:<[^;{}()]+>\s*)?\(\s*"(spell_\w+)"', content):
-        if implementation in classes and legacy_aliases.get(alias)==implementation:
+        '\\bnew\\s+(spell_\\w+)\\s*(?:<[^;{}()]+>\\s*)?\\(\\s*"(spell_\\w+)"',
+        content):
+        if (implementation in classes and legacy_aliases.get(alias)
+            == implementation):
             store(alias, classes[implementation])
     for first, second, alias in re.findall(
-            r'\bRegisterSpellAndAuraScriptPair(?:WithArgs)?\(\s*(spell_\w+)\s*,\s*(spell_\w+)'
-            r'(?:\s*,\s*"(spell_\w+)")?', content):
+        '\\bRegisterSpellAndAuraScriptPair(?:WithArgs)?\\(\\s*(spell_\\w+)\\s*,\\s*(spell_\\w+)(?:\\s*,\\s*"(spell_\\w+)")?', content):
         if first in classes and second in classes:
             policy = ('UNSUPPORTED_SPELLBOOK_MUTATION' if any(
-                classes[name] == 'UNSUPPORTED_SPELLBOOK_MUTATION' for name in (first, second))
+                classes[name] == 'UNSUPPORTED_SPELLBOOK_MUTATION' for name in (
+                    first, second))
                 else 'NO_SPELLBOOK_MUTATION')
             store(alias or first, policy)
     return scripts
 
 
-def generate(tc, ac):
-    result = {'version': 1, 'stores': {}, 'corrections': {}, 'scripts': {}, 'inputs': {}}
+def generate(tc: Path, ac: Path) -> Evidence:
+    result = {'version': 1, 'stores': {}, 'corrections': {}, 'scripts': {},
+        'inputs': {}}
     result['skill_reward_dependencies'] = REVIEWED_SKILL_REWARD_DEPENDENCIES
-    result['persistent_world_dependencies'] = REVIEWED_PERSISTENT_WORLD_DEPENDENCIES
+    result[
+        'persistent_world_dependencies'] = REVIEWED_PERSISTENT_WORLD_DEPENDENCIES
     result['world_talent_auras'] = REVIEWED_WORLD_TALENT_AURAS
     result['world_ranked_talent_auras'] = REVIEWED_WORLD_RANKED_TALENT_AURAS
     result['consumed_teachers'] = REVIEWED_CONSUMED_TEACHERS
@@ -303,39 +401,50 @@ def generate(tc, ac):
     result['native_passive_ranks'] = REVIEWED_NATIVE_PASSIVE_RANKS
     for name, (table, fmt_name) in STORES.items():
         sql = (ac / f'data/sql/base/db_world/{table}.sql').read_text()
-        columns = re.findall(r'^  `([^`]+)` ', sql, re.M)
+        columns = re.findall('^  `([^`]+)` ', sql, re.M)
         formats = {}
         for core, repo in [('tc', tc), ('ac', ac)]:
-            source = (repo / 'src/server/shared/DataStores/DBCfmt.h').read_text()
-            formats[core] = re.search(r'\b' + fmt_name + r'\[\] = "([^"]+)"', source)[1]
+            source = (
+                repo / 'src/server/shared/DataStores/DBCfmt.h').read_text()
+            formats[core] = (re.search('\\b' + fmt_name + '\\[\\] = "([^"]+)"',
+                source)[1])
         if any(len(fmt) != len(columns) for fmt in formats.values()):
             raise ValueError(f'{name}: DBC/SQL layout mismatch')
-        result['stores'][name] = {'table': table, 'columns': columns, 'formats': formats}
+        result['stores'][name] = {'table': table, 'columns': columns,
+            'formats': formats}
     tc_fmt = (tc / 'src/server/shared/DataStores/DBCfmt.h').read_text()
-    result['tc_spell_sql_format'] = re.search(r'CustomSpellEntryfmt\[\] = "([^"]+)"', tc_fmt)[1]
+    result['tc_spell_sql_format'] = (re.search(
+        'CustomSpellEntryfmt\\[\\] = "([^"]+)"', tc_fmt)[1])
     for core, repo, relative in [
         ('tc', tc, 'src/server/game/Spells/SpellMgr.cpp'),
         ('ac', ac, 'src/server/game/Spells/SpellInfoCorrections.cpp'),
     ]:
-        registration = ('src/server/game/Scripting/ScriptMgr.h' if core == 'tc' else
-                        'src/server/game/Scripting/ScriptDefines/SpellScriptLoader.h')
-        inputs = ['src/server/shared/DataStores/DBCfmt.h', *CORRECTION_DEFINITIONS, relative, registration,
-                  'src/server/game/Spells/Auras/SpellAuras.cpp']
+        registration = ('src/server/game/Scripting/ScriptMgr.h' if core
+            == 'tc' else
+            'src/server/game/Scripting/ScriptDefines/SpellScriptLoader.h')
+        inputs = ['src/server/shared/DataStores/DBCfmt.h',
+            *CORRECTION_DEFINITIONS, relative, registration,
+            'src/server/game/Spells/Auras/SpellAuras.cpp']
         if core == 'ac':
-            inputs.extend(f'data/sql/base/db_world/{table}.sql' for table,_ in STORES.values())
+            inputs.extend(f'data/sql/base/db_world/{table}.sql' for table, _
+                in STORES.values())
         raw = (repo / relative).read_text()
         source = strip_comments(raw)
         guards, operations = [], []
         constants = {}
-        defines = '\n'.join(strip_comments((repo / name).read_text()) for name in CORRECTION_DEFINITIONS)
-        for name, expression in re.findall(r'\b([A-Z][A-Z0-9_]+)\s*=\s*([^,\n}]+)', defines):
+        defines = '\n'.join(strip_comments((repo / name).read_text()) for name
+            in CORRECTION_DEFINITIONS)
+        for name, expression in re.findall(
+            '\\b([A-Z][A-Z0-9_]+)\\s*=\\s*([^,\\n}]+)', defines):
             try:
                 constants[name] = integer(expression.strip(), constants)
             except (ValueError, KeyError, SyntaxError):
                 pass
         # Each reviewed ApplySpellFix scope has a numeric ID list and a lambda.
-        for match in re.finditer(r'ApplySpellFix\(\{([^}]*)\}\s*,\s*\[\]\(SpellInfo\* spellInfo\)\s*\{', source):
-            ids = [int(x) for x in re.findall(r'\b\d+\b', match[1])]
+        for match in re.finditer(
+            'ApplySpellFix\\(\\{([^}]*)\\}\\s*,\\s*\\[\\]\\(SpellInfo\\* '
+            'spellInfo\\)\\s*\\{', source):
+            ids = [int(x) for x in re.findall('\\b\\d+\\b', match[1])]
             start = match.end()
             end, depth = start, 1
             while depth:
@@ -344,43 +453,57 @@ def generate(tc, ac):
             body = source[start:end - 1]
             fields, changes = [], []
             patterns = [
-                (r'spellInfo->(Attributes|PowerType|SpellFamilyName|CasterAuraState|Stances)\s*([|&]?=)\s*([^;]+);', None),
-                (r'spellInfo->(?:_GetEffect\(EFFECT_([012])\)|Effects\[EFFECT_([012])\])\.(Effect|TriggerSpell|MiscValue|BasePoints|DieSides|TargetA|ApplyAuraName)\s*([|&]?=)\s*([^;]+);', 'effect'),
+                (
+                    'spellInfo->(Attributes|PowerType|SpellFamilyName|CasterAuraState|Stances)\\s*([|&]?=)\\s*([^;]+);', None),
+                (
+                    'spellInfo->(?:_GetEffect\\(EFFECT_([012])\\)|Effects\\[EFFECT_([012])\\])\\.(Effect|TriggerSpell|MiscValue|BasePoints|DieSides|TargetA|ApplyAuraName)\\s*([|&]?=)\\s*([^;]+);', 'effect'),
             ]
             for pattern, effect in patterns:
                 for assignment in re.finditer(pattern, body):
                     if effect:
                         index = int(assignment[1] or assignment[2])
-                        field, op, value = assignment[3], assignment[4], assignment[5]
+                        field, op, value = assignment[3], assignment[
+                            4], assignment[5]
                         tag = f'{index}:{field}'
                         raw_field = EFFECT_FIELDS[field] + index
-                        value = re.sub(r'^SpellImplicitTargetInfo\((.*)\)$', r'\1', value)
+                        value = re.sub('^SpellImplicitTargetInfo\\((.*)\\)$',
+                            '\\1', value)
                     else:
-                        field, op, value = assignment[1], assignment[2], assignment[3]
+                        field, op, value = assignment[1], assignment[
+                            2], assignment[3]
                         tag = 'visibility'
-                        raw_field = {'Attributes': 4, 'PowerType': 41, 'SpellFamilyName': 208,
-                                     'CasterAuraState': 20, 'Stances': 12}[field]
+                        raw_field = {'Attributes': 4, 'PowerType': 41,
+                            'SpellFamilyName': 208,
+                            'CasterAuraState': 20, 'Stances': 12} [
+                                field]
                     try:
-                        # Conditional/cross-effect corrections need a separate review.
-                        if re.search(r'\b(if|for|switch)\b', body):
+                        # Conditional/cross-effect corrections need a separate
+                        # review.
+                        if re.search('\\b(if|for|switch)\\b', body):
                             raise ValueError('Conditional correction')
                         copied = re.fullmatch(
-                            r'spellInfo->(?:_GetEffect\(EFFECT_([012])\)|Effects\[EFFECT_([012])\])\.'
-                            r'(Effect|TriggerSpell|MiscValue|BasePoints|DieSides|TargetA|ApplyAuraName)', value.strip())
-                        operand = ({'field': EFFECT_FIELDS[copied[3]] + int(copied[1] or copied[2])}
-                                   if copied else integer(value.strip(), constants))
+                            'spellInfo->(?:_GetEffect\\(EFFECT_([012])\\)|Effects\\[EFFECT_([012])\\])\\.(Effect|TriggerSpell|MiscValue|BasePoints|DieSides|TargetA|ApplyAuraName)', value.strip())
+                        operand = ({'field': EFFECT_FIELDS[copied[3]] + int(
+                            copied[1] or copied[2])}
+                            if copied else integer(value.strip(),
+                                constants))
                         changes.append([raw_field, op, operand])
                     except (ValueError, KeyError, SyntaxError):
                         fields.append(tag)
-            for flags in re.finditer(r'spellInfo->SpellFamilyFlags\s*=\s*flag96\(([^)]+)\);', body):
+            for flags in re.finditer(
+                'spellInfo->SpellFamilyFlags\\s*=\\s*flag96\\(([^)]+)\\);',
+                body):
                 try:
-                    if re.search(r'\b(if|for|switch)\b', body):
+                    if re.search('\\b(if|for|switch)\\b', body):
                         raise ValueError('Conditional family correction')
-                    changes.extend([[209 + i, '=', integer(value.strip(), constants)]
-                                    for i, value in enumerate(flags[1].split(','))])
+                    changes.extend([[209 + i, '=', integer(value.strip(),
+                        constants)]
+                        for i, value in enumerate(flags[1].split(
+                            ','))])
                 except (ValueError, KeyError, SyntaxError):
                     fields.append('visibility')
-            indexed_changes,indexed_guarded=indexed_family_corrections(body,constants)
+            indexed_changes, indexed_guarded = indexed_family_corrections(body,
+                constants)
             changes.extend(indexed_changes)
             # Unparsed indexed access (including copied/dynamic indexes) must
             # remain guarded; only bounded constant assignments were reviewed.
@@ -391,11 +514,13 @@ def generate(tc, ac):
             if changes:
                 operations.append({'ids': ids, 'changes': changes})
         result['corrections'][core] = {
-            'source': relative, 'sha256': hashlib.sha256(raw.encode()).hexdigest(),
+            'source': relative, 'sha256': hashlib.sha256(raw.encode(
+            )).hexdigest(),
             'guards': guards, 'operations': operations,
         }
         scripts = {}
-        reviewed_paths = REVIEWED_ENCOUNTER_SCRIPTS | REVIEWED_CORE_SCRIPTS.get(core,{})
+        reviewed_paths = (REVIEWED_ENCOUNTER_SCRIPTS
+            | REVIEWED_CORE_SCRIPTS.get(core, {}))
         script_paths = set((repo / 'src/server/scripts/Spells').rglob('*.cpp'))
         script_paths.update(repo / name for name in reviewed_paths)
         for path in sorted(script_paths):
@@ -406,15 +531,19 @@ def generate(tc, ac):
                 if scripts.get(name) != 'UNSUPPORTED_SPELLBOOK_MUTATION':
                     scripts[name] = policy
         result['scripts'][core] = scripts
-        result.setdefault('cast_only_scripts',{})[core] = REVIEWED_CAST_ONLY_SCRIPTS
-        result.setdefault('aura_talent_scripts',{})[core] = {
-            name: rule | {'mode':'CAST_AURA' if core=='tc' else 'TEMPORARY_SPELL'}
-            for name,rule in REVIEWED_AURA_TALENT_SCRIPTS.items()}
-        result['inputs'][core] = {path: hashlib.sha256((repo/path).read_bytes()).hexdigest()
-                                  for path in sorted(set(inputs))}
+        result.setdefault('cast_only_scripts', {})[
+            core] = REVIEWED_CAST_ONLY_SCRIPTS
+        result.setdefault('aura_talent_scripts', {})[core] = {
+            name: rule | {'mode': 'CAST_AURA' if core == 'tc'
+                else 'TEMPORARY_SPELL'}
+            for name, rule in REVIEWED_AURA_TALENT_SCRIPTS.items()}
+        result['inputs'][core] = {path: hashlib.sha256((
+            repo / path).read_bytes()).hexdigest()
+            for path in sorted(set(inputs))}
     return result
 
 
 if __name__ == '__main__':
     tc, ac, output = map(Path, sys.argv[1:])
-    output.write_text(json.dumps(generate(tc, ac), sort_keys=True, indent=2) + '\n')
+    output.write_text(json.dumps(generate(tc, ac), sort_keys=True, indent=2)
+        + '\n')

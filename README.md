@@ -43,6 +43,7 @@ is historical and requires the corresponding older toolkit release.
 | [Spell reason codes](runbooks/spell-reason-codes.md) | Meanings, evidence and next steps for spell reconstruction blockers |
 | [v2 review record](runbooks/profile-v2-review.md) | Reviewed changes, limitations, acceptance evidence |
 | [Development and tests](runbooks/development.md) | Static checks and disposable fixture rehearsals |
+| [Python architecture and refactor](runbooks/python-refactor.md) | Module changes, compatibility contracts, and validation evidence |
 | [Compatibility maintenance](runbooks/compatibility-profiles.md) | Generating and reviewing future profiles |
 | [Adding mappings](runbooks/adding-mappings.md) | Extending coverage for schema or semantic changes |
 | [SQL execution model](sql/README.md) | Generated statements and control-schema internals |
